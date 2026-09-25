@@ -2,14 +2,23 @@
  * complete, so a strike or spare adds nothing until its bonus rolls are in. */
 #include <gtest/gtest.h>
 
+#include <memory>
+
 #include "game.h"
+
+/* Games come from a fixed pool that outlives each test. Holding every game in a handle that
+ * destroys it means a test can't leak a pool slot into later tests, however it ends. */
+using GameHandle = std::unique_ptr<Game, decltype(&Game_Destroy)>;
+
+static GameHandle MakeGame()
+{
+    return GameHandle(Game_Create(), &Game_Destroy);
+}
 
 class GameTest : public ::testing::Test {
 protected:
-    Game *game = nullptr;
-
-    void SetUp() override { game = Game_Create(); }
-    void TearDown() override { Game_Destroy(game); }
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
 };
 
 /* ---- Scoring ---------------------------------------------------------------------------- */
@@ -140,30 +149,29 @@ TEST_F(GameTest, should_score_a_perfect_game_and_reject_a_13th_roll)
 
 TEST_F(GameTest, should_keep_two_games_independent)
 {
-    Game *other = Game_Create();
+    GameHandle other = MakeGame();
     ASSERT_NE(nullptr, other);
 
     Game_Roll(game, 2U);
     Game_Roll(game, 6U);
-    Game_Roll(other, 1U);
-    Game_Roll(other, 1U);
+    Game_Roll(other.get(), 1U);
+    Game_Roll(other.get(), 1U);
 
     EXPECT_EQ(8U, Game_Score(game));
-    EXPECT_EQ(2U, Game_Score(other));
-    Game_Destroy(other);
+    EXPECT_EQ(2U, Game_Score(other.get()));
 }
 
 TEST_F(GameTest, should_return_null_when_no_game_is_free_and_reuse_a_destroyed_one)
 {
-    Game *second = Game_Create();
+    GameHandle second = MakeGame();
     ASSERT_NE(nullptr, second);
-    EXPECT_EQ(nullptr, Game_Create());
+    GameHandle third = MakeGame();
+    EXPECT_EQ(nullptr, third);
 
-    Game_Destroy(second);
-    Game *reused = Game_Create();
+    second.reset();
+    GameHandle reused = MakeGame();
     ASSERT_NE(nullptr, reused);
-    EXPECT_EQ(0U, Game_Score(reused));
-    Game_Destroy(reused);
+    EXPECT_EQ(0U, Game_Score(reused.get()));
 }
 
 TEST_F(GameTest, should_ignore_destroying_a_null_game)
