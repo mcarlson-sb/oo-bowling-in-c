@@ -87,8 +87,9 @@ void Game_Destroy(Game *game)
 
 GameStatus Game_Roll(Game *game, uint8_t pins)
 {
-    /* Checked before any frame sees the roll: afterwards is too late, because open strike
-     * and spare frames would already have taken it as bonus pins. */
+    /* Both checks run before any frame sees the roll. Frames act on a roll as it passes
+     * through them, and that can't be undone, so this is what leaves a rejected roll with
+     * no effect. */
     if (Game_IsOver(game)) {
         return GAME_ERR_GAME_OVER;
     }

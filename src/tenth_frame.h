@@ -2,7 +2,7 @@
 #define TENTH_FRAME_H
 
 /* The last frame of a game: a strike or spare here earns fill balls, rolled within this same
- * frame. There is no frame after it, so it never passes a roll on. */
+ * frame. There is no frame after it, so it keeps every roll it takes. */
 
 #include "frame.h"
 

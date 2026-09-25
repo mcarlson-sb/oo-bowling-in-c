@@ -5,11 +5,10 @@
  *
  * C has no classes, so the pattern is spelled out:
  *   - The "class" is a struct whose first member is a pointer to a const vtable.
- *   - "abstract" methods are vtable entries; there is no Frame vtable of its own, so a
- *     plain Frame cannot be used on its own.
+ *   - "abstract" methods are vtable entries. Frame has no vtable of its own; only the
+ *     derived classes define one, so every usable Frame is one of them.
  *   - A derived class embeds Frame as its FIRST member, so a pointer to the derived struct
- *     is also a valid pointer to its Frame, and the reverse cast is safe inside the
- *     derived class's own methods.
+ *     is also a valid pointer to its Frame.
  *
  * Private to the library: lives in src/, not include/. */
 
