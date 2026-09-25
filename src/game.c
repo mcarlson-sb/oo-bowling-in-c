@@ -59,12 +59,19 @@ void Game_Destroy(Game *game)
     (void)game;
 }
 
-void Game_Roll(Game *game, uint8_t pins)
+GameStatus Game_Roll(Game *game, uint8_t pins)
 {
+    /* Checked before any frame sees the roll: afterwards is too late, because open strike
+     * and spare frames would already have taken it as bonus pins. */
+    if (game->frame_count == GAME_MAX_FRAMES) {
+        return GAME_ERR_FULL;
+    }
+
     const int16_t remaining_pins = Game_UpdateFrames(game, pins);
     if (remaining_pins != FRAME_ROLL_CONSUMED) {
         Game_AddNewFrame(game, (uint8_t)remaining_pins);
     }
+    return GAME_OK;
 }
 
 uint16_t Game_Score(const Game *game)

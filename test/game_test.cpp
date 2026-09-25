@@ -116,3 +116,18 @@ TEST_F(GameTest, should_score_a_full_game_correctly)
         EXPECT_EQ(roll.expected_score, Game_Score(game)) << "after rolling " << +roll.pins;
     }
 }
+
+/* ---- C-specific: fixed capacity ---------------------------------------------------------
+ * TypeScript grows its frames array without limit. With no heap, the C version has a fixed
+ * number of frames, so rolling past it must be reported, not written out of bounds. */
+
+TEST_F(GameTest, should_score_a_perfect_game_and_reject_a_roll_past_capacity)
+{
+    for (int i = 0; i < 12; i++) {
+        EXPECT_EQ(GAME_OK, Game_Roll(game, 10U));
+    }
+    EXPECT_EQ(300U, Game_Score(game));
+
+    EXPECT_EQ(GAME_ERR_FULL, Game_Roll(game, 10U));
+    EXPECT_EQ(300U, Game_Score(game));
+}
