@@ -9,6 +9,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(OO_C_WARNINGS -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Werror)
 
+# Second pass over the same tests with undefined-behavior checks. Trap mode needs no
+# runtime library, so it works with MinGW, which ships no libubsan or libasan.
+option(OO_C_SANITIZE "Build with -fsanitize=undefined (trap mode)" OFF)
+if(OO_C_SANITIZE)
+    add_compile_options(-fsanitize=undefined -fsanitize-trap=undefined -fno-omit-frame-pointer -O0 -g)
+    add_link_options(-fsanitize=undefined -fsanitize-trap=undefined)
+endif()
+
 # ---- Library under test ---------------------------------------------------
 add_library(bowling STATIC
     src/frame.c
