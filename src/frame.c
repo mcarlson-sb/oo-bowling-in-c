@@ -79,3 +79,10 @@ uint16_t Frame_Score(const Frame *self)
     }
     return score;
 }
+
+void Frame_CopyRolls(Frame *self, const Frame *from)
+{
+    for (uint8_t i = 0U; i < from->roll_count; i++) {
+        Frame_AddRoll(self, from->rolls[i]);
+    }
+}

@@ -81,6 +81,9 @@ void Frame_AddRoll(Frame *self, uint8_t pins);
 void Frame_AddBonusRoll(Frame *self, uint8_t pins);
 void Frame_Complete(Frame *self);
 
+/* Copies another frame's rolls into this one, for a state built from the one it replaces. */
+void Frame_CopyRolls(Frame *self, const Frame *from);
+
 /* Pins knocked down by this frame's own rolls, without bonus rolls. */
 uint8_t Frame_PinsKnockedDown(const Frame *self);
 

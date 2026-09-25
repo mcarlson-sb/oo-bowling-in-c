@@ -1,15 +1,26 @@
 #ifndef TENTH_FRAME_H
 #define TENTH_FRAME_H
 
-/* The last frame of a game: a strike or spare here earns fill balls, rolled within this same
- * frame. There is no frame after it, so it keeps every roll it takes. */
+/* The states a strike or spare in the last frame moves to. The first two balls of the tenth
+ * frame behave like any other frame's, so the tenth frame starts as a RegularFrame too. A
+ * strike or spare earns fill balls, rolled within this same frame, and there is no frame
+ * after it, so these states keep every roll they take. */
 
 #include "frame.h"
 
 typedef struct {
-    Frame base; /* must be first: TenthFrame "extends" Frame */
-} TenthFrame;
+    Frame base; /* must be first: TenthStrikeFrame "extends" Frame */
+} TenthStrikeFrame;
 
-Frame *TenthFrame_Init(TenthFrame *self);
+typedef struct {
+    Frame base; /* must be first: TenthSpareFrame "extends" Frame */
+} TenthSpareFrame;
+
+/* A strike in the tenth frame: takes two fill balls. */
+Frame *TenthStrikeFrame_Init(TenthStrikeFrame *self);
+
+/* A spare in the tenth frame: takes one fill ball. Built like a SpareFrame, from the frame
+ * it replaces plus the roll that completed the spare. */
+Frame *TenthSpareFrame_Init(TenthSpareFrame *self, const Frame *replaced, uint8_t completing_pins);
 
 #endif /* TENTH_FRAME_H */
