@@ -49,6 +49,7 @@ balls, because there is no next frame.
 | Abstract class, virtual methods | A struct led by a pointer to a `const` table of function pointers (the vtable) | `src/frame.h` |
 | Inheritance | The derived struct holds its base struct as its **first** member, so a `StrikeFrame *` is also a valid `Frame *` | `src/strike_frame.h` |
 | Polymorphism | `Frame_Roll()` calls `self->vtable->roll(self, ...)`, and the right state's code runs | `src/frame.c` |
+| Default implementation and override | `Frame_AllPinsStanding()` is the shared `pins_standing`. `RegularFrame` and `TenthFrame` put their own function in the vtable in its place | `src/regular_frame.c`, `src/tenth_frame.c` |
 | Shared base-class method | A plain function on the base struct, with no vtable entry: `Frame_Score()` is written once for all the states | `src/frame.c` |
 | Private methods | `static` functions: visible only in their own `.c` file | every `src/*.c` |
 | `new` | No heap. Each context owns storage for its states, and games come from a fixed pool | `FrameContext_NewStrikeFrame()`, `Game_Create()` |
@@ -58,6 +59,10 @@ balls, because there is no next frame.
 - **Fixed capacity.** Ten frames per game and two games at once. `Game_Roll` returns
   `GAME_ERR_GAME_OVER` once the tenth frame is complete, and `Game_Create` returns `NULL`
   when no game is free, where other languages would just grow.
+- **Input validation.** A roll of more pins than are standing (more than 10, or more than a
+  frame's first roll or a strike's first fill ball left) returns `GAME_ERR_INVALID_PINS` and
+  leaves the game unchanged. Each state reports its own standing pins through the virtual
+  `pins_standing`.
 - **A `TenthFrame` state.** It keeps its fill balls in place of passing them on to extra
   frames. This fixes a scoring defect in the original design: a tenth-frame strike followed
   by 3, 3 scored 22, not 16.
