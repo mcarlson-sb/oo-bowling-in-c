@@ -6,7 +6,8 @@ of designing, not a language feature. C has no classes, so every mechanism has t
 out by hand, and that makes it easy to see how each one works and what it costs.
 
 For a picture-by-picture tour of how the code fits together, see
-[ARCHITECTURE.md](ARCHITECTURE.md).
+[ARCHITECTURE.md](ARCHITECTURE.md). For the State pattern at its heart, in depth, see
+[STATE_PATTERN.md](STATE_PATTERN.md).
 
 ## Build and test
 

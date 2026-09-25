@@ -254,6 +254,9 @@ Frame *StrikeFrame_Init(StrikeFrame *self)        static const FrameVtable s_vta
 
 ## 6. The frame state machines
 
+The full transition table, and the reasons behind the design, are in
+[STATE_PATTERN.md](STATE_PATTERN.md).
+
 Every frame starts as a `RegularFrame`. Only `RegularFrame` changes state: it calls
 `FrameContext_SetState` on the context passed into its `roll()`.
 
