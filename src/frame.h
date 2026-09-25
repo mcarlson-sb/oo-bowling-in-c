@@ -83,9 +83,8 @@ void Frame_CopyRolls(Frame *self, const Frame *from);
 /* Pins knocked down by this frame's own rolls, without bonus rolls. */
 Pins Frame_PinsKnockedDown(const Frame *self);
 
-/* Which roll comes next: the frame's first or second, or its second bonus roll. */
+/* Which roll comes next: the frame's first, or its second bonus roll. */
 bool Frame_IsFirstRoll(const Frame *self);
-bool Frame_IsSecondRoll(const Frame *self);
 bool Frame_IsSecondBonusRoll(const Frame *self);
 
 /* The pins knocked down by the frame's first bonus roll. Only valid once there is one. */

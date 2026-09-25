@@ -32,12 +32,15 @@ static RollResult RegularFrame_Roll(Frame *self, struct FrameContext *context, P
     return RollResult_Consumed();
 }
 
+/* While the frame is taking its own rolls, the next one is at whatever its earlier rolls
+ * left standing: all ten before the first roll, fewer after it. Once complete, the next
+ * roll starts a new frame on a full rack. */
 static Pins RegularFrame_PinsStanding(const Frame *self)
 {
-    if (!self->complete && Frame_IsSecondRoll(self)) {
-        return (Pins)(FRAME_ALL_PINS - Frame_PinsKnockedDown(self));
+    if (self->complete) {
+        return FRAME_ALL_PINS;
     }
-    return FRAME_ALL_PINS;
+    return (Pins)(FRAME_ALL_PINS - Frame_PinsKnockedDown(self));
 }
 
 static const FrameVtable s_vtable = {

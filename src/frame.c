@@ -61,11 +61,6 @@ bool Frame_IsFirstRoll(const Frame *self)
     return RollList_Count(&self->rolls) == 0U;
 }
 
-bool Frame_IsSecondRoll(const Frame *self)
-{
-    return RollList_Count(&self->rolls) == 1U;
-}
-
 bool Frame_IsSecondBonusRoll(const Frame *self)
 {
     return RollList_Count(&self->bonus_rolls) == 1U;
