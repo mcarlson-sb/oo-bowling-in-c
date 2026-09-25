@@ -165,8 +165,8 @@ the `.c` file:
 **The tests follow the same line.**
 - `test/game_test.cpp` includes only `game.h`, as a real caller would. It's a black-box test
   of the public API.
-- `test/roll_list_test.cpp` is a white-box test of a private type. It is the one test granted
-  `src/`, and `CMakeLists.txt` says why.
+- `test/roll_list_test.cpp` and `test/slot_pool_test.cpp` are white-box tests of private
+  types. They are the only tests granted `src/`, and `CMakeLists.txt` says why.
 
 ## Design patterns
 
@@ -211,7 +211,7 @@ The factory table's layout is hidden: `frame_context.h` only forward-declares it
 
 | Pattern | Where | Why here |
 |---|---|---|
-| **Object Pool** | `Game_Create` and `Game_Destroy` over `s_pool[2]` | Memory is fixed at compile time. Running out is reported (`NULL`), never undefined |
+| **Object Pool** | `Game_Create` and `Game_Destroy` over `s_games[2]`, with the in-use bookkeeping in `SlotPool` (`src/slot_pool.c`) | Memory is fixed at compile time. Running out is reported (`NULL`), never undefined |
 | **Opaque handle** | `Game` | Callers depend only on the API, never on the layout |
 | **Result object** | `RollResult { consumed, pins }` | Says directly whether a frame kept a roll, with no special "magic" values |
 
@@ -273,11 +273,13 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |
 | `src/frame.h/.c` | Abstract base `Frame`: its vtable, shared fields and methods, and `RollResult` |
 | `src/roll_list.h/.c` | `RollList`, the value type a frame keeps its rolls and bonus rolls in |
+| `src/slot_pool.h/.c` | `SlotPool`, which tracks which of the game pool's slots are in use |
 | `src/regular_frame.*`, `src/strike_frame.*`, `src/spare_frame.*` | The states for frames 1 to 9. `RegularFrame` is also where the tenth frame starts |
 | `src/tenth_frame.*` | The tenth frame's strike and spare states |
 | `src/frame_context.h/.c` | The State-pattern context and the two state families (Abstract Factory) |
 | `test/game_test.cpp` | Host tests through the public API: scoring, end of game, game storage, tenth frame, input validation, `NULL` handles |
 | `test/roll_list_test.cpp` | Tests of `RollList`, including its bounds checks in debug and release builds |
+| `test/slot_pool_test.cpp` | Tests of `SlotPool` |
 
 The git history is a test-driven sequence, with one test per commit. Stepping through it
 shows the design growing a test at a time.

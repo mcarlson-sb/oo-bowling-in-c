@@ -83,8 +83,10 @@ PRIVATE  src/
   |-- spare_frame.h    --> frame.h
   '-- tenth_frame.h    --> frame.h
 
+  slot_pool.h                    (standard headers only)
+
 Source files that include a header from another module:
-  game.c           --> frame_context.h
+  game.c           --> frame_context.h, slot_pool.h
   regular_frame.c  --> frame_context.h    (the one state that switches states)
 ```
 
@@ -166,7 +168,7 @@ the whole game is laid out at compile time. Sizes are from the compiler on a 64-
 (checked with `_Static_assert`); a 32-bit MCU, with 4-byte pointers, is smaller.
 
 ```
-s_pool[2]                                           1,936 bytes
+s_games[2]                                          1,936 bytes
 +-------------------------------------------------------------+
 | Game [0]                                        968 bytes   |
 |  +-------------------------------------------------------+  |
@@ -183,11 +185,13 @@ s_pool[2]                                           1,936 bytes
 |  |  +-------------------------------------------------+  |  |
 |  |  ... 9 more                                           |  |
 |  | frame_count : uint8_t                                 |  |
-|  | in_use      : bool                                    |  |
 |  +-------------------------------------------------------+  |
 | Game [1]                                                    |
 +-------------------------------------------------------------+
 ```
+
+Beside them, `s_in_use[2]` holds one `bool` per game. `SlotPool` (`src/slot_pool.c`) uses those
+flags to hand out and take back games; `game.c` owns both arrays.
 
 Each context owns storage for every state it could be in, and `current_state` points at
 the one in use. Changing state rebuilds that slot in place (`FrameContext_NewStrikeFrame`
@@ -384,19 +388,22 @@ accepted and an 8 would be rejected.
 ## 9. The tests
 
 ```
-test/game_test.cpp  (black box)            test/roll_list_test.cpp  (white box)
-  includes: game.h only                      includes: roll_list.h, from src/
-  +-----------------------------+            +------------------------------+
-  | scoring                     |            | empty, add, sum, full        |
-  | end of game                 |            | bounds:                      |
-  | game storage (the pool)     |            |   debug:   stops (assert)    |
-  | tenth frame                 |            |   release: refused, reads 0  |
-  | input validation            |            +------------------------------+
-  | NULL handles                |
-  +-----------------------------+
-            |                                           |
-            v                                           v
-   public API only, like a real caller         one private type, directly
+test/game_test.cpp  (black box)            white box: private types, from src/
+  includes: game.h only
+  +-----------------------------+          +------------------------------+
+  | scoring                     |          | roll_list_test.cpp           |
+  | end of game                 |          |  empty, add, sum, full       |
+  | game storage (the pool)     |          |  bounds:                     |
+  | tenth frame                 |          |   debug:   stops (assert)    |
+  | input validation            |          |   release: refused, reads 0  |
+  | NULL handles                |          +------------------------------+
+  +-----------------------------+          | slot_pool_test.cpp           |
+            |                              |  acquire, distinct, full,    |
+            |                              |  release and reuse, release  |
+            |                              |  of a slot it doesn't have   |
+            |                              +------------------------------+
+            v                                            v
+   public API only, like a real caller       each private type, directly
 ```
 
 Every test runs in three builds, debug, release (`NDEBUG`) and UBSan, with warnings as

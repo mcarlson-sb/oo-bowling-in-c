@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "frame_context.h"
+#include "slot_pool.h"
 
 /* Frames in a game of bowling. The last one keeps its own fill balls, so a game never needs
  * more. */
@@ -16,10 +17,13 @@
 struct Game {
     FrameContext frames[GAME_FRAMES];
     uint8_t frame_count;
-    bool in_use;
 };
 
-static Game s_pool[GAME_POOL_SIZE];
+/* The games themselves, and the pool that tracks which are in use. The pool's bookkeeping
+ * lives in slot_pool.c; this file only owns the storage. */
+static Game s_games[GAME_POOL_SIZE];
+static bool s_in_use[GAME_POOL_SIZE];
+static SlotPool s_pool = { s_in_use, GAME_POOL_SIZE };
 
 static bool Game_IsOver(const Game *game)
 {
@@ -77,23 +81,34 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
 
 Game *Game_Create(void)
 {
+    uint8_t slot = 0U;
+    if (!SlotPool_Acquire(&s_pool, &slot)) {
+        return NULL;
+    }
+    Game *game = &s_games[slot];
+    game->frame_count = 0U;
+    return game;
+}
+
+/* Finds which slot a game is in. Compares addresses for equality only, so a pointer that
+ * isn't one of ours (including NULL) is simply not found. */
+static bool Game_FindSlot(const Game *game, uint8_t *slot)
+{
     for (uint8_t i = 0U; i < GAME_POOL_SIZE; i++) {
-        Game *game = &s_pool[i];
-        if (!game->in_use) {
-            game->in_use = true;
-            game->frame_count = 0U;
-            return game;
+        if (&s_games[i] == game) {
+            *slot = i;
+            return true;
         }
     }
-    return NULL;
+    return false;
 }
 
 void Game_Destroy(Game *game)
 {
-    if (game == NULL) {
-        return;
+    uint8_t slot = 0U;
+    if (Game_FindSlot(game, &slot)) {
+        SlotPool_Release(&s_pool, slot);
     }
-    game->in_use = false;
 }
 
 GameStatus Game_Roll(Game *game, Pins pins)
