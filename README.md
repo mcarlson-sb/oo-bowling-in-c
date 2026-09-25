@@ -63,7 +63,7 @@ The four pillars of OO, each done with a plain C mechanism:
 | Principle | In this code | How it's done in C |
 |---|---|---|
 | **Encapsulation and information hiding** | Callers can't see or touch a game's internals | `game.h` declares `struct Game` but only `game.c` defines it (an opaque handle). Private helpers are `static`, so no other file can see them |
-| **Abstraction** | `Frame` is an abstract type: "something that can take a roll and report its standing pins" | A `const FrameVtable` of function pointers (`src/frame.h`). There is no `Frame` vtable of its own, so a plain `Frame` can't be created |
+| **Abstraction** | `Frame` is an abstract type: "something that can take a roll and report its standing pins" | A `const FrameVtable` of function pointers (`src/frame.h`). `Frame` has no vtable of its own; only the derived states define one, so every usable `Frame` is one of them |
 | **Inheritance** | Each state *is a* `Frame` and reuses its fields and `Frame_Score` | The derived struct holds `Frame base` as its **first member**, so a `StrikeFrame *` is also a valid `Frame *` |
 | **Polymorphism** | Callers call `Frame_Roll(frame, context, pins)`, and the right state's code runs | `Frame_Roll` calls `self->vtable->roll(self, context, pins)`. Each state points at its own `static const` vtable |
 
@@ -81,6 +81,52 @@ Four refinements on top of those:
   `RegularFrame` and `TenthStrikeFrame` put their own function in the vtable in its place.
 - **Template method.** `Frame_Roll` handles a complete frame itself, passing the roll on,
   before it dispatches. So each state's `roll()` only ever sees rolls meant for it.
+
+## Public and private headers
+
+Only two headers are in `include/`, because that folder is the library's public API: only
+what code *using* the library needs.
+
+| Header | Why it's public |
+|---|---|
+| `include/game.h` | The API: `Game_Create`, `Game_Roll`, `Game_Score`, `Game_Destroy`, `GameStatus` and the opaque `Game` |
+| `include/bowling_types.h` | `game.h`'s signatures use `Pins` and `Score`, and a public header must compile on its own |
+
+Everything else is in `src/` and is private.
+
+**The design lives behind that line.** The frame class hierarchy, the vtable, the states,
+the state families and `RollList` are all design decisions. No caller can include
+`frame.h`, so no caller can depend on any of them. That is why the internals could be
+reworked repeatedly without `game.h` changing. For example, the tenth frame went from one
+state to two states and a factory, and a frame's loose fields became two `RollList`s.
+
+**The build enforces it.** In `CMakeLists.txt`:
+
+```cmake
+target_include_directories(bowling PUBLIC include PRIVATE src)
+```
+
+`include/` is passed on to anything that links `bowling`; `src/` is visible only to the
+library's own files. A caller's `#include "frame.h"` isn't found.
+
+**Why private headers exist at all.** Ideally every struct would be defined only in its own
+`.c` file, as `struct Game` is in `game.c`. But C needs a struct's full definition wherever
+storage for it is allocated. With no heap, objects are held by value, one inside the next:
+- `Game` holds ten `FrameContext`s.
+- Each `FrameContext` holds one of each state.
+- Each state holds a `Frame`.
+- Each `Frame` holds two `RollList`s.
+
+So those definitions are shared among the library's files, in `src/`. Where nothing needs
+the layout, it stays in the `.c` file:
+- `struct Game`: callers only hold a pointer to it.
+- `struct FrameStateFactory`: `frame_context.h` only forward-declares it.
+
+**The tests follow the same line.**
+- `test/game_test.cpp` includes only `game.h`, as a real caller would. It's a black-box test
+  of the public API.
+- `test/roll_list_test.cpp` is a white-box test of a private type. It is the one test granted
+  `src/`, and `CMakeLists.txt` says why.
 
 ## Design patterns
 
@@ -167,6 +213,9 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
   call-graph analysis. Keep vtables `const` and few.
 - **The rules are enforced by convention, not by the compiler.** "Base struct first" and
   "states change base fields only through the base's functions" are discipline.
+- **The public/private line is kept by the build, not the language.** Anyone who adds `src/`
+  to their own include path can reach the internals. `PRIVATE src` makes that a deliberate
+  choice, not an accident.
 - **Type names don't add type safety.** `Pins` and `Score` are C `typedef`s, so they tell the
   reader what a value is, but the compiler still sees plain integers: passing a roll count
   where `Pins` is expected compiles cleanly. A one-field struct would catch that, at the cost
