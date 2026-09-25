@@ -22,9 +22,7 @@ static RollResult RegularFrame_Roll(Frame *self, uint8_t pins)
         return RollResult_Consumed();
     }
     if (RegularFrame_IsSpare(self, pins)) {
-        FrameContext_SetState(context,
-                              FrameContext_NewSpareFrame(context, self->rolls, self->roll_count));
-        (void)FrameContext_Roll(context, pins);
+        FrameContext_SetState(context, FrameContext_NewSpareFrame(context, self, pins));
         return RollResult_Consumed();
     }
 

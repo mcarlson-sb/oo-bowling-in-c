@@ -15,9 +15,9 @@ Frame *FrameContext_NewStrikeFrame(FrameContext *self)
     return StrikeFrame_Init(&self->strike, self);
 }
 
-Frame *FrameContext_NewSpareFrame(FrameContext *self, const uint8_t *rolls, uint8_t roll_count)
+Frame *FrameContext_NewSpareFrame(FrameContext *self, const Frame *replaced, uint8_t completing_pins)
 {
-    return SpareFrame_Init(&self->spare, self, rolls, roll_count);
+    return SpareFrame_Init(&self->spare, self, replaced, completing_pins);
 }
 
 void FrameContext_SetState(FrameContext *self, Frame *frame_state)
