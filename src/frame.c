@@ -9,7 +9,7 @@ void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *con
     self->open = true;
 }
 
-int16_t Frame_Roll(Frame *self, uint8_t pins)
+RollResult Frame_Roll(Frame *self, uint8_t pins)
 {
     return self->vtable->roll(self, pins);
 }

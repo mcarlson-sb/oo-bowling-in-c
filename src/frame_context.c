@@ -20,7 +20,7 @@ void FrameContext_SetState(FrameContext *self, Frame *frame_state)
     self->current_state = frame_state;
 }
 
-int16_t FrameContext_Roll(FrameContext *self, uint8_t pins)
+RollResult FrameContext_Roll(FrameContext *self, uint8_t pins)
 {
     return Frame_Roll(self->current_state, pins);
 }

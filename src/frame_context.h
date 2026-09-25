@@ -33,7 +33,7 @@ Frame *FrameContext_NewStrikeFrame(FrameContext *self);
 Frame *FrameContext_NewSpareFrame(FrameContext *self, const uint8_t *rolls, uint8_t roll_count);
 
 void FrameContext_SetState(FrameContext *self, Frame *frame_state);
-int16_t FrameContext_Roll(FrameContext *self, uint8_t pins);
+RollResult FrameContext_Roll(FrameContext *self, uint8_t pins);
 uint16_t FrameContext_Score(const FrameContext *self);
 
 #endif /* FRAME_CONTEXT_H */

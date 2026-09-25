@@ -19,22 +19,22 @@ static bool RegularFrame_IsSpare(const Frame *self, uint8_t pins)
     return total == 10U;
 }
 
-static int16_t RegularFrame_Roll(Frame *self, uint8_t pins)
+static RollResult RegularFrame_Roll(Frame *self, uint8_t pins)
 {
     if (!self->open) {
-        return (int16_t)pins;
+        return RollResult_Passed(pins);
     }
 
     FrameContext *context = self->context;
     if (RegularFrame_IsStrike(self, pins)) {
         FrameContext_SetState(context, FrameContext_NewStrikeFrame(context));
-        return FRAME_ROLL_CONSUMED;
+        return RollResult_Consumed();
     }
     if (RegularFrame_IsSpare(self, pins)) {
         FrameContext_SetState(context,
                               FrameContext_NewSpareFrame(context, self->rolls, self->roll_count));
         (void)FrameContext_Roll(context, pins);
-        return FRAME_ROLL_CONSUMED;
+        return RollResult_Consumed();
     }
 
     self->rolls[self->roll_count] = pins;
@@ -42,7 +42,7 @@ static int16_t RegularFrame_Roll(Frame *self, uint8_t pins)
     if (self->roll_count == FRAME_MAX_ROLLS) {
         self->open = false;
     }
-    return FRAME_ROLL_CONSUMED;
+    return RollResult_Consumed();
 }
 
 static const FrameVtable s_vtable = {

@@ -34,22 +34,22 @@ static void Game_AddNewFrame(Game *game, uint8_t pins)
     game->frame_count++;
 }
 
-static int16_t Game_ApplyPinsToFrames(Game *game, uint8_t pins)
+static RollResult Game_ApplyPinsToFrames(Game *game, uint8_t pins)
 {
-    int16_t remaining = (int16_t)pins;
+    RollResult result = RollResult_Passed(pins);
     for (uint8_t i = 0U; i < game->frame_count; i++) {
-        if (remaining != FRAME_ROLL_CONSUMED) {
-            remaining = FrameContext_Roll(&game->frames[i], (uint8_t)remaining);
+        if (!result.consumed) {
+            result = FrameContext_Roll(&game->frames[i], result.pins);
         }
     }
-    return remaining;
+    return result;
 }
 
-static int16_t Game_UpdateFrames(Game *game, uint8_t pins)
+static RollResult Game_UpdateFrames(Game *game, uint8_t pins)
 {
     if (Game_IsFirstFrame(game)) {
         Game_AddNewFrame(game, pins);
-        return FRAME_ROLL_CONSUMED;
+        return RollResult_Consumed();
     }
     return Game_ApplyPinsToFrames(game, pins);
 }
@@ -83,9 +83,9 @@ GameStatus Game_Roll(Game *game, uint8_t pins)
         return GAME_ERR_FULL;
     }
 
-    const int16_t remaining_pins = Game_UpdateFrames(game, pins);
-    if (remaining_pins != FRAME_ROLL_CONSUMED) {
-        Game_AddNewFrame(game, (uint8_t)remaining_pins);
+    const RollResult result = Game_UpdateFrames(game, pins);
+    if (!result.consumed) {
+        Game_AddNewFrame(game, result.pins);
     }
     return GAME_OK;
 }

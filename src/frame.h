@@ -18,9 +18,23 @@
 
 #define FRAME_MAX_ROLLS 2U
 
-/* Returned by roll() when the frame kept the pins. Stands in for TypeScript's `null`;
- * any other value is the pin count, passed on to the next frame. */
-#define FRAME_ROLL_CONSUMED ((int16_t)-1)
+/* What roll() did with the pins: kept them (consumed), or passed them on to the next
+ * frame. Replaces the original's `number | null` return, where null meant "consumed".
+ * `pins` is meaningful only when !consumed. */
+typedef struct {
+    bool consumed;
+    uint8_t pins;
+} RollResult;
+
+static inline RollResult RollResult_Consumed(void)
+{
+    return (RollResult){ .consumed = true, .pins = 0U };
+}
+
+static inline RollResult RollResult_Passed(uint8_t pins)
+{
+    return (RollResult){ .consumed = false, .pins = pins };
+}
 
 struct FrameContext;
 typedef struct Frame Frame;
@@ -29,7 +43,7 @@ typedef struct Frame Frame;
 #define FRAME_MAX_BONUS_ROLLS 2U
 
 typedef struct {
-    int16_t (*roll)(Frame *self, uint8_t pins);
+    RollResult (*roll)(Frame *self, uint8_t pins);
 } FrameVtable;
 
 struct Frame {
@@ -46,7 +60,7 @@ struct Frame {
 void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *context);
 
 /* Virtual: each state rolls differently. */
-int16_t Frame_Roll(Frame *self, uint8_t pins);
+RollResult Frame_Roll(Frame *self, uint8_t pins);
 
 /* Records a bonus roll. For derived classes only. */
 void Frame_AddBonusRoll(Frame *self, uint8_t pins);

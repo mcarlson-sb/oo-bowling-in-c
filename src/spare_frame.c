@@ -7,21 +7,21 @@ static bool SpareFrame_IsBonusRoll(const Frame *self)
     return self->roll_count == FRAME_MAX_ROLLS;
 }
 
-static int16_t SpareFrame_Roll(Frame *self, uint8_t pins)
+static RollResult SpareFrame_Roll(Frame *self, uint8_t pins)
 {
     if (!self->open) {
-        return (int16_t)pins;
+        return RollResult_Passed(pins);
     }
 
     if (SpareFrame_IsBonusRoll(self)) {
         Frame_AddBonusRoll(self, pins);
         self->open = false;
-        return (int16_t)pins;
+        return RollResult_Passed(pins);
     }
 
     self->rolls[self->roll_count] = pins;
     self->roll_count++;
-    return FRAME_ROLL_CONSUMED;
+    return RollResult_Consumed();
 }
 
 static const FrameVtable s_vtable = {

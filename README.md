@@ -58,7 +58,9 @@ the next frame.
   `GAME_ERR_FULL`, and `Game_Create` returns `NULL`, where other languages would just grow.
 - **Rolls are copied, not shared.** TypeScript's `SpareFrame` keeps a reference to the
   `RegularFrame`'s rolls array. Here each state has its own storage, so they are copied.
-- **`FRAME_ROLL_CONSUMED`** is the `-1` that stands in for TypeScript's `null` return from `roll()`.
+- **`roll()` returns a `RollResult`** (`consumed`, or passed on with its `pins`) in place of
+  TypeScript's `number | null`. The first port used a `-1` sentinel; the git history shows
+  the change.
 
 The git history is the TDD sequence, one test per commit. Stepping through it shows the
 design growing test by test.
