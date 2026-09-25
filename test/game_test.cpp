@@ -65,3 +65,12 @@ TEST_F(GameTest, should_score_a_closed_spare_roll_8_2_1)
     Game_Roll(game, 1U);
     EXPECT_EQ(11U, Game_Score(game));
 }
+
+TEST_F(GameTest, should_score_a_closed_spare_and_closed_regular_roll_8_2_1_4)
+{
+    Game_Roll(game, 8U);
+    Game_Roll(game, 2U);
+    Game_Roll(game, 1U);
+    Game_Roll(game, 4U);
+    EXPECT_EQ(16U, Game_Score(game));
+}
