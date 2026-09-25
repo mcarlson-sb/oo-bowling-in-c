@@ -32,9 +32,14 @@ uint8_t Frame_AllPinsStanding(const Frame *self)
     return FRAME_ALL_PINS;
 }
 
+/* The bounds checks stay in every build. A roll that doesn't fit is never written. Debug
+ * builds also stop at the assert, so the state that sent it gets found. */
 void Frame_AddRoll(Frame *self, uint8_t pins)
 {
     assert(self->roll_count < FRAME_MAX_ROLLS);
+    if (self->roll_count >= FRAME_MAX_ROLLS) {
+        return;
+    }
     self->rolls[self->roll_count] = pins;
     self->roll_count++;
 }
@@ -42,6 +47,9 @@ void Frame_AddRoll(Frame *self, uint8_t pins)
 void Frame_AddBonusRoll(Frame *self, uint8_t pins)
 {
     assert(self->bonus_count < FRAME_MAX_BONUS_ROLLS);
+    if (self->bonus_count >= FRAME_MAX_BONUS_ROLLS) {
+        return;
+    }
     self->bonus_rolls[self->bonus_count] = pins;
     self->bonus_count++;
 }
