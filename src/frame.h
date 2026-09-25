@@ -24,14 +24,18 @@ typedef struct {
     uint8_t pins;
 } RollResult;
 
+/* Plain initializers, not C99 compound literals, so the header is also valid C++ for the
+ * white-box tests. */
 static inline RollResult RollResult_Consumed(void)
 {
-    return (RollResult){ .consumed = true, .pins = 0U };
+    const RollResult result = { true, 0U };
+    return result;
 }
 
 static inline RollResult RollResult_Passed(uint8_t pins)
 {
-    return (RollResult){ .consumed = false, .pins = pins };
+    const RollResult result = { false, pins };
+    return result;
 }
 
 struct FrameContext;

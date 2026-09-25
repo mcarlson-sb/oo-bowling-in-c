@@ -24,6 +24,17 @@ cmake --build build-ubsan
 ctest --test-dir build-ubsan --output-on-failure
 ```
 
+And as a release build (`NDEBUG`), where the internal asserts compile out and the bounds
+checks behind them still hold:
+
+```sh
+cmake -S . -B build-release -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release
+ctest --test-dir build-release --output-on-failure
+```
+
+Warnings are errors in the library and the tests alike.
+
 ## What the code does
 
 The public API is four functions in `include/game.h`: `Game_Create`, `Game_Roll`,

@@ -6,8 +6,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(OO_C_WARNINGS -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Werror)
+set(OO_TEST_WARNINGS -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Werror)
 
 # Second pass over the same tests with undefined-behavior checks. Trap mode needs no
 # runtime library, so it works with MinGW, which ships no libubsan or libasan.
@@ -49,6 +51,7 @@ add_executable(bowling_tests
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
 # frame_test.cpp tests the base class directly, so it needs the private headers.
 target_include_directories(bowling_tests PRIVATE src)
+target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 
 include(GoogleTest)
 gtest_discover_tests(bowling_tests)
