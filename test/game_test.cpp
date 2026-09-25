@@ -206,3 +206,15 @@ TEST_F(GameTest, should_give_a_tenth_frame_spare_exactly_one_fill_ball)
     EXPECT_EQ(15U, Game_Score(game));
     EXPECT_EQ(GAME_ERR_GAME_OVER, Game_Roll(game, 5U));
 }
+
+/* ---- Input validation -------------------------------------------------------------------
+ * The original accepts any pin count. An invalid roll is rejected and leaves the game
+ * unchanged. */
+
+TEST_F(GameTest, should_reject_a_roll_of_more_than_ten_pins)
+{
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Game_Roll(game, 11U));
+    Game_Roll(game, 3U);
+    Game_Roll(game, 4U);
+    EXPECT_EQ(7U, Game_Score(game));
+}

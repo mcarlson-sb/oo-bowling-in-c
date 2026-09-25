@@ -92,6 +92,9 @@ GameStatus Game_Roll(Game *game, uint8_t pins)
     if (Game_IsOver(game)) {
         return GAME_ERR_GAME_OVER;
     }
+    if (pins > 10U) {
+        return GAME_ERR_INVALID_PINS;
+    }
 
     const RollResult result = Game_UpdateFrames(game, pins);
     if (!result.consumed) {

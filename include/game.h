@@ -16,7 +16,9 @@ typedef enum {
     GAME_OK = 0,
     /* The tenth frame is complete, so the game is over. The roll is rejected and the game
      * is left unchanged. */
-    GAME_ERR_GAME_OVER
+    GAME_ERR_GAME_OVER,
+    /* More pins than are standing. The roll is rejected and the game is left unchanged. */
+    GAME_ERR_INVALID_PINS
 } GameStatus;
 
 Game *Game_Create(void);
