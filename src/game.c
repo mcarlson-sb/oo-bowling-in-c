@@ -32,6 +32,16 @@ static bool Game_IsFirstFrame(const Game *game)
     return game->frame_count == 0U;
 }
 
+/* Only the latest frame can still be taking its own rolls, so only it can leave fewer than
+ * ten pins standing. */
+static uint8_t Game_PinsStanding(const Game *game)
+{
+    if (Game_IsFirstFrame(game)) {
+        return FRAME_ALL_PINS;
+    }
+    return FrameContext_PinsStanding(&game->frames[game->frame_count - 1U]);
+}
+
 static void Game_AddNewFrame(Game *game, uint8_t pins)
 {
     FrameContext *new_frame = &game->frames[game->frame_count];
@@ -92,7 +102,7 @@ GameStatus Game_Roll(Game *game, uint8_t pins)
     if (Game_IsOver(game)) {
         return GAME_ERR_GAME_OVER;
     }
-    if (pins > 10U) {
+    if (pins > Game_PinsStanding(game)) {
         return GAME_ERR_INVALID_PINS;
     }
 

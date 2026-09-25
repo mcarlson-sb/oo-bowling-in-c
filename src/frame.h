@@ -42,8 +42,13 @@ typedef struct Frame Frame;
 /* The most bonus rolls any frame earns (a strike's two). */
 #define FRAME_MAX_BONUS_ROLLS 2U
 
+#define FRAME_ALL_PINS 10U
+
 typedef struct {
     RollResult (*roll)(Frame *self, uint8_t pins);
+    /* Pins standing for the next roll, if this is the game's latest frame:
+     * FRAME_ALL_PINS unless the next roll is this frame's own, on a partly cleared rack. */
+    uint8_t (*pins_standing)(const Frame *self);
 } FrameVtable;
 
 struct Frame {
@@ -61,6 +66,10 @@ void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *con
 
 /* Virtual: each state rolls differently. */
 RollResult Frame_Roll(Frame *self, uint8_t pins);
+uint8_t Frame_PinsStanding(const Frame *self);
+
+/* The pins_standing for any state whose next roll always starts on a full rack. */
+uint8_t Frame_AllPinsStanding(const Frame *self);
 
 /* Records a bonus roll. For derived classes only. */
 void Frame_AddBonusRoll(Frame *self, uint8_t pins);

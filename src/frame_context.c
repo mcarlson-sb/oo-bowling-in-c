@@ -39,3 +39,8 @@ bool FrameContext_IsOpen(const FrameContext *self)
 {
     return self->current_state->open;
 }
+
+uint8_t FrameContext_PinsStanding(const FrameContext *self)
+{
+    return Frame_PinsStanding(self->current_state);
+}

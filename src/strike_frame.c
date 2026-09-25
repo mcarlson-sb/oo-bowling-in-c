@@ -1,7 +1,5 @@
 #include "strike_frame.h"
 
-#define STRIKE_PINS 10U
-
 static RollResult StrikeFrame_Roll(Frame *self, uint8_t pins)
 {
     if (!self->open) {
@@ -17,12 +15,13 @@ static RollResult StrikeFrame_Roll(Frame *self, uint8_t pins)
 
 static const FrameVtable s_vtable = {
     .roll = StrikeFrame_Roll,
+    .pins_standing = Frame_AllPinsStanding,
 };
 
 Frame *StrikeFrame_Init(StrikeFrame *self, struct FrameContext *context)
 {
     Frame_Init(&self->base, &s_vtable, context);
-    self->base.rolls[0] = STRIKE_PINS;
+    self->base.rolls[0] = FRAME_ALL_PINS;
     self->base.roll_count = 1U;
     return &self->base;
 }

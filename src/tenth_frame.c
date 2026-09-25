@@ -1,15 +1,13 @@
 #include "tenth_frame.h"
 
-#define ALL_PINS 10U
-
 /* Fill balls are kept as the base class's bonus rolls, so the shared Frame_Score adds them
  * with no special case. */
 static uint8_t TenthFrame_FillRollsEarned(const Frame *self)
 {
-    if ((self->roll_count >= 1U) && (self->rolls[0] == ALL_PINS)) {
+    if ((self->roll_count >= 1U) && (self->rolls[0] == FRAME_ALL_PINS)) {
         return 2U;
     }
-    if ((self->roll_count == FRAME_MAX_ROLLS) && ((self->rolls[0] + self->rolls[1]) == ALL_PINS)) {
+    if ((self->roll_count == FRAME_MAX_ROLLS) && ((self->rolls[0] + self->rolls[1]) == FRAME_ALL_PINS)) {
         return 1U;
     }
     return 0U;
@@ -40,6 +38,7 @@ static RollResult TenthFrame_Roll(Frame *self, uint8_t pins)
 
 static const FrameVtable s_vtable = {
     .roll = TenthFrame_Roll,
+    .pins_standing = Frame_AllPinsStanding,
 };
 
 Frame *TenthFrame_Init(TenthFrame *self, struct FrameContext *context)

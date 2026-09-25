@@ -41,5 +41,6 @@ void FrameContext_SetState(FrameContext *self, Frame *frame_state);
 RollResult FrameContext_Roll(FrameContext *self, uint8_t pins);
 uint16_t FrameContext_Score(const FrameContext *self);
 bool FrameContext_IsOpen(const FrameContext *self);
+uint8_t FrameContext_PinsStanding(const FrameContext *self);
 
 #endif /* FRAME_CONTEXT_H */

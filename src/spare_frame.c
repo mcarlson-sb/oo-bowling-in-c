@@ -26,6 +26,7 @@ static RollResult SpareFrame_Roll(Frame *self, uint8_t pins)
 
 static const FrameVtable s_vtable = {
     .roll = SpareFrame_Roll,
+    .pins_standing = Frame_AllPinsStanding,
 };
 
 Frame *SpareFrame_Init(SpareFrame *self, struct FrameContext *context, const uint8_t *rolls,

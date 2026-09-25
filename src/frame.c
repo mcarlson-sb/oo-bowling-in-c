@@ -14,6 +14,17 @@ RollResult Frame_Roll(Frame *self, uint8_t pins)
     return self->vtable->roll(self, pins);
 }
 
+uint8_t Frame_PinsStanding(const Frame *self)
+{
+    return self->vtable->pins_standing(self);
+}
+
+uint8_t Frame_AllPinsStanding(const Frame *self)
+{
+    (void)self;
+    return FRAME_ALL_PINS;
+}
+
 void Frame_AddBonusRoll(Frame *self, uint8_t pins)
 {
     self->bonus_rolls[self->bonus_count] = pins;

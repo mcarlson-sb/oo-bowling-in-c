@@ -218,3 +218,11 @@ TEST_F(GameTest, should_reject_a_roll_of_more_than_ten_pins)
     Game_Roll(game, 4U);
     EXPECT_EQ(7U, Game_Score(game));
 }
+
+TEST_F(GameTest, should_reject_a_second_roll_that_knocks_down_more_pins_than_are_standing)
+{
+    Game_Roll(game, 7U);
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Game_Roll(game, 4U));
+    EXPECT_EQ(GAME_OK, Game_Roll(game, 2U));
+    EXPECT_EQ(9U, Game_Score(game));
+}

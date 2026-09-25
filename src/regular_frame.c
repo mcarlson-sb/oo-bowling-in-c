@@ -6,7 +6,7 @@
 
 static bool RegularFrame_IsStrike(const Frame *self, uint8_t pins)
 {
-    return (self->roll_count == 0U) && (pins == 10U);
+    return (self->roll_count == 0U) && (pins == FRAME_ALL_PINS);
 }
 
 static bool RegularFrame_IsSpare(const Frame *self, uint8_t pins)
@@ -16,7 +16,7 @@ static bool RegularFrame_IsSpare(const Frame *self, uint8_t pins)
         total = (uint16_t)(total + self->rolls[i]);
     }
     total = (uint16_t)(total + pins);
-    return total == 10U;
+    return total == FRAME_ALL_PINS;
 }
 
 static RollResult RegularFrame_Roll(Frame *self, uint8_t pins)
@@ -45,8 +45,17 @@ static RollResult RegularFrame_Roll(Frame *self, uint8_t pins)
     return RollResult_Consumed();
 }
 
+static uint8_t RegularFrame_PinsStanding(const Frame *self)
+{
+    if (self->open && (self->roll_count == 1U)) {
+        return (uint8_t)(FRAME_ALL_PINS - self->rolls[0]);
+    }
+    return FRAME_ALL_PINS;
+}
+
 static const FrameVtable s_vtable = {
     .roll = RegularFrame_Roll,
+    .pins_standing = RegularFrame_PinsStanding,
 };
 
 Frame *RegularFrame_Init(RegularFrame *self, struct FrameContext *context)
