@@ -87,6 +87,11 @@ void Frame_CopyRolls(Frame *self, const Frame *from);
 /* Pins knocked down by this frame's own rolls, without bonus rolls. */
 uint8_t Frame_PinsKnockedDown(const Frame *self);
 
+/* Which roll comes next: the frame's first or second, or its second bonus roll. */
+bool Frame_IsFirstRoll(const Frame *self);
+bool Frame_IsSecondRoll(const Frame *self);
+bool Frame_IsSecondBonusRoll(const Frame *self);
+
 /* Not virtual: every state scores the same way, as its rolls plus its bonus rolls, and 0
  * until the frame is complete. */
 uint16_t Frame_Score(const Frame *self);

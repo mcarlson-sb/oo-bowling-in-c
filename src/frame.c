@@ -86,3 +86,18 @@ void Frame_CopyRolls(Frame *self, const Frame *from)
         Frame_AddRoll(self, from->rolls[i]);
     }
 }
+
+bool Frame_IsFirstRoll(const Frame *self)
+{
+    return self->roll_count == 0U;
+}
+
+bool Frame_IsSecondRoll(const Frame *self)
+{
+    return self->roll_count == 1U;
+}
+
+bool Frame_IsSecondBonusRoll(const Frame *self)
+{
+    return self->bonus_count == 1U;
+}

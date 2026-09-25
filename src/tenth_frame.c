@@ -22,7 +22,7 @@ static RollResult TenthStrikeFrame_Roll(Frame *self, struct FrameContext *contex
 static uint8_t TenthStrikeFrame_PinsStanding(const Frame *self)
 {
     const bool first_fill_left_pins =
-        (self->bonus_count == 1U) && (self->bonus_rolls[0] != FRAME_ALL_PINS);
+        Frame_IsSecondBonusRoll(self) && (self->bonus_rolls[0] != FRAME_ALL_PINS);
     if (first_fill_left_pins) {
         return (uint8_t)(FRAME_ALL_PINS - self->bonus_rolls[0]);
     }

@@ -6,7 +6,7 @@
 
 static bool RegularFrame_IsStrike(const Frame *self, uint8_t pins)
 {
-    return (self->roll_count == 0U) && (pins == FRAME_ALL_PINS);
+    return Frame_IsFirstRoll(self) && (pins == FRAME_ALL_PINS);
 }
 
 static bool RegularFrame_IsSpare(const Frame *self, uint8_t pins)
@@ -34,7 +34,7 @@ static RollResult RegularFrame_Roll(Frame *self, struct FrameContext *context, u
 
 static uint8_t RegularFrame_PinsStanding(const Frame *self)
 {
-    if (!self->complete && (self->roll_count == 1U)) {
+    if (!self->complete && Frame_IsSecondRoll(self)) {
         return (uint8_t)(FRAME_ALL_PINS - Frame_PinsKnockedDown(self));
     }
     return FRAME_ALL_PINS;
