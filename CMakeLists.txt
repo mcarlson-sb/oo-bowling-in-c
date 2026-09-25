@@ -25,6 +25,7 @@ add_library(bowling STATIC
     src/regular_frame.c
     src/spare_frame.c
     src/strike_frame.c
+    src/tenth_frame.c
 )
 target_include_directories(bowling PUBLIC include PRIVATE src)
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})

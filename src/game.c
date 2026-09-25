@@ -5,21 +5,27 @@
 
 #include "frame_context.h"
 
-/* Enough frames for a full game: ten, plus the two extra frames that tenth-frame bonus
- * rolls open in this design. */
-#define GAME_MAX_FRAMES 12U
+/* Frames in a game of bowling. The last one is a TenthFrame, which keeps its own fill balls,
+ * so a game never needs more. */
+#define GAME_FRAMES 10U
 
 /* Games available at once. Stands in for `new GameService()`: no heap, so games come from
  * a fixed pool. */
 #define GAME_POOL_SIZE 2U
 
 struct Game {
-    FrameContext frames[GAME_MAX_FRAMES];
+    FrameContext frames[GAME_FRAMES];
     uint8_t frame_count;
     bool in_use;
 };
 
 static Game s_pool[GAME_POOL_SIZE];
+
+static bool Game_IsOver(const Game *game)
+{
+    return (game->frame_count == GAME_FRAMES) &&
+           !FrameContext_IsOpen(&game->frames[GAME_FRAMES - 1U]);
+}
 
 static bool Game_IsFirstFrame(const Game *game)
 {
@@ -29,7 +35,11 @@ static bool Game_IsFirstFrame(const Game *game)
 static void Game_AddNewFrame(Game *game, uint8_t pins)
 {
     FrameContext *new_frame = &game->frames[game->frame_count];
-    FrameContext_Init(new_frame);
+    if (game->frame_count == (GAME_FRAMES - 1U)) {
+        FrameContext_InitTenth(new_frame);
+    } else {
+        FrameContext_Init(new_frame);
+    }
     (void)FrameContext_Roll(new_frame, pins);
     game->frame_count++;
 }
@@ -79,8 +89,8 @@ GameStatus Game_Roll(Game *game, uint8_t pins)
 {
     /* Checked before any frame sees the roll: afterwards is too late, because open strike
      * and spare frames would already have taken it as bonus pins. */
-    if (game->frame_count == GAME_MAX_FRAMES) {
-        return GAME_ERR_FULL;
+    if (Game_IsOver(game)) {
+        return GAME_ERR_GAME_OVER;
     }
 
     const RollResult result = Game_UpdateFrames(game, pins);

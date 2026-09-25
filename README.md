@@ -30,13 +30,14 @@ The State pattern. A frame starts as a `RegularFrame` and becomes a `SpareFrame`
 `StrikeFrame` when its rolls say so. `FrameContext` holds whichever state a frame is in and
 passes each call on to it. `Game` runs each roll through the frames in order until one keeps
 it. Strike and spare frames pass their bonus rolls on, because those rolls also belong to
-the next frame.
+the next frame. The tenth frame is a `TenthFrame` from the start. It keeps its own fill
+balls, because there is no next frame.
 
 | File | Role |
 |---|---|
 | `include/game.h`, `src/game.c` | The public API: an opaque `Game` handle |
 | `src/frame.h/.c` | Abstract base class `Frame` and its vtable |
-| `src/regular_frame.*`, `src/spare_frame.*`, `src/strike_frame.*` | The three concrete states |
+| `src/regular_frame.*`, `src/spare_frame.*`, `src/strike_frame.*`, `src/tenth_frame.*` | The four concrete states |
 | `src/frame_context.h/.c` | The State-pattern context |
 | `test/game_test.cpp` | The spec, ported test for test, plus C-specific tests |
 
@@ -48,14 +49,18 @@ the next frame.
 | Abstract class, virtual methods | A struct led by a pointer to a `const` table of function pointers (the vtable) | `src/frame.h` |
 | Inheritance | The derived struct holds its base struct as its **first** member, so a `StrikeFrame *` is also a valid `Frame *` | `src/strike_frame.h` |
 | Polymorphism | `Frame_Roll()` calls `self->vtable->roll(self, ...)`, and the right state's code runs | `src/frame.c` |
-| Shared base-class method | A plain function on the base struct, with no vtable entry: `Frame_Score()` is written once for all three states | `src/frame.c` |
+| Shared base-class method | A plain function on the base struct, with no vtable entry: `Frame_Score()` is written once for all the states | `src/frame.c` |
 | Private methods | `static` functions: visible only in their own `.c` file | every `src/*.c` |
 | `new` | No heap. Each context owns storage for its states, and games come from a fixed pool | `FrameContext_NewStrikeFrame()`, `Game_Create()` |
 
 ## Differences from the other versions
 
-- **Fixed capacity.** Twelve frames per game and two games at once. `Game_Roll` returns
-  `GAME_ERR_FULL`, and `Game_Create` returns `NULL`, where other languages would just grow.
+- **Fixed capacity.** Ten frames per game and two games at once. `Game_Roll` returns
+  `GAME_ERR_GAME_OVER` once the tenth frame is complete, and `Game_Create` returns `NULL`
+  when no game is free, where other languages would just grow.
+- **A `TenthFrame` state.** It keeps its fill balls in place of passing them on to extra
+  frames. This fixes a scoring defect in the original design: a tenth-frame strike followed
+  by 3, 3 scored 22, not 16.
 - **Rolls are copied, not shared.** TypeScript's `SpareFrame` keeps a reference to the
   `RegularFrame`'s rolls array. Here each state has its own storage, so they are copied.
 - **`roll()` returns a `RollResult`** (`consumed`, or passed on with its `pins`) in place of

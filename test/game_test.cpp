@@ -117,18 +117,19 @@ TEST_F(GameTest, should_score_a_full_game_correctly)
     }
 }
 
-/* ---- C-specific: fixed capacity ---------------------------------------------------------
- * TypeScript grows its frames array without limit. With no heap, the C version has a fixed
- * number of frames, so rolling past it must be reported, not written out of bounds. */
+/* ---- C-specific: end of game ------------------------------------------------------------
+ * TypeScript grows its frames array without limit. With no heap, the C version has exactly
+ * ten frames, so a roll after the game is over must be reported, not written out of
+ * bounds. */
 
-TEST_F(GameTest, should_score_a_perfect_game_and_reject_a_roll_past_capacity)
+TEST_F(GameTest, should_score_a_perfect_game_and_reject_a_13th_roll)
 {
     for (int i = 0; i < 12; i++) {
         EXPECT_EQ(GAME_OK, Game_Roll(game, 10U));
     }
     EXPECT_EQ(300U, Game_Score(game));
 
-    EXPECT_EQ(GAME_ERR_FULL, Game_Roll(game, 10U));
+    EXPECT_EQ(GAME_ERR_GAME_OVER, Game_Roll(game, 10U));
     EXPECT_EQ(300U, Game_Score(game));
 }
 
@@ -167,4 +168,20 @@ TEST_F(GameTest, should_ignore_destroying_a_null_game)
 {
     Game_Destroy(nullptr);
     EXPECT_NE(nullptr, game);
+}
+
+/* ---- Design improvement: TenthFrame -----------------------------------------------------
+ * design-improvements-BowlingOO.md 2c: the original lets tenth-frame fill balls flow into
+ * extra frames. The spec never rolls two fill balls that leave pins standing, so it never
+ * sees them closing an 11th frame and being scored a second time. */
+
+TEST_F(GameTest, should_score_a_tenth_frame_strike_with_open_fill_balls)
+{
+    for (int i = 0; i < 18; i++) {
+        Game_Roll(game, 0U);
+    }
+    Game_Roll(game, 10U);
+    Game_Roll(game, 3U);
+    Game_Roll(game, 3U);
+    EXPECT_EQ(16U, Game_Score(game));
 }

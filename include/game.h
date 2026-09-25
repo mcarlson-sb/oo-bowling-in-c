@@ -14,10 +14,9 @@ typedef struct Game Game;
 
 typedef enum {
     GAME_OK = 0,
-    /* Every frame slot is in use. That happens only once a game is over (at most twelve
-     * frames: ten, plus the two that tenth-frame bonus rolls open). The roll is rejected
-     * and the game is left unchanged. */
-    GAME_ERR_FULL
+    /* The tenth frame is complete, so the game is over. The roll is rejected and the game
+     * is left unchanged. */
+    GAME_ERR_GAME_OVER
 } GameStatus;
 
 Game *Game_Create(void);

@@ -5,6 +5,11 @@ void FrameContext_Init(FrameContext *self)
     self->current_state = RegularFrame_Init(&self->regular, self);
 }
 
+void FrameContext_InitTenth(FrameContext *self)
+{
+    self->current_state = TenthFrame_Init(&self->tenth, self);
+}
+
 Frame *FrameContext_NewStrikeFrame(FrameContext *self)
 {
     return StrikeFrame_Init(&self->strike, self);
@@ -28,4 +33,9 @@ RollResult FrameContext_Roll(FrameContext *self, uint8_t pins)
 uint16_t FrameContext_Score(const FrameContext *self)
 {
     return Frame_Score(self->current_state);
+}
+
+bool FrameContext_IsOpen(const FrameContext *self)
+{
+    return self->current_state->open;
 }

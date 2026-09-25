@@ -9,21 +9,26 @@
  * hidden, so Game can hold contexts by value. The header is still private to the library
  * (src/, not include/). */
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "frame.h"
 #include "regular_frame.h"
 #include "spare_frame.h"
 #include "strike_frame.h"
+#include "tenth_frame.h"
 
 typedef struct FrameContext {
     Frame *current_state;
     RegularFrame regular;
     SpareFrame spare;
     StrikeFrame strike;
+    TenthFrame tenth;
 } FrameContext;
 
+/* Frames 1 to 9 start as a RegularFrame; the last frame starts, and stays, a TenthFrame. */
 void FrameContext_Init(FrameContext *self);
+void FrameContext_InitTenth(FrameContext *self);
 
 /* Stand-in for `new StrikeFrame(context)`. */
 Frame *FrameContext_NewStrikeFrame(FrameContext *self);
@@ -35,5 +40,6 @@ Frame *FrameContext_NewSpareFrame(FrameContext *self, const uint8_t *rolls, uint
 void FrameContext_SetState(FrameContext *self, Frame *frame_state);
 RollResult FrameContext_Roll(FrameContext *self, uint8_t pins);
 uint16_t FrameContext_Score(const FrameContext *self);
+bool FrameContext_IsOpen(const FrameContext *self);
 
 #endif /* FRAME_CONTEXT_H */
