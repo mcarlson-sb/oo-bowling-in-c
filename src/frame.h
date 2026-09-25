@@ -56,13 +56,13 @@ struct Frame {
     uint8_t roll_count;
     uint8_t bonus_rolls[FRAME_MAX_BONUS_ROLLS];
     uint8_t bonus_count; /* 0 for a RegularFrame, which earns no bonus */
-    bool open;
+    bool complete; /* all rolls and bonus rolls are in, so the score is final */
 };
 
 /* Constructor for the base part; called by each derived class's constructor. */
 void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *context);
 
-/* Virtual: each state rolls differently. A frame that is no longer open passes the roll on
+/* Virtual: each state rolls differently. A complete frame passes the roll on
  * without calling its state. */
 RollResult Frame_Roll(Frame *self, uint8_t pins);
 uint8_t Frame_PinsStanding(const Frame *self);
@@ -74,13 +74,13 @@ uint8_t Frame_AllPinsStanding(const Frame *self);
  * through these, never by writing the fields directly. */
 void Frame_AddRoll(Frame *self, uint8_t pins);
 void Frame_AddBonusRoll(Frame *self, uint8_t pins);
-void Frame_Close(Frame *self);
+void Frame_Complete(Frame *self);
 
 /* Pins knocked down by this frame's own rolls, without bonus rolls. */
 uint8_t Frame_PinsKnockedDown(const Frame *self);
 
 /* Not virtual: every state scores the same way, as its rolls plus its bonus rolls, and 0
- * while the frame is still open. */
+ * until the frame is complete. */
 uint16_t Frame_Score(const Frame *self);
 
 #endif /* FRAME_H */

@@ -33,7 +33,7 @@ TEST_F(GameTest, should_get_a_score_of_0_from_a_new_game)
     EXPECT_EQ(0U, Game_Score(game));
 }
 
-TEST_F(GameTest, should_get_a_score_of_0_from_an_open_frame)
+TEST_F(GameTest, should_get_a_score_of_0_from_an_incomplete_frame)
 {
     Game_Roll(game, 2U);
     EXPECT_EQ(0U, Game_Score(game));
@@ -63,7 +63,7 @@ TEST_F(GameTest, should_score_14_from_two_closed_frames_rolls_2_3_4_5)
     EXPECT_EQ(14U, Game_Score(game));
 }
 
-TEST_F(GameTest, should_score_a_spare_as_open)
+TEST_F(GameTest, should_score_an_unfinished_spare_as_0)
 {
     Game_Roll(game, 8U);
     Game_Roll(game, 2U);
@@ -87,7 +87,7 @@ TEST_F(GameTest, should_score_a_closed_spare_and_closed_regular_roll_8_2_1_4)
     EXPECT_EQ(16U, Game_Score(game));
 }
 
-TEST_F(GameTest, should_score_an_open_strike)
+TEST_F(GameTest, should_score_an_unfinished_strike_as_0)
 {
     Game_Roll(game, 10U);
     Game_Roll(game, 1U);
@@ -184,7 +184,7 @@ TEST_F(GameTest, should_ignore_destroying_a_null_game)
  * Fill balls belong to the tenth frame and are scored once. They must not spill into a
  * frame after it. */
 
-TEST_F(GameTest, should_score_a_tenth_frame_strike_with_open_fill_balls)
+TEST_F(GameTest, should_score_a_tenth_frame_strike_whose_fill_balls_leave_pins_standing)
 {
     for (int i = 0; i < 18; i++) {
         Game_Roll(game, 0U);

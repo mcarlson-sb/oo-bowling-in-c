@@ -28,14 +28,14 @@ static RollResult RegularFrame_Roll(Frame *self, uint8_t pins)
 
     Frame_AddRoll(self, pins);
     if (self->roll_count == FRAME_MAX_ROLLS) {
-        Frame_Close(self);
+        Frame_Complete(self);
     }
     return RollResult_Consumed();
 }
 
 static uint8_t RegularFrame_PinsStanding(const Frame *self)
 {
-    if (self->open && (self->roll_count == 1U)) {
+    if (!self->complete && (self->roll_count == 1U)) {
         return (uint8_t)(FRAME_ALL_PINS - Frame_PinsKnockedDown(self));
     }
     return FRAME_ALL_PINS;

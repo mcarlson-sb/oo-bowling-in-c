@@ -8,14 +8,14 @@ void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *con
     self->context = context;
     self->roll_count = 0U;
     self->bonus_count = 0U;
-    self->open = true;
+    self->complete = false;
 }
 
 RollResult Frame_Roll(Frame *self, uint8_t pins)
 {
-    /* A finished frame passes every roll on. Handled once here, so each state's roll() only
-     * ever sees rolls while its frame is still open. */
-    if (!self->open) {
+    /* A complete frame passes every roll on. Handled once here, so each state's roll() only
+     * ever sees rolls while its frame is still incomplete. */
+    if (self->complete) {
         return RollResult_Passed(pins);
     }
     return self->vtable->roll(self, pins);
@@ -54,9 +54,9 @@ void Frame_AddBonusRoll(Frame *self, uint8_t pins)
     self->bonus_count++;
 }
 
-void Frame_Close(Frame *self)
+void Frame_Complete(Frame *self)
 {
-    self->open = false;
+    self->complete = true;
 }
 
 uint8_t Frame_PinsKnockedDown(const Frame *self)
@@ -70,7 +70,7 @@ uint8_t Frame_PinsKnockedDown(const Frame *self)
 
 uint16_t Frame_Score(const Frame *self)
 {
-    if (self->open) {
+    if (!self->complete) {
         return 0U;
     }
 

@@ -5,7 +5,7 @@
 static RollResult SpareFrame_Roll(Frame *self, uint8_t pins)
 {
     Frame_AddBonusRoll(self, pins);
-    Frame_Close(self);
+    Frame_Complete(self);
     return RollResult_Passed(pins);
 }
 

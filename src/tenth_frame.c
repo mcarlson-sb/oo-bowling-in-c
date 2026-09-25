@@ -19,14 +19,14 @@ static RollResult TenthFrame_Roll(Frame *self, uint8_t pins)
     if (fill_rolls_earned > 0U) {
         Frame_AddBonusRoll(self, pins);
         if (self->bonus_count == fill_rolls_earned) {
-            Frame_Close(self);
+            Frame_Complete(self);
         }
         return RollResult_Consumed();
     }
 
     Frame_AddRoll(self, pins);
     if ((self->roll_count == FRAME_MAX_ROLLS) && (TenthFrame_FillRollsEarned(self) == 0U)) {
-        Frame_Close(self);
+        Frame_Complete(self);
     }
     return RollResult_Consumed();
 }

@@ -39,8 +39,8 @@ The public API is four functions in `include/game.h`: `Game_Create`, `Game_Roll`
     next frame.
   - **`TenthFrame`**: the last frame, from the start. It keeps its own fill balls, because
     there is no next frame.
-- Every state scores the same way: its rolls plus its bonus rolls, and 0 while the frame is
-  still open.
+- Every state scores the same way: its rolls plus its bonus rolls, and 0 until the frame is
+  complete.
 - A roll is rejected, and the game left unchanged, if the game is over
   (`GAME_ERR_GAME_OVER`) or if it knocks down more pins than are standing
   (`GAME_ERR_INVALID_PINS`).

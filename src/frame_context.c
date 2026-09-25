@@ -35,9 +35,9 @@ uint16_t FrameContext_Score(const FrameContext *self)
     return Frame_Score(self->current_state);
 }
 
-bool FrameContext_IsOpen(const FrameContext *self)
+bool FrameContext_IsComplete(const FrameContext *self)
 {
-    return self->current_state->open;
+    return self->current_state->complete;
 }
 
 uint8_t FrameContext_PinsStanding(const FrameContext *self)

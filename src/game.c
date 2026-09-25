@@ -24,7 +24,7 @@ static Game s_pool[GAME_POOL_SIZE];
 static bool Game_IsOver(const Game *game)
 {
     return (game->frame_count == GAME_FRAMES) &&
-           !FrameContext_IsOpen(&game->frames[GAME_FRAMES - 1U]);
+           FrameContext_IsComplete(&game->frames[GAME_FRAMES - 1U]);
 }
 
 static bool Game_IsFirstFrame(const Game *game)
