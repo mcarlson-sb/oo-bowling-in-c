@@ -258,3 +258,8 @@ TEST_F(GameTest, should_reject_a_roll_on_a_null_game)
 {
     EXPECT_EQ(GAME_ERR_NULL_GAME, Game_Roll(nullptr, 3U));
 }
+
+TEST_F(GameTest, should_score_a_null_game_as_0)
+{
+    EXPECT_EQ(0U, Game_Score(nullptr));
+}

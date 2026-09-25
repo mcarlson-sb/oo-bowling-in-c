@@ -109,6 +109,10 @@ GameStatus Game_Roll(Game *game, uint8_t pins)
 
 uint16_t Game_Score(const Game *game)
 {
+    if (game == NULL) {
+        return 0U;
+    }
+
     uint16_t score = 0U;
     for (uint8_t i = 0U; i < game->frame_count; i++) {
         score = (uint16_t)(score + FrameContext_Score(&game->frames[i]));
