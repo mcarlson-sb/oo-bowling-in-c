@@ -64,15 +64,6 @@ static RollResult Game_ApplyPinsToFrames(Game *game, uint8_t pins)
     return result;
 }
 
-static RollResult Game_UpdateFrames(Game *game, uint8_t pins)
-{
-    if (Game_IsFirstFrame(game)) {
-        Game_AddNewFrame(game, pins);
-        return RollResult_Consumed();
-    }
-    return Game_ApplyPinsToFrames(game, pins);
-}
-
 Game *Game_Create(void)
 {
     for (uint8_t i = 0U; i < GAME_POOL_SIZE; i++) {
@@ -105,7 +96,7 @@ GameStatus Game_Roll(Game *game, uint8_t pins)
         return GAME_ERR_INVALID_PINS;
     }
 
-    const RollResult result = Game_UpdateFrames(game, pins);
+    const RollResult result = Game_ApplyPinsToFrames(game, pins);
     if (!result.consumed) {
         Game_AddNewFrame(game, result.pins);
     }
