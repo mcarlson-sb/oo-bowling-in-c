@@ -1,9 +1,31 @@
 #include "regular_frame.h"
 
+#include <stdbool.h>
+
+#include "frame_context.h"
+
+static bool RegularFrame_IsSpare(const Frame *self, uint8_t pins)
+{
+    uint16_t total = 0U;
+    for (uint8_t i = 0U; i < self->roll_count; i++) {
+        total = (uint16_t)(total + self->rolls[i]);
+    }
+    total = (uint16_t)(total + pins);
+    return total == 10U;
+}
+
 static int16_t RegularFrame_Roll(Frame *self, uint8_t pins)
 {
     if (!self->open) {
         return (int16_t)pins;
+    }
+
+    if (RegularFrame_IsSpare(self, pins)) {
+        FrameContext *context = self->context;
+        FrameContext_SetState(context,
+                              FrameContext_NewSpareFrame(context, self->rolls, self->roll_count));
+        (void)FrameContext_Roll(context, pins);
+        return FRAME_ROLL_CONSUMED;
     }
 
     self->rolls[self->roll_count] = pins;

@@ -5,6 +5,11 @@ void FrameContext_Init(FrameContext *self)
     self->current_state = RegularFrame_Init(&self->regular, self);
 }
 
+Frame *FrameContext_NewSpareFrame(FrameContext *self, const uint8_t *rolls, uint8_t roll_count)
+{
+    return SpareFrame_Init(&self->spare, self, rolls, roll_count);
+}
+
 void FrameContext_SetState(FrameContext *self, Frame *frame_state)
 {
     self->current_state = frame_state;

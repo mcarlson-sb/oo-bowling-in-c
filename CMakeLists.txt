@@ -15,6 +15,7 @@ add_library(bowling STATIC
     src/frame_context.c
     src/game.c
     src/regular_frame.c
+    src/spare_frame.c
 )
 target_include_directories(bowling PUBLIC include PRIVATE src)
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})

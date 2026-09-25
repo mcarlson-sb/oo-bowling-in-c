@@ -13,13 +13,20 @@
 
 #include "frame.h"
 #include "regular_frame.h"
+#include "spare_frame.h"
 
 typedef struct FrameContext {
     Frame *current_state;
     RegularFrame regular;
+    SpareFrame spare;
 } FrameContext;
 
 void FrameContext_Init(FrameContext *self);
+
+/* Stand-in for `new SpareFrame(context, rolls)`: builds the state in this context's own
+ * storage and returns it, ready for FrameContext_SetState. */
+Frame *FrameContext_NewSpareFrame(FrameContext *self, const uint8_t *rolls, uint8_t roll_count);
+
 void FrameContext_SetState(FrameContext *self, Frame *frame_state);
 int16_t FrameContext_Roll(FrameContext *self, uint8_t pins);
 uint16_t FrameContext_Score(const FrameContext *self);
