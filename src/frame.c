@@ -71,6 +71,11 @@ bool Frame_IsSecondBonusRoll(const Frame *self)
     return RollList_Count(&self->bonus_rolls) == 1U;
 }
 
+uint8_t Frame_FirstBonusRoll(const Frame *self)
+{
+    return RollList_At(&self->bonus_rolls, 0U);
+}
+
 bool Frame_HasAllRolls(const Frame *self)
 {
     return RollList_IsFull(&self->rolls);

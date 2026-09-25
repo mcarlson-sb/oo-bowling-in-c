@@ -19,12 +19,15 @@ static RollResult TenthStrikeFrame_Roll(Frame *self, struct FrameContext *contex
  * rack. */
 static uint8_t TenthStrikeFrame_PinsStanding(const Frame *self)
 {
-    const bool first_fill_left_pins =
-        Frame_IsSecondBonusRoll(self) && (RollList_At(&self->bonus_rolls, 0U) != FRAME_ALL_PINS);
-    if (first_fill_left_pins) {
-        return (uint8_t)(FRAME_ALL_PINS - RollList_At(&self->bonus_rolls, 0U));
+    if (!Frame_IsSecondBonusRoll(self)) {
+        return FRAME_ALL_PINS;
     }
-    return FRAME_ALL_PINS;
+    const uint8_t first_fill = Frame_FirstBonusRoll(self);
+    const bool first_fill_was_a_strike = (first_fill == FRAME_ALL_PINS);
+    if (first_fill_was_a_strike) {
+        return FRAME_ALL_PINS;
+    }
+    return (uint8_t)(FRAME_ALL_PINS - first_fill);
 }
 
 static const FrameVtable s_strike_vtable = {

@@ -87,6 +87,9 @@ bool Frame_IsFirstRoll(const Frame *self);
 bool Frame_IsSecondRoll(const Frame *self);
 bool Frame_IsSecondBonusRoll(const Frame *self);
 
+/* The pins knocked down by the frame's first bonus roll. Only valid once there is one. */
+uint8_t Frame_FirstBonusRoll(const Frame *self);
+
 /* Whether the frame has all the rolls, or all the bonus rolls, it can hold. */
 bool Frame_HasAllRolls(const Frame *self);
 bool Frame_HasAllBonusRolls(const Frame *self);
