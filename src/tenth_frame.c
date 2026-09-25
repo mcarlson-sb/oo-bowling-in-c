@@ -36,9 +36,17 @@ static RollResult TenthFrame_Roll(Frame *self, uint8_t pins)
     return RollResult_Consumed();
 }
 
+static uint8_t TenthFrame_PinsStanding(const Frame *self)
+{
+    if ((self->roll_count == 1U) && (TenthFrame_FillRollsEarned(self) == 0U)) {
+        return (uint8_t)(FRAME_ALL_PINS - self->rolls[0]);
+    }
+    return FRAME_ALL_PINS;
+}
+
 static const FrameVtable s_vtable = {
     .roll = TenthFrame_Roll,
-    .pins_standing = Frame_AllPinsStanding,
+    .pins_standing = TenthFrame_PinsStanding,
 };
 
 Frame *TenthFrame_Init(TenthFrame *self, struct FrameContext *context)
