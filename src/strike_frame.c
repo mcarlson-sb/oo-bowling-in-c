@@ -1,6 +1,6 @@
 #include "strike_frame.h"
 
-static RollResult StrikeFrame_Roll(Frame *self, struct FrameContext *context, uint8_t pins)
+static RollResult StrikeFrame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
     (void)context; /* only a RegularFrame changes state */
     Frame_AddBonusRoll(self, pins);

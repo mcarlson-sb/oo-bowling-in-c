@@ -21,6 +21,6 @@ Frame *TenthStrikeFrame_Init(TenthStrikeFrame *self);
 
 /* A spare in the tenth frame: takes one fill ball. Built like a SpareFrame, from the frame
  * it replaces plus the roll that completed the spare. */
-Frame *TenthSpareFrame_Init(TenthSpareFrame *self, const Frame *replaced, uint8_t completing_pins);
+Frame *TenthSpareFrame_Init(TenthSpareFrame *self, const Frame *replaced, Pins completing_pins);
 
 #endif /* TENTH_FRAME_H */

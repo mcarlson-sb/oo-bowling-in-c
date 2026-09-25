@@ -9,18 +9,20 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "bowling_types.h"
+
 #define ROLL_LIST_CAPACITY 2U
 
 typedef struct {
-    uint8_t pins[ROLL_LIST_CAPACITY];
+    Pins pins[ROLL_LIST_CAPACITY];
     uint8_t count;
 } RollList;
 
 void RollList_Init(RollList *self);
 uint8_t RollList_Count(const RollList *self);
-uint8_t RollList_Sum(const RollList *self);
-void RollList_Add(RollList *self, uint8_t pins);
-uint8_t RollList_At(const RollList *self, uint8_t index);
+Pins RollList_Sum(const RollList *self);
+void RollList_Add(RollList *self, Pins pins);
+Pins RollList_At(const RollList *self, uint8_t index);
 bool RollList_IsFull(const RollList *self);
 
 #endif /* ROLL_LIST_H */

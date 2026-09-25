@@ -3,7 +3,7 @@
 /* Abstract Factory: one table per family of states. */
 struct FrameStateFactory {
     Frame *(*new_strike)(FrameContext *self);
-    Frame *(*new_spare)(FrameContext *self, const Frame *replaced, uint8_t completing_pins);
+    Frame *(*new_spare)(FrameContext *self, const Frame *replaced, Pins completing_pins);
 };
 
 /* Frames 1 to 9: a strike or spare passes its bonus rolls on to the next frame. */
@@ -12,7 +12,7 @@ static Frame *NewPassingStrike(FrameContext *self)
     return StrikeFrame_Init(&self->strike);
 }
 
-static Frame *NewPassingSpare(FrameContext *self, const Frame *replaced, uint8_t completing_pins)
+static Frame *NewPassingSpare(FrameContext *self, const Frame *replaced, Pins completing_pins)
 {
     return SpareFrame_Init(&self->spare, replaced, completing_pins);
 }
@@ -28,7 +28,7 @@ static Frame *NewTenthStrike(FrameContext *self)
     return TenthStrikeFrame_Init(&self->tenth_strike);
 }
 
-static Frame *NewTenthSpare(FrameContext *self, const Frame *replaced, uint8_t completing_pins)
+static Frame *NewTenthSpare(FrameContext *self, const Frame *replaced, Pins completing_pins)
 {
     return TenthSpareFrame_Init(&self->tenth_spare, replaced, completing_pins);
 }
@@ -60,7 +60,7 @@ Frame *FrameContext_NewStrikeFrame(FrameContext *self)
 }
 
 Frame *FrameContext_NewSpareFrame(FrameContext *self, const Frame *replaced,
-                                  uint8_t completing_pins)
+                                  Pins completing_pins)
 {
     return self->factory->new_spare(self, replaced, completing_pins);
 }
@@ -70,12 +70,12 @@ void FrameContext_SetState(FrameContext *self, Frame *frame_state)
     self->current_state = frame_state;
 }
 
-RollResult FrameContext_Roll(FrameContext *self, uint8_t pins)
+RollResult FrameContext_Roll(FrameContext *self, Pins pins)
 {
     return Frame_Roll(self->current_state, self, pins);
 }
 
-uint16_t FrameContext_Score(const FrameContext *self)
+Score FrameContext_Score(const FrameContext *self)
 {
     return Frame_Score(self->current_state);
 }
@@ -85,7 +85,7 @@ bool FrameContext_IsComplete(const FrameContext *self)
     return self->current_state->complete;
 }
 
-uint8_t FrameContext_PinsStanding(const FrameContext *self)
+Pins FrameContext_PinsStanding(const FrameContext *self)
 {
     return Frame_PinsStanding(self->current_state);
 }

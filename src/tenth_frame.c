@@ -5,7 +5,7 @@
 /* Fill balls are kept as the base class's bonus rolls, so the shared Frame_Score adds them
  * with no special case. */
 
-static RollResult TenthStrikeFrame_Roll(Frame *self, struct FrameContext *context, uint8_t pins)
+static RollResult TenthStrikeFrame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
     (void)context; /* the last frame's states never change state */
     Frame_AddBonusRoll(self, pins);
@@ -17,17 +17,17 @@ static RollResult TenthStrikeFrame_Roll(Frame *self, struct FrameContext *contex
 
 /* The second fill ball rolls at what the first left standing, unless the first cleared the
  * rack. */
-static uint8_t TenthStrikeFrame_PinsStanding(const Frame *self)
+static Pins TenthStrikeFrame_PinsStanding(const Frame *self)
 {
     if (!Frame_IsSecondBonusRoll(self)) {
         return FRAME_ALL_PINS;
     }
-    const uint8_t first_fill = Frame_FirstBonusRoll(self);
+    const Pins first_fill = Frame_FirstBonusRoll(self);
     const bool first_fill_was_a_strike = (first_fill == FRAME_ALL_PINS);
     if (first_fill_was_a_strike) {
         return FRAME_ALL_PINS;
     }
-    return (uint8_t)(FRAME_ALL_PINS - first_fill);
+    return (Pins)(FRAME_ALL_PINS - first_fill);
 }
 
 static const FrameVtable s_strike_vtable = {
@@ -42,7 +42,7 @@ Frame *TenthStrikeFrame_Init(TenthStrikeFrame *self)
     return &self->base;
 }
 
-static RollResult TenthSpareFrame_Roll(Frame *self, struct FrameContext *context, uint8_t pins)
+static RollResult TenthSpareFrame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
     (void)context; /* the last frame's states never change state */
     Frame_AddBonusRoll(self, pins);
@@ -55,7 +55,7 @@ static const FrameVtable s_spare_vtable = {
     .pins_standing = Frame_AllPinsStanding,
 };
 
-Frame *TenthSpareFrame_Init(TenthSpareFrame *self, const Frame *replaced, uint8_t completing_pins)
+Frame *TenthSpareFrame_Init(TenthSpareFrame *self, const Frame *replaced, Pins completing_pins)
 {
     Frame_Init(&self->base, &s_spare_vtable);
     Frame_CopyRolls(&self->base, replaced);

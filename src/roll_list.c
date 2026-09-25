@@ -12,18 +12,18 @@ uint8_t RollList_Count(const RollList *self)
     return self->count;
 }
 
-uint8_t RollList_Sum(const RollList *self)
+Pins RollList_Sum(const RollList *self)
 {
-    uint8_t sum = 0U;
+    Pins sum = 0U;
     for (uint8_t i = 0U; i < self->count; i++) {
-        sum = (uint8_t)(sum + self->pins[i]);
+        sum = (Pins)(sum + self->pins[i]);
     }
     return sum;
 }
 
 /* The bounds check stays in every build: a roll that doesn't fit is never written. Debug
  * builds also stop at the assert, so whatever sent it gets found. */
-void RollList_Add(RollList *self, uint8_t pins)
+void RollList_Add(RollList *self, Pins pins)
 {
     assert(!RollList_IsFull(self));
     if (RollList_IsFull(self)) {
@@ -35,7 +35,7 @@ void RollList_Add(RollList *self, uint8_t pins)
 
 /* Reading a roll not yet made is a bug in the caller: it stops debug builds and reads as 0
  * in release, never as stale memory. */
-uint8_t RollList_At(const RollList *self, uint8_t index)
+Pins RollList_At(const RollList *self, uint8_t index)
 {
     assert(index < self->count);
     if (index >= self->count) {

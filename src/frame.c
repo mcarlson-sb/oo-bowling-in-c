@@ -8,7 +8,7 @@ void Frame_Init(Frame *self, const FrameVtable *vtable)
     self->complete = false;
 }
 
-RollResult Frame_Roll(Frame *self, struct FrameContext *context, uint8_t pins)
+RollResult Frame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
     /* A complete frame passes every roll on. Handled once here, so each state's roll() only
      * ever sees rolls while its frame is still incomplete. */
@@ -18,23 +18,23 @@ RollResult Frame_Roll(Frame *self, struct FrameContext *context, uint8_t pins)
     return self->vtable->roll(self, context, pins);
 }
 
-uint8_t Frame_PinsStanding(const Frame *self)
+Pins Frame_PinsStanding(const Frame *self)
 {
     return self->vtable->pins_standing(self);
 }
 
-uint8_t Frame_AllPinsStanding(const Frame *self)
+Pins Frame_AllPinsStanding(const Frame *self)
 {
     (void)self;
     return FRAME_ALL_PINS;
 }
 
-void Frame_AddRoll(Frame *self, uint8_t pins)
+void Frame_AddRoll(Frame *self, Pins pins)
 {
     RollList_Add(&self->rolls, pins);
 }
 
-void Frame_AddBonusRoll(Frame *self, uint8_t pins)
+void Frame_AddBonusRoll(Frame *self, Pins pins)
 {
     RollList_Add(&self->bonus_rolls, pins);
 }
@@ -51,7 +51,7 @@ void Frame_CopyRolls(Frame *self, const Frame *from)
     }
 }
 
-uint8_t Frame_PinsKnockedDown(const Frame *self)
+Pins Frame_PinsKnockedDown(const Frame *self)
 {
     return RollList_Sum(&self->rolls);
 }
@@ -71,7 +71,7 @@ bool Frame_IsSecondBonusRoll(const Frame *self)
     return RollList_Count(&self->bonus_rolls) == 1U;
 }
 
-uint8_t Frame_FirstBonusRoll(const Frame *self)
+Pins Frame_FirstBonusRoll(const Frame *self)
 {
     return RollList_At(&self->bonus_rolls, 0U);
 }
@@ -86,10 +86,10 @@ bool Frame_HasAllBonusRolls(const Frame *self)
     return RollList_IsFull(&self->bonus_rolls);
 }
 
-uint16_t Frame_Score(const Frame *self)
+Score Frame_Score(const Frame *self)
 {
     if (!self->complete) {
         return 0U;
     }
-    return (uint16_t)(RollList_Sum(&self->rolls) + RollList_Sum(&self->bonus_rolls));
+    return (Score)(RollList_Sum(&self->rolls) + RollList_Sum(&self->bonus_rolls));
 }

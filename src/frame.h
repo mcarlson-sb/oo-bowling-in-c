@@ -15,13 +15,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "bowling_types.h"
 #include "roll_list.h"
 
 /* What roll() did with the pins: kept them (consumed), or passed them on to the next
  * frame. `pins` is meaningful only when !consumed. */
 typedef struct {
     bool consumed;
-    uint8_t pins;
+    Pins pins;
 } RollResult;
 
 /* Plain initializers, not C99 compound literals, so the header is also valid C++ for the
@@ -32,7 +33,7 @@ static inline RollResult RollResult_Consumed(void)
     return result;
 }
 
-static inline RollResult RollResult_Passed(uint8_t pins)
+static inline RollResult RollResult_Passed(Pins pins)
 {
     const RollResult result = { false, pins };
     return result;
@@ -46,10 +47,10 @@ typedef struct Frame Frame;
 typedef struct {
     /* The context passes itself in, so a state can switch the context to its next state
      * without every frame storing a pointer back to it. */
-    RollResult (*roll)(Frame *self, struct FrameContext *context, uint8_t pins);
+    RollResult (*roll)(Frame *self, struct FrameContext *context, Pins pins);
     /* Pins standing for the next roll, if this is the game's latest frame:
      * FRAME_ALL_PINS unless the next roll is this frame's own, on a partly cleared rack. */
-    uint8_t (*pins_standing)(const Frame *self);
+    Pins (*pins_standing)(const Frame *self);
 } FrameVtable;
 
 struct Frame {
@@ -64,23 +65,23 @@ void Frame_Init(Frame *self, const FrameVtable *vtable);
 
 /* Virtual: each state rolls differently. A complete frame passes the roll on
  * without calling its state. */
-RollResult Frame_Roll(Frame *self, struct FrameContext *context, uint8_t pins);
-uint8_t Frame_PinsStanding(const Frame *self);
+RollResult Frame_Roll(Frame *self, struct FrameContext *context, Pins pins);
+Pins Frame_PinsStanding(const Frame *self);
 
 /* The pins_standing for any state whose next roll always starts on a full rack. */
-uint8_t Frame_AllPinsStanding(const Frame *self);
+Pins Frame_AllPinsStanding(const Frame *self);
 
 /* For derived classes only: the base class owns its fields' rules, so states change them
  * through these, never by writing the fields directly. */
-void Frame_AddRoll(Frame *self, uint8_t pins);
-void Frame_AddBonusRoll(Frame *self, uint8_t pins);
+void Frame_AddRoll(Frame *self, Pins pins);
+void Frame_AddBonusRoll(Frame *self, Pins pins);
 void Frame_Complete(Frame *self);
 
 /* Copies another frame's rolls into this one, for a state built from the one it replaces. */
 void Frame_CopyRolls(Frame *self, const Frame *from);
 
 /* Pins knocked down by this frame's own rolls, without bonus rolls. */
-uint8_t Frame_PinsKnockedDown(const Frame *self);
+Pins Frame_PinsKnockedDown(const Frame *self);
 
 /* Which roll comes next: the frame's first or second, or its second bonus roll. */
 bool Frame_IsFirstRoll(const Frame *self);
@@ -88,7 +89,7 @@ bool Frame_IsSecondRoll(const Frame *self);
 bool Frame_IsSecondBonusRoll(const Frame *self);
 
 /* The pins knocked down by the frame's first bonus roll. Only valid once there is one. */
-uint8_t Frame_FirstBonusRoll(const Frame *self);
+Pins Frame_FirstBonusRoll(const Frame *self);
 
 /* Whether the frame has all the rolls, or all the bonus rolls, it can hold. */
 bool Frame_HasAllRolls(const Frame *self);
@@ -96,6 +97,6 @@ bool Frame_HasAllBonusRolls(const Frame *self);
 
 /* Not virtual: every state scores the same way, as its rolls plus its bonus rolls, and 0
  * until the frame is complete. */
-uint16_t Frame_Score(const Frame *self);
+Score Frame_Score(const Frame *self);
 
 #endif /* FRAME_H */

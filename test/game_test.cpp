@@ -17,14 +17,14 @@ static GameHandle MakeGame()
 }
 
 /* Setup rolls: each must be accepted, or the test is not testing what it says it is. */
-static void RollAll(Game *game, std::initializer_list<uint8_t> rolls)
+static void RollAll(Game *game, std::initializer_list<Pins> rolls)
 {
-    for (const uint8_t pins : rolls) {
+    for (const Pins pins : rolls) {
         EXPECT_EQ(GAME_OK, Game_Roll(game, pins)) << "setup roll of " << +pins << " was rejected";
     }
 }
 
-static void RollMany(Game *game, int count, uint8_t pins)
+static void RollMany(Game *game, int count, Pins pins)
 {
     for (int i = 0; i < count; i++) {
         EXPECT_EQ(GAME_OK, Game_Roll(game, pins)) << "setup roll " << i + 1 << " was rejected";
@@ -119,8 +119,8 @@ TEST_F(GameTest, should_score_a_full_game_correctly)
 {
     /* The running total after every roll, one row per roll. */
     const struct {
-        uint8_t pins;
-        uint16_t expected_score;
+        Pins pins;
+        Score expected_score;
     } rolls[] = {
         {10U, 0U},   {9U, 0U},    {1U, 20U},   {5U, 35U},   {5U, 35U},   {7U, 52U},
         {2U, 61U},   {10U, 61U},  {10U, 61U},  {10U, 91U},  {9U, 120U},  {0U, 148U},

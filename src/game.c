@@ -34,7 +34,7 @@ static bool Game_HasNoFrames(const Game *game)
 
 /* Only the latest frame can still be taking its own rolls, so only it can leave fewer than
  * ten pins standing. */
-static uint8_t Game_PinsStanding(const Game *game)
+static Pins Game_PinsStanding(const Game *game)
 {
     if (Game_HasNoFrames(game)) {
         return FRAME_ALL_PINS;
@@ -42,7 +42,7 @@ static uint8_t Game_PinsStanding(const Game *game)
     return FrameContext_PinsStanding(&game->frames[game->frame_count - 1U]);
 }
 
-static void Game_AddNewFrame(Game *game, uint8_t pins)
+static void Game_AddNewFrame(Game *game, Pins pins)
 {
     FrameContext *new_frame = &game->frames[game->frame_count];
     if (game->frame_count == (GAME_FRAMES - 1U)) {
@@ -56,7 +56,7 @@ static void Game_AddNewFrame(Game *game, uint8_t pins)
     game->frame_count++;
 }
 
-static RollResult Game_ApplyPinsToFrames(Game *game, uint8_t pins)
+static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
 {
     RollResult result = RollResult_Passed(pins);
     for (uint8_t i = 0U; i < game->frame_count; i++) {
@@ -88,7 +88,7 @@ void Game_Destroy(Game *game)
     game->in_use = false;
 }
 
-GameStatus Game_Roll(Game *game, uint8_t pins)
+GameStatus Game_Roll(Game *game, Pins pins)
 {
     if (game == NULL) {
         return GAME_ERR_NULL_GAME;
@@ -110,15 +110,15 @@ GameStatus Game_Roll(Game *game, uint8_t pins)
     return GAME_OK;
 }
 
-uint16_t Game_Score(const Game *game)
+Score Game_Score(const Game *game)
 {
     if (game == NULL) {
         return 0U;
     }
 
-    uint16_t score = 0U;
+    Score score = 0U;
     for (uint8_t i = 0U; i < game->frame_count; i++) {
-        score = (uint16_t)(score + FrameContext_Score(&game->frames[i]));
+        score = (Score)(score + FrameContext_Score(&game->frames[i]));
     }
     return score;
 }

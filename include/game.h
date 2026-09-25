@@ -4,7 +4,7 @@
 /* A bowling game. The representation is hidden: callers hold an opaque handle and act on
  * it only through these functions. */
 
-#include <stdint.h>
+#include "bowling_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,8 +25,8 @@ typedef enum {
 
 Game *Game_Create(void);
 void Game_Destroy(Game *game);
-GameStatus Game_Roll(Game *game, uint8_t pins);
-uint16_t Game_Score(const Game *game);
+GameStatus Game_Roll(Game *game, Pins pins);
+Score Game_Score(const Game *game);
 
 #ifdef __cplusplus
 }

@@ -44,12 +44,12 @@ void FrameContext_InitTenth(FrameContext *self);
  * storage and returns it, ready for FrameContext_SetState. */
 Frame *FrameContext_NewStrikeFrame(FrameContext *self);
 Frame *FrameContext_NewSpareFrame(FrameContext *self, const Frame *replaced,
-                                  uint8_t completing_pins);
+                                  Pins completing_pins);
 
 void FrameContext_SetState(FrameContext *self, Frame *frame_state);
-RollResult FrameContext_Roll(FrameContext *self, uint8_t pins);
-uint16_t FrameContext_Score(const FrameContext *self);
+RollResult FrameContext_Roll(FrameContext *self, Pins pins);
+Score FrameContext_Score(const FrameContext *self);
 bool FrameContext_IsComplete(const FrameContext *self);
-uint8_t FrameContext_PinsStanding(const FrameContext *self);
+Pins FrameContext_PinsStanding(const FrameContext *self);
 
 #endif /* FRAME_CONTEXT_H */

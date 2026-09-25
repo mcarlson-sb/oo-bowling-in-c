@@ -167,6 +167,11 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
   call-graph analysis. Keep vtables `const` and few.
 - **The rules are enforced by convention, not by the compiler.** "Base struct first" and
   "states change base fields only through the base's functions" are discipline.
+- **Type names don't add type safety.** `Pins` and `Score` are C `typedef`s, so they tell the
+  reader what a value is, but the compiler still sees plain integers: passing a roll count
+  where `Pins` is expected compiles cleanly. A one-field struct would catch that, at the cost
+  of a helper for every piece of arithmetic. Here `Game_Roll` checks every pin count as it
+  comes in.
 - **There is more boilerplate than in C++:** vtable and factory definitions, `_Init`
   functions, the forwarding functions in the context, and `(void)context;` in states that
   don't need it.
@@ -176,6 +181,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | File | Role |
 |---|---|
 | `include/game.h`, `src/game.c` | The public API and the `Game` object: the opaque handle, the pool and the roll chain |
+| `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |
 | `src/frame.h/.c` | Abstract base `Frame`: its vtable, shared fields and methods, and `RollResult` |
 | `src/roll_list.h/.c` | `RollList`, the value type a frame keeps its rolls and bonus rolls in |
 | `src/regular_frame.*`, `src/strike_frame.*`, `src/spare_frame.*` | The states for frames 1 to 9. `RegularFrame` is also where the tenth frame starts |
