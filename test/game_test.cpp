@@ -20,3 +20,9 @@ TEST_F(GameTest, should_get_a_score_of_0_from_a_new_game)
 {
     EXPECT_EQ(0U, Game_Score(game));
 }
+
+TEST_F(GameTest, should_get_a_score_of_0_from_an_open_frame)
+{
+    Game_Roll(game, 2U);
+    EXPECT_EQ(0U, Game_Score(game));
+}

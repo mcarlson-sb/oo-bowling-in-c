@@ -14,6 +14,7 @@ typedef struct Game Game;
 
 Game *Game_Create(void);
 void Game_Destroy(Game *game);
+void Game_Roll(Game *game, uint8_t pins);
 uint16_t Game_Score(const Game *game);
 
 #ifdef __cplusplus

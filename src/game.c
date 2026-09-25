@@ -16,6 +16,12 @@ void Game_Destroy(Game *game)
     (void)game;
 }
 
+void Game_Roll(Game *game, uint8_t pins)
+{
+    (void)game;
+    (void)pins;
+}
+
 uint16_t Game_Score(const Game *game)
 {
     (void)game;
