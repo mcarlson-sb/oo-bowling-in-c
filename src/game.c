@@ -69,6 +69,9 @@ Game *Game_Create(void)
 
 void Game_Destroy(Game *game)
 {
+    if (game == NULL) {
+        return;
+    }
     game->in_use = false;
 }
 

@@ -162,3 +162,9 @@ TEST_F(GameTest, should_return_null_when_no_game_is_free_and_reuse_a_destroyed_o
     EXPECT_EQ(0U, Game_Score(reused));
     Game_Destroy(reused);
 }
+
+TEST_F(GameTest, should_ignore_destroying_a_null_game)
+{
+    Game_Destroy(nullptr);
+    EXPECT_NE(nullptr, game);
+}
