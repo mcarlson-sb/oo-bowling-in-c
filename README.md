@@ -39,6 +39,30 @@ ctest --test-dir build-release --output-on-failure
 
 Warnings are errors in the library and the tests alike.
 
+### Coverage
+
+`OO_C_COVERAGE=ON` instruments the library, but not GoogleTest, for `gcov`. Its `coverage`
+target clears old data, runs the tests, and prints a line and branch summary for each
+source file:
+
+```sh
+cmake -S . -B build-coverage -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DOO_C_COVERAGE=ON
+cmake --build build-coverage --target coverage
+```
+
+The annotated `*.gcov` files are written to `build-coverage/CMakeFiles/bowling.dir/src/`.
+Run it on a release build too (add `-DCMAKE_BUILD_TYPE=Release`, in a separate directory),
+because some code only runs in one kind of build. These are the gaps to expect. Anything
+else is a real gap:
+
+| Where | Build | Why it isn't covered |
+|---|---|---|
+| `roll_list.c`: the bounds checks' `return` lines and their branches | debug | In a debug build the `assert` just above stops the program first. The death tests do reach it, but each runs in a child process that `abort()` ends before `gcov` can save its data. The release build covers these lines |
+| `game.c`: `assert(result.consumed)` failing | debug | An assert's failure path is never taken in a passing run |
+| `game.c`: the `if (!result.consumed)` guard in `Game_ApplyPinsToFrames` | both | Deliberately unreachable. Only the latest frame can keep a roll; the guard is a defense in case that rule is ever broken. Its comment explains |
+
+The release build reaches 100% of lines and every branch except that last guard.
+
 ## What the code does
 
 The public API is four functions in `include/game.h`: `Game_Create`, `Game_Roll`,

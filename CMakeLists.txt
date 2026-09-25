@@ -56,3 +56,32 @@ target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 
 include(GoogleTest)
 gtest_discover_tests(bowling_tests)
+
+# ---- Coverage (gcov) ------------------------------------------------------
+# Instruments the library only, so GoogleTest's own code stays out of the report.
+# `cmake --build <dir> --target coverage` clears old data, runs the tests and prints a
+# gcov summary per source file. See the README's Coverage section for which gaps to expect.
+option(OO_C_COVERAGE "Instrument the library for gcov coverage" OFF)
+if(OO_C_COVERAGE)
+    target_compile_options(bowling PRIVATE --coverage -O0)
+    target_link_options(bowling_tests PRIVATE --coverage)
+
+    find_program(GCOV_EXECUTABLE gcov REQUIRED)
+    # Where CMake puts the library's object files, and so gcov's data files.
+    set(COVERAGE_DIR ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/bowling.dir/src)
+    get_target_property(BOWLING_SOURCES bowling SOURCES)
+    set(COVERAGE_DATA "")
+    foreach(source IN LISTS BOWLING_SOURCES)
+        get_filename_component(name ${source} NAME)
+        list(APPEND COVERAGE_DATA ${name}.gcda)
+    endforeach()
+
+    add_custom_target(coverage
+        COMMAND ${CMAKE_COMMAND} -E rm -f ${COVERAGE_DATA}
+        COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_CURRENT_BINARY_DIR}
+        COMMAND ${GCOV_EXECUTABLE} -b -c ${COVERAGE_DATA}
+        WORKING_DIRECTORY ${COVERAGE_DIR}
+        DEPENDS bowling_tests
+        COMMENT "Running the tests with coverage, then gcov"
+        VERBATIM)
+endif()
