@@ -277,6 +277,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `src/regular_frame.*`, `src/strike_frame.*`, `src/spare_frame.*` | The states for frames 1 to 9. `RegularFrame` is also where the tenth frame starts |
 | `src/tenth_frame.*` | The tenth frame's strike and spare states |
 | `src/frame_context.h/.c` | The State-pattern context and the two state families (Abstract Factory) |
+| `src/frame_transition.h` | The three context functions a state uses to change state, kept apart from what `Game` uses |
 | `test/game_test.cpp` | Host tests through the public API: scoring, end of game, game storage, tenth frame, input validation, `NULL` handles |
 | `test/roll_list_test.cpp` | Tests of `RollList`, including its bounds checks in debug and release builds |
 | `test/slot_pool_test.cpp` | Tests of `SlotPool` |

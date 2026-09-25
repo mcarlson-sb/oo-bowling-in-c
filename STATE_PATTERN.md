@@ -100,12 +100,30 @@ The operations every state must provide are a struct of function pointers:
 
 ```c
 /* src/frame.h */
+/* The state interface. Every state honors the same contract, so any of them can stand in
+ * for a Frame (Liskov substitution), and callers never need to know which one they have. */
 typedef struct {
-    /* The context passes itself in, so a state can switch the context to its next state
-     * without every frame storing a pointer back to it. */
+    /* Takes one roll.
+     *
+     * The caller guarantees:
+     *   - the frame is incomplete (Frame_Roll handles complete frames itself);
+     *   - `pins` is no more than pins_standing() allowed (Game_Roll has checked it);
+     *   - `context` is this frame's own context, never NULL.
+     *
+     * The state guarantees:
+     *   - it records the roll as one of its own rolls or bonus rolls, never more than a
+     *     RollList holds;
+     *   - it returns RollResult_Consumed() if it keeps the roll, or RollResult_Passed(pins),
+     *     with the same pins, if the next frame should also get it;
+     *   - it changes state only through `context`. Only RegularFrame does; the others
+     *     ignore `context`.
+     *
+     * The context passes itself in so that no frame stores a pointer back to it. */
     RollResult (*roll)(Frame *self, struct FrameContext *context, Pins pins);
-    /* Pins standing for the next roll, if this is the game's latest frame:
-     * FRAME_ALL_PINS unless the next roll is this frame's own, on a partly cleared rack. */
+
+    /* Pins standing for the next roll, if this is the game's latest frame: from 0 to
+     * FRAME_ALL_PINS. FRAME_ALL_PINS unless the next roll is this frame's own, on a partly
+     * cleared rack. Has no side effects. */
     Pins (*pins_standing)(const Frame *self);
 } FrameVtable;
 ```
@@ -243,6 +261,12 @@ passed for exactly that wrong reason before `StrikeFrame` existed.
 This is one of the options the GoF describe, and it means a state doesn't have to store a
 pointer back to its context. The states that don't change state ignore it with
 `(void)context;`.
+
+**What a state can see of the context.** Only the three functions it needs:
+`FrameContext_SetState`, `FrameContext_NewStrikeFrame` and `FrameContext_NewSpareFrame`, in
+`src/frame_transition.h`. `Game` needs a different set (roll, score, is it complete, pins
+standing), in `src/frame_context.h`. Each client sees only its own (Interface Segregation):
+`RegularFrame` never sees the context's layout, and `Game` can't switch a frame's state.
 
 ### 4.5 Completed frames: handled once, in the base
 
@@ -480,8 +504,8 @@ step, which is what the vtable guarantees.
 ### The context decides the transitions
 
 The context could look at each roll's result and choose the next state itself. Then the
-states wouldn't need the context at all, and the dependency between `regular_frame.c` and
-`frame_context` would go. But the context would need to know every state's rules, so the
+states wouldn't need the context at all, and the dependency between `regular_frame.c` and the
+context would go. But the context would need to know every state's rules, so the
 `switch` comes back in a new place. The GoF discuss both options; this code chooses
 states-decide.
 
@@ -558,8 +582,9 @@ usually has three properties. Here is how this design measures against each:
   on a 64-bit host, and uses 1 or 2 of them in a frame's lifetime.
 - **An indirect call per request,** through the vtable. It's cheap, but not free, and it makes
   the call graph harder for static tools (stack-depth analysis, for instance) to follow.
-- **A dependency between two modules,** `regular_frame.c` and `frame_context`, because a state
-  that changes state must know its context. It's contained to one state.
+- **A dependency back from a state to the context,** because a state that changes state must
+  know its context. It's kept narrow: `regular_frame.c` includes only `frame_transition.h`,
+  three functions, and only `RegularFrame` uses it.
 - **Discipline, not the compiler,** keeps "base struct first" and "states change `Frame`'s
   fields only through `Frame`'s functions".
 

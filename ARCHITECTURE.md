@@ -83,11 +83,14 @@ PRIVATE  src/
   |-- spare_frame.h    --> frame.h
   '-- tenth_frame.h    --> frame.h
 
+  frame_transition.h   --> frame.h
+
   slot_pool.h                    (standard headers only)
 
 Source files that include a header from another module:
   game.c           --> frame_context.h, slot_pool.h
-  regular_frame.c  --> frame_context.h    (the one state that switches states)
+  frame_context.c  --> frame_transition.h
+  regular_frame.c  --> frame_transition.h (the one state that switches states)
 ```
 
 Includes only point from `src/` to `include/`, never the other way: no public header

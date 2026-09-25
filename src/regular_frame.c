@@ -2,7 +2,7 @@
 
 #include <stdbool.h>
 
-#include "frame_context.h"
+#include "frame_transition.h"
 
 static bool RegularFrame_IsStrike(const Frame *self, Pins pins)
 {

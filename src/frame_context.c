@@ -1,4 +1,5 @@
 #include "frame_context.h"
+#include "frame_transition.h"
 
 /* Abstract Factory: one table per family of states. */
 struct FrameStateFactory {

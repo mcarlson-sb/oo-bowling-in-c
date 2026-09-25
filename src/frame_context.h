@@ -40,13 +40,8 @@ typedef struct FrameContext {
 void FrameContext_Init(FrameContext *self);
 void FrameContext_InitTenth(FrameContext *self);
 
-/* The next state, from this context's family. Each builds the state in the context's own
- * storage and returns it, ready for FrameContext_SetState. */
-Frame *FrameContext_NewStrikeFrame(FrameContext *self);
-Frame *FrameContext_NewSpareFrame(FrameContext *self, const Frame *replaced,
-                                  Pins completing_pins);
-
-void FrameContext_SetState(FrameContext *self, Frame *frame_state);
+/* What Game asks of a frame. The functions a state uses to change state are in
+ * frame_transition.h, so Game doesn't see them. */
 RollResult FrameContext_Roll(FrameContext *self, Pins pins);
 Score FrameContext_Score(const FrameContext *self);
 bool FrameContext_IsComplete(const FrameContext *self);
