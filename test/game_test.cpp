@@ -26,3 +26,10 @@ TEST_F(GameTest, should_get_a_score_of_0_from_an_open_frame)
     Game_Roll(game, 2U);
     EXPECT_EQ(0U, Game_Score(game));
 }
+
+TEST_F(GameTest, should_get_a_score_of_8_from_a_regular_frame_rolls_2_6)
+{
+    Game_Roll(game, 2U);
+    Game_Roll(game, 6U);
+    EXPECT_EQ(8U, Game_Score(game));
+}
