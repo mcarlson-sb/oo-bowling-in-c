@@ -67,12 +67,15 @@ The four pillars of OO, each done with a plain C mechanism:
 | **Inheritance** | Each state *is a* `Frame` and reuses its fields and `Frame_Score` | The derived struct holds `Frame base` as its **first member**, so a `StrikeFrame *` is also a valid `Frame *` |
 | **Polymorphism** | Callers call `Frame_Roll(frame, context, pins)`, and the right state's code runs | `Frame_Roll` calls `self->vtable->roll(self, context, pins)`. Each state points at its own `static const` vtable |
 
-Three refinements on top of those:
+Four refinements on top of those:
 
 - **Shared base-class methods.** `Frame_Score`, `Frame_AddRoll`, `Frame_Complete` and the
   rest are ordinary functions on the base, with no vtable entry. The base owns its fields'
-  rules, including the array bounds, and states change those fields only through these
-  functions. Only behavior that really differs goes through the vtable.
+  rules, and states change those fields only through these functions. Only behavior that
+  really differs goes through the vtable.
+- **Composition.** A frame's rolls and bonus rolls are each a `RollList`, a small value type
+  that keeps an array and its count together and checks its own bounds. `Frame` *has* two
+  of them; it doesn't manage raw arrays.
 - **Default implementation with overrides.** `Frame_AllPinsStanding` is the default
   `pins_standing`. `StrikeFrame`, `SpareFrame` and `TenthSpareFrame` use it as it is;
   `RegularFrame` and `TenthStrikeFrame` put their own function in the vtable in its place.
@@ -150,7 +153,7 @@ existing test:
 **Suitable for embedded and safety-minded code.**
 - No heap: every object lives in fixed storage, sized at compile time.
 - Every failure is an explicit status code or `NULL`.
-- Array bounds are checked in one place, the base class, in every build.
+- Array bounds are checked in one place, `RollList`, in every build.
 - The vtables and factory tables are `const`, so they can live in flash.
 
 **Testable on a PC.** The logic touches no hardware, so the whole suite runs on the host with
@@ -174,11 +177,12 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 |---|---|
 | `include/game.h`, `src/game.c` | The public API and the `Game` object: the opaque handle, the pool and the roll chain |
 | `src/frame.h/.c` | Abstract base `Frame`: its vtable, shared fields and methods, and `RollResult` |
+| `src/roll_list.h/.c` | `RollList`, the value type a frame keeps its rolls and bonus rolls in |
 | `src/regular_frame.*`, `src/strike_frame.*`, `src/spare_frame.*` | The states for frames 1 to 9. `RegularFrame` is also where the tenth frame starts |
 | `src/tenth_frame.*` | The tenth frame's strike and spare states |
 | `src/frame_context.h/.c` | The State-pattern context and the two state families (Abstract Factory) |
 | `test/game_test.cpp` | Host tests through the public API: scoring, end of game, game storage, tenth frame, input validation, `NULL` handles |
-| `test/frame_test.cpp` | White-box tests of the base class's bounds checks, in debug and release builds |
+| `test/roll_list_test.cpp` | Tests of `RollList`, including its bounds checks in debug and release builds |
 
 The git history is a test-driven sequence, with one test per commit. Stepping through it
 shows the design growing a test at a time.

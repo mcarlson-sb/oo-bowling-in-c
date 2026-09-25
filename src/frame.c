@@ -1,12 +1,10 @@
 #include "frame.h"
 
-#include <assert.h>
-
 void Frame_Init(Frame *self, const FrameVtable *vtable)
 {
     self->vtable = vtable;
-    self->roll_count = 0U;
-    self->bonus_count = 0U;
+    RollList_Init(&self->rolls);
+    RollList_Init(&self->bonus_rolls);
     self->complete = false;
 }
 
@@ -31,26 +29,14 @@ uint8_t Frame_AllPinsStanding(const Frame *self)
     return FRAME_ALL_PINS;
 }
 
-/* The bounds checks stay in every build. A roll that doesn't fit is never written. Debug
- * builds also stop at the assert, so the state that sent it gets found. */
 void Frame_AddRoll(Frame *self, uint8_t pins)
 {
-    assert(self->roll_count < FRAME_MAX_ROLLS);
-    if (self->roll_count >= FRAME_MAX_ROLLS) {
-        return;
-    }
-    self->rolls[self->roll_count] = pins;
-    self->roll_count++;
+    RollList_Add(&self->rolls, pins);
 }
 
 void Frame_AddBonusRoll(Frame *self, uint8_t pins)
 {
-    assert(self->bonus_count < FRAME_MAX_BONUS_ROLLS);
-    if (self->bonus_count >= FRAME_MAX_BONUS_ROLLS) {
-        return;
-    }
-    self->bonus_rolls[self->bonus_count] = pins;
-    self->bonus_count++;
+    RollList_Add(&self->bonus_rolls, pins);
 }
 
 void Frame_Complete(Frame *self)
@@ -58,13 +44,41 @@ void Frame_Complete(Frame *self)
     self->complete = true;
 }
 
+void Frame_CopyRolls(Frame *self, const Frame *from)
+{
+    for (uint8_t i = 0U; i < RollList_Count(&from->rolls); i++) {
+        Frame_AddRoll(self, RollList_At(&from->rolls, i));
+    }
+}
+
 uint8_t Frame_PinsKnockedDown(const Frame *self)
 {
-    uint8_t pins = 0U;
-    for (uint8_t i = 0U; i < self->roll_count; i++) {
-        pins = (uint8_t)(pins + self->rolls[i]);
-    }
-    return pins;
+    return RollList_Sum(&self->rolls);
+}
+
+bool Frame_IsFirstRoll(const Frame *self)
+{
+    return RollList_Count(&self->rolls) == 0U;
+}
+
+bool Frame_IsSecondRoll(const Frame *self)
+{
+    return RollList_Count(&self->rolls) == 1U;
+}
+
+bool Frame_IsSecondBonusRoll(const Frame *self)
+{
+    return RollList_Count(&self->bonus_rolls) == 1U;
+}
+
+bool Frame_HasAllRolls(const Frame *self)
+{
+    return RollList_IsFull(&self->rolls);
+}
+
+bool Frame_HasAllBonusRolls(const Frame *self)
+{
+    return RollList_IsFull(&self->bonus_rolls);
 }
 
 uint16_t Frame_Score(const Frame *self)
@@ -72,32 +86,5 @@ uint16_t Frame_Score(const Frame *self)
     if (!self->complete) {
         return 0U;
     }
-
-    uint16_t score = Frame_PinsKnockedDown(self);
-    for (uint8_t i = 0U; i < self->bonus_count; i++) {
-        score = (uint16_t)(score + self->bonus_rolls[i]);
-    }
-    return score;
-}
-
-void Frame_CopyRolls(Frame *self, const Frame *from)
-{
-    for (uint8_t i = 0U; i < from->roll_count; i++) {
-        Frame_AddRoll(self, from->rolls[i]);
-    }
-}
-
-bool Frame_IsFirstRoll(const Frame *self)
-{
-    return self->roll_count == 0U;
-}
-
-bool Frame_IsSecondRoll(const Frame *self)
-{
-    return self->roll_count == 1U;
-}
-
-bool Frame_IsSecondBonusRoll(const Frame *self)
-{
-    return self->bonus_count == 1U;
+    return (uint16_t)(RollList_Sum(&self->rolls) + RollList_Sum(&self->bonus_rolls));
 }

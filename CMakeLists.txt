@@ -46,12 +46,11 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 add_executable(bowling_tests
-    test/frame_test.cpp
     test/roll_list_test.cpp
     test/game_test.cpp
 )
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
-# frame_test.cpp tests the base class directly, so it needs the private headers.
+# roll_list_test.cpp tests a private type directly, so it needs the private headers.
 target_include_directories(bowling_tests PRIVATE src)
 target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 

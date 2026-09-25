@@ -4,7 +4,7 @@ static RollResult StrikeFrame_Roll(Frame *self, struct FrameContext *context, ui
 {
     (void)context; /* only a RegularFrame changes state */
     Frame_AddBonusRoll(self, pins);
-    if (self->bonus_count == FRAME_MAX_BONUS_ROLLS) {
+    if (Frame_HasAllBonusRolls(self)) {
         Frame_Complete(self);
     }
     return RollResult_Passed(pins);

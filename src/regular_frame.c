@@ -26,7 +26,7 @@ static RollResult RegularFrame_Roll(Frame *self, struct FrameContext *context, u
     }
 
     Frame_AddRoll(self, pins);
-    if (self->roll_count == FRAME_MAX_ROLLS) {
+    if (Frame_HasAllRolls(self)) {
         Frame_Complete(self);
     }
     return RollResult_Consumed();

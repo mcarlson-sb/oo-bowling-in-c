@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define FRAME_MAX_ROLLS 2U
+#include "roll_list.h"
 
 /* What roll() did with the pins: kept them (consumed), or passed them on to the next
  * frame. `pins` is meaningful only when !consumed. */
@@ -41,9 +41,6 @@ static inline RollResult RollResult_Passed(uint8_t pins)
 struct FrameContext;
 typedef struct Frame Frame;
 
-/* The most bonus rolls any frame earns (a strike's two). */
-#define FRAME_MAX_BONUS_ROLLS 2U
-
 #define FRAME_ALL_PINS 10U
 
 typedef struct {
@@ -57,11 +54,9 @@ typedef struct {
 
 struct Frame {
     const FrameVtable *vtable;
-    uint8_t rolls[FRAME_MAX_ROLLS];
-    uint8_t roll_count;
-    uint8_t bonus_rolls[FRAME_MAX_BONUS_ROLLS];
-    uint8_t bonus_count; /* 0 for a RegularFrame, which earns no bonus */
-    bool complete; /* all rolls and bonus rolls are in, so the score is final */
+    RollList rolls;       /* the frame's own rolls: at most two */
+    RollList bonus_rolls; /* strike: two, spare: one, regular frame: none */
+    bool complete;        /* all rolls and bonus rolls are in, so the score is final */
 };
 
 /* Constructor for the base part; called by each derived class's constructor. */
@@ -91,6 +86,10 @@ uint8_t Frame_PinsKnockedDown(const Frame *self);
 bool Frame_IsFirstRoll(const Frame *self);
 bool Frame_IsSecondRoll(const Frame *self);
 bool Frame_IsSecondBonusRoll(const Frame *self);
+
+/* Whether the frame has all the rolls, or all the bonus rolls, it can hold. */
+bool Frame_HasAllRolls(const Frame *self);
+bool Frame_HasAllBonusRolls(const Frame *self);
 
 /* Not virtual: every state scores the same way, as its rolls plus its bonus rolls, and 0
  * until the frame is complete. */
