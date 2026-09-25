@@ -257,3 +257,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 
 The git history is a test-driven sequence, with one test per commit. Stepping through it
 shows the design growing a test at a time.
+
+## License
+
+[MIT](LICENSE).
