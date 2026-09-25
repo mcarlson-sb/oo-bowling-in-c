@@ -14,14 +14,19 @@
 #include "frame.h"
 #include "regular_frame.h"
 #include "spare_frame.h"
+#include "strike_frame.h"
 
 typedef struct FrameContext {
     Frame *current_state;
     RegularFrame regular;
     SpareFrame spare;
+    StrikeFrame strike;
 } FrameContext;
 
 void FrameContext_Init(FrameContext *self);
+
+/* Stand-in for `new StrikeFrame(context)`. */
+Frame *FrameContext_NewStrikeFrame(FrameContext *self);
 
 /* Stand-in for `new SpareFrame(context, rolls)`: builds the state in this context's own
  * storage and returns it, ready for FrameContext_SetState. */

@@ -4,6 +4,11 @@
 
 #include "frame_context.h"
 
+static bool RegularFrame_IsStrike(const Frame *self, uint8_t pins)
+{
+    return (self->roll_count == 0U) && (pins == 10U);
+}
+
 static bool RegularFrame_IsSpare(const Frame *self, uint8_t pins)
 {
     uint16_t total = 0U;
@@ -20,8 +25,12 @@ static int16_t RegularFrame_Roll(Frame *self, uint8_t pins)
         return (int16_t)pins;
     }
 
+    FrameContext *context = self->context;
+    if (RegularFrame_IsStrike(self, pins)) {
+        FrameContext_SetState(context, FrameContext_NewStrikeFrame(context));
+        return FRAME_ROLL_CONSUMED;
+    }
     if (RegularFrame_IsSpare(self, pins)) {
-        FrameContext *context = self->context;
         FrameContext_SetState(context,
                               FrameContext_NewSpareFrame(context, self->rolls, self->roll_count));
         (void)FrameContext_Roll(context, pins);
