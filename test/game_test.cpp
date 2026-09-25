@@ -131,3 +131,21 @@ TEST_F(GameTest, should_score_a_perfect_game_and_reject_a_roll_past_capacity)
     EXPECT_EQ(GAME_ERR_FULL, Game_Roll(game, 10U));
     EXPECT_EQ(300U, Game_Score(game));
 }
+
+/* ---- C-specific: game storage -----------------------------------------------------------
+ * `new GameService()` becomes a fixed pool of games. */
+
+TEST_F(GameTest, should_keep_two_games_independent)
+{
+    Game *other = Game_Create();
+    ASSERT_NE(nullptr, other);
+
+    Game_Roll(game, 2U);
+    Game_Roll(game, 6U);
+    Game_Roll(other, 1U);
+    Game_Roll(other, 1U);
+
+    EXPECT_EQ(8U, Game_Score(game));
+    EXPECT_EQ(2U, Game_Score(other));
+    Game_Destroy(other);
+}

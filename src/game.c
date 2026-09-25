@@ -1,6 +1,7 @@
 #include "game.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "frame_context.h"
 
@@ -8,12 +9,17 @@
  * rolls open in this design. */
 #define GAME_MAX_FRAMES 12U
 
+/* Games available at once. Stands in for `new GameService()`: no heap, so games come from
+ * a fixed pool. */
+#define GAME_POOL_SIZE 2U
+
 struct Game {
     FrameContext frames[GAME_MAX_FRAMES];
     uint8_t frame_count;
+    bool in_use;
 };
 
-static Game s_game;
+static Game s_pool[GAME_POOL_SIZE];
 
 static bool Game_IsFirstFrame(const Game *game)
 {
@@ -50,13 +56,20 @@ static int16_t Game_UpdateFrames(Game *game, uint8_t pins)
 
 Game *Game_Create(void)
 {
-    s_game.frame_count = 0U;
-    return &s_game;
+    for (uint8_t i = 0U; i < GAME_POOL_SIZE; i++) {
+        Game *game = &s_pool[i];
+        if (!game->in_use) {
+            game->in_use = true;
+            game->frame_count = 0U;
+            return game;
+        }
+    }
+    return NULL;
 }
 
 void Game_Destroy(Game *game)
 {
-    (void)game;
+    game->in_use = false;
 }
 
 GameStatus Game_Roll(Game *game, uint8_t pins)
