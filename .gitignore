@@ -1,2 +1,6 @@
 build/
 build-*/
+
+# IDE files: each developer's own
+.idea/
+cmake-build-*/
