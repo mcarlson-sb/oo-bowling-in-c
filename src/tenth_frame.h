@@ -10,6 +10,6 @@ typedef struct {
     Frame base; /* must be first: TenthFrame "extends" Frame */
 } TenthFrame;
 
-Frame *TenthFrame_Init(TenthFrame *self, struct FrameContext *context);
+Frame *TenthFrame_Init(TenthFrame *self);
 
 #endif /* TENTH_FRAME_H */

@@ -9,6 +9,6 @@ typedef struct {
     Frame base; /* must be first: StrikeFrame "extends" Frame */
 } StrikeFrame;
 
-Frame *StrikeFrame_Init(StrikeFrame *self, struct FrameContext *context);
+Frame *StrikeFrame_Init(StrikeFrame *self);
 
 #endif /* STRIKE_FRAME_H */

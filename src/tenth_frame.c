@@ -21,8 +21,9 @@ static uint8_t TenthFrame_FillRollsEarned(const Frame *self)
     return 0U;
 }
 
-static RollResult TenthFrame_Roll(Frame *self, uint8_t pins)
+static RollResult TenthFrame_Roll(Frame *self, struct FrameContext *context, uint8_t pins)
 {
+    (void)context; /* only a RegularFrame changes state */
     const uint8_t fill_rolls_earned = TenthFrame_FillRollsEarned(self);
     if (fill_rolls_earned > 0U) {
         Frame_AddBonusRoll(self, pins);
@@ -59,8 +60,8 @@ static const FrameVtable s_vtable = {
     .pins_standing = TenthFrame_PinsStanding,
 };
 
-Frame *TenthFrame_Init(TenthFrame *self, struct FrameContext *context)
+Frame *TenthFrame_Init(TenthFrame *self)
 {
-    Frame_Init(&self->base, &s_vtable, context);
+    Frame_Init(&self->base, &s_vtable);
     return &self->base;
 }

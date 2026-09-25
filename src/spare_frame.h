@@ -11,7 +11,6 @@ typedef struct {
 
 /* Builds the spare from the frame it replaces: a copy of that frame's rolls, because this
  * state has its own storage, plus the roll that completed the spare. */
-Frame *SpareFrame_Init(SpareFrame *self, struct FrameContext *context, const Frame *replaced,
-                       uint8_t completing_pins);
+Frame *SpareFrame_Init(SpareFrame *self, const Frame *replaced, uint8_t completing_pins);
 
 #endif /* SPARE_FRAME_H */

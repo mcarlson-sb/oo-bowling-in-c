@@ -86,8 +86,9 @@ type" flag: each kind of frame is its own state object, and the frame switches s
 - **Context:** `FrameContext` holds `current_state` and forwards every call to it.
 - **State interface:** `FrameVtable`, with `roll` and `pins_standing`.
 - **Concrete states:** `RegularFrame`, `SpareFrame`, `StrikeFrame` and `TenthFrame`.
-- **The states drive their own transitions.** `RegularFrame_Roll` calls
-  `FrameContext_SetState` when it sees a strike or a spare.
+- **The states drive their own transitions.** The context passes itself into `roll()`, and
+  `RegularFrame_Roll` calls `FrameContext_SetState` on it when it sees a strike or a spare.
+  States don't store a pointer back to their context.
 - **No heap.** Each context owns storage for one of each state, so changing state never
   allocates.
 

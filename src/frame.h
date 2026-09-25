@@ -47,7 +47,9 @@ typedef struct Frame Frame;
 #define FRAME_ALL_PINS 10U
 
 typedef struct {
-    RollResult (*roll)(Frame *self, uint8_t pins);
+    /* The context passes itself in, so a state can switch the context to its next state
+     * without every frame storing a pointer back to it. */
+    RollResult (*roll)(Frame *self, struct FrameContext *context, uint8_t pins);
     /* Pins standing for the next roll, if this is the game's latest frame:
      * FRAME_ALL_PINS unless the next roll is this frame's own, on a partly cleared rack. */
     uint8_t (*pins_standing)(const Frame *self);
@@ -55,7 +57,6 @@ typedef struct {
 
 struct Frame {
     const FrameVtable *vtable;
-    struct FrameContext *context;
     uint8_t rolls[FRAME_MAX_ROLLS];
     uint8_t roll_count;
     uint8_t bonus_rolls[FRAME_MAX_BONUS_ROLLS];
@@ -64,11 +65,11 @@ struct Frame {
 };
 
 /* Constructor for the base part; called by each derived class's constructor. */
-void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *context);
+void Frame_Init(Frame *self, const FrameVtable *vtable);
 
 /* Virtual: each state rolls differently. A complete frame passes the roll on
  * without calling its state. */
-RollResult Frame_Roll(Frame *self, uint8_t pins);
+RollResult Frame_Roll(Frame *self, struct FrameContext *context, uint8_t pins);
 uint8_t Frame_PinsStanding(const Frame *self);
 
 /* The pins_standing for any state whose next roll always starts on a full rack. */

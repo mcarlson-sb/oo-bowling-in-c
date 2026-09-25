@@ -2,23 +2,22 @@
 
 #include <assert.h>
 
-void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *context)
+void Frame_Init(Frame *self, const FrameVtable *vtable)
 {
     self->vtable = vtable;
-    self->context = context;
     self->roll_count = 0U;
     self->bonus_count = 0U;
     self->complete = false;
 }
 
-RollResult Frame_Roll(Frame *self, uint8_t pins)
+RollResult Frame_Roll(Frame *self, struct FrameContext *context, uint8_t pins)
 {
     /* A complete frame passes every roll on. Handled once here, so each state's roll() only
      * ever sees rolls while its frame is still incomplete. */
     if (self->complete) {
         return RollResult_Passed(pins);
     }
-    return self->vtable->roll(self, pins);
+    return self->vtable->roll(self, context, pins);
 }
 
 uint8_t Frame_PinsStanding(const Frame *self)

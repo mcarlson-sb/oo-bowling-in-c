@@ -2,8 +2,9 @@
 
 /* A SpareFrame is born with both of its rolls, so every roll it sees is its one bonus
  * roll. */
-static RollResult SpareFrame_Roll(Frame *self, uint8_t pins)
+static RollResult SpareFrame_Roll(Frame *self, struct FrameContext *context, uint8_t pins)
 {
+    (void)context; /* only a RegularFrame changes state */
     Frame_AddBonusRoll(self, pins);
     Frame_Complete(self);
     return RollResult_Passed(pins);
@@ -14,10 +15,9 @@ static const FrameVtable s_vtable = {
     .pins_standing = Frame_AllPinsStanding,
 };
 
-Frame *SpareFrame_Init(SpareFrame *self, struct FrameContext *context, const Frame *replaced,
-                       uint8_t completing_pins)
+Frame *SpareFrame_Init(SpareFrame *self, const Frame *replaced, uint8_t completing_pins)
 {
-    Frame_Init(&self->base, &s_vtable, context);
+    Frame_Init(&self->base, &s_vtable);
     for (uint8_t i = 0U; i < replaced->roll_count; i++) {
         Frame_AddRoll(&self->base, replaced->rolls[i]);
     }

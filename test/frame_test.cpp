@@ -11,7 +11,7 @@ extern "C" {
 class FrameTest : public ::testing::Test {
 protected:
     RegularFrame regular{};
-    Frame *frame = RegularFrame_Init(&regular, nullptr);
+    Frame *frame = RegularFrame_Init(&regular);
 };
 
 #ifndef NDEBUG

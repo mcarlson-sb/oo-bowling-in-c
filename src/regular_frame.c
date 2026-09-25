@@ -14,9 +14,8 @@ static bool RegularFrame_IsSpare(const Frame *self, uint8_t pins)
     return (Frame_PinsKnockedDown(self) + pins) == FRAME_ALL_PINS;
 }
 
-static RollResult RegularFrame_Roll(Frame *self, uint8_t pins)
+static RollResult RegularFrame_Roll(Frame *self, struct FrameContext *context, uint8_t pins)
 {
-    FrameContext *context = self->context;
     if (RegularFrame_IsStrike(self, pins)) {
         FrameContext_SetState(context, FrameContext_NewStrikeFrame(context));
         return RollResult_Consumed();
@@ -46,8 +45,8 @@ static const FrameVtable s_vtable = {
     .pins_standing = RegularFrame_PinsStanding,
 };
 
-Frame *RegularFrame_Init(RegularFrame *self, struct FrameContext *context)
+Frame *RegularFrame_Init(RegularFrame *self)
 {
-    Frame_Init(&self->base, &s_vtable, context);
+    Frame_Init(&self->base, &s_vtable);
     return &self->base;
 }

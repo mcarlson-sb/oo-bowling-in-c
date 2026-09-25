@@ -2,23 +2,23 @@
 
 void FrameContext_Init(FrameContext *self)
 {
-    self->current_state = RegularFrame_Init(&self->regular, self);
+    self->current_state = RegularFrame_Init(&self->regular);
 }
 
 void FrameContext_InitTenth(FrameContext *self)
 {
-    self->current_state = TenthFrame_Init(&self->tenth, self);
+    self->current_state = TenthFrame_Init(&self->tenth);
 }
 
 Frame *FrameContext_NewStrikeFrame(FrameContext *self)
 {
-    return StrikeFrame_Init(&self->strike, self);
+    return StrikeFrame_Init(&self->strike);
 }
 
 Frame *FrameContext_NewSpareFrame(FrameContext *self, const Frame *replaced,
                                   uint8_t completing_pins)
 {
-    return SpareFrame_Init(&self->spare, self, replaced, completing_pins);
+    return SpareFrame_Init(&self->spare, replaced, completing_pins);
 }
 
 void FrameContext_SetState(FrameContext *self, Frame *frame_state)
@@ -28,7 +28,7 @@ void FrameContext_SetState(FrameContext *self, Frame *frame_state)
 
 RollResult FrameContext_Roll(FrameContext *self, uint8_t pins)
 {
-    return Frame_Roll(self->current_state, pins);
+    return Frame_Roll(self->current_state, self, pins);
 }
 
 uint16_t FrameContext_Score(const FrameContext *self)
