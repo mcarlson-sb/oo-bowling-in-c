@@ -28,11 +28,24 @@ static void Game_AddNewFrame(Game *game, uint8_t pins)
     game->frame_count++;
 }
 
-static void Game_ApplyPinsToFrames(Game *game, uint8_t pins)
+static int16_t Game_ApplyPinsToFrames(Game *game, uint8_t pins)
 {
+    int16_t remaining = (int16_t)pins;
     for (uint8_t i = 0U; i < game->frame_count; i++) {
-        (void)FrameContext_Roll(&game->frames[i], pins);
+        if (remaining != FRAME_ROLL_CONSUMED) {
+            remaining = FrameContext_Roll(&game->frames[i], (uint8_t)remaining);
+        }
     }
+    return remaining;
+}
+
+static int16_t Game_UpdateFrames(Game *game, uint8_t pins)
+{
+    if (Game_IsFirstFrame(game)) {
+        Game_AddNewFrame(game, pins);
+        return FRAME_ROLL_CONSUMED;
+    }
+    return Game_ApplyPinsToFrames(game, pins);
 }
 
 Game *Game_Create(void)
@@ -48,11 +61,10 @@ void Game_Destroy(Game *game)
 
 void Game_Roll(Game *game, uint8_t pins)
 {
-    if (Game_IsFirstFrame(game)) {
-        Game_AddNewFrame(game, pins);
-        return;
+    const int16_t remaining_pins = Game_UpdateFrames(game, pins);
+    if (remaining_pins != FRAME_ROLL_CONSUMED) {
+        Game_AddNewFrame(game, (uint8_t)remaining_pins);
     }
-    Game_ApplyPinsToFrames(game, pins);
 }
 
 uint16_t Game_Score(const Game *game)

@@ -2,6 +2,10 @@
 
 static int16_t RegularFrame_Roll(Frame *self, uint8_t pins)
 {
+    if (!self->open) {
+        return (int16_t)pins;
+    }
+
     self->rolls[self->roll_count] = pins;
     self->roll_count++;
     if (self->roll_count == FRAME_MAX_ROLLS) {
