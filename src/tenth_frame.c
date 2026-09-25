@@ -1,14 +1,22 @@
 #include "tenth_frame.h"
 
+#include <stdbool.h>
+
+#define STRIKE_FILL_BALLS FRAME_MAX_BONUS_ROLLS
+#define SPARE_FILL_BALLS 1U
+
 /* Fill balls are kept as the base class's bonus rolls, so the shared Frame_Score adds them
  * with no special case. */
 static uint8_t TenthFrame_FillRollsEarned(const Frame *self)
 {
-    if ((self->roll_count >= 1U) && (self->rolls[0] == FRAME_ALL_PINS)) {
-        return 2U;
+    const bool is_strike = (self->roll_count >= 1U) && (self->rolls[0] == FRAME_ALL_PINS);
+    if (is_strike) {
+        return STRIKE_FILL_BALLS;
     }
-    if ((self->roll_count == FRAME_MAX_ROLLS) && (Frame_PinsKnockedDown(self) == FRAME_ALL_PINS)) {
-        return 1U;
+    const bool is_spare =
+        (self->roll_count == FRAME_MAX_ROLLS) && (Frame_PinsKnockedDown(self) == FRAME_ALL_PINS);
+    if (is_spare) {
+        return SPARE_FILL_BALLS;
     }
     return 0U;
 }
@@ -39,7 +47,7 @@ static uint8_t TenthFrame_PinsStanding(const Frame *self)
     }
     /* After a strike, the second fill ball rolls at what the first one left standing,
      * unless the first cleared the rack. */
-    if ((fill_rolls_earned == 2U) && (self->bonus_count == 1U) &&
+    if ((fill_rolls_earned == STRIKE_FILL_BALLS) && (self->bonus_count == 1U) &&
         (self->bonus_rolls[0] != FRAME_ALL_PINS)) {
         return (uint8_t)(FRAME_ALL_PINS - self->bonus_rolls[0]);
     }

@@ -15,7 +15,8 @@ Frame *FrameContext_NewStrikeFrame(FrameContext *self)
     return StrikeFrame_Init(&self->strike, self);
 }
 
-Frame *FrameContext_NewSpareFrame(FrameContext *self, const Frame *replaced, uint8_t completing_pins)
+Frame *FrameContext_NewSpareFrame(FrameContext *self, const Frame *replaced,
+                                  uint8_t completing_pins)
 {
     return SpareFrame_Init(&self->spare, self, replaced, completing_pins);
 }

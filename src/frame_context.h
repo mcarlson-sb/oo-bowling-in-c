@@ -33,7 +33,8 @@ void FrameContext_InitTenth(FrameContext *self);
 /* Factories for the next state. Each builds the state in this context's own storage and
  * returns it, ready for FrameContext_SetState. */
 Frame *FrameContext_NewStrikeFrame(FrameContext *self);
-Frame *FrameContext_NewSpareFrame(FrameContext *self, const Frame *replaced, uint8_t completing_pins);
+Frame *FrameContext_NewSpareFrame(FrameContext *self, const Frame *replaced,
+                                  uint8_t completing_pins);
 
 void FrameContext_SetState(FrameContext *self, Frame *frame_state);
 RollResult FrameContext_Roll(FrameContext *self, uint8_t pins);
