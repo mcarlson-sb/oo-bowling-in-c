@@ -89,3 +89,12 @@ TEST_F(GameTest, should_score_a_closed_strike)
     Game_Roll(game, 2U);
     EXPECT_EQ(16U, Game_Score(game));
 }
+
+TEST_F(GameTest, should_score_correctly_with_a_gutter_ball)
+{
+    Game_Roll(game, 9U);
+    Game_Roll(game, 0U);
+    Game_Roll(game, 1U);
+    Game_Roll(game, 2U);
+    EXPECT_EQ(12U, Game_Score(game));
+}
