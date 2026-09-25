@@ -58,11 +58,20 @@ The public API is four functions in `include/game.h`: `Game_Create`, `Game_Roll`
 
 ## Why this is object-oriented
 
-The four pillars of OO, each done with a plain C mechanism:
+The four pillars of OO, each done with a plain C mechanism, plus information hiding. That one
+is often folded into encapsulation, but it's a different idea:
+
+- **Encapsulation** *bundles* data with the operations on it.
+- **Information hiding** *conceals* a design decision behind an interface, so the decision
+  can change without anything outside having to change.
+
+A postcard is encapsulated: message and address travel together, but anyone can read it. An
+envelope is encapsulated *and* hides the message. Code can do one without the other.
 
 | Principle | In this code | How it's done in C |
 |---|---|---|
-| **Encapsulation and information hiding** | Callers can't see or touch a game's internals | `game.h` declares `struct Game` but only `game.c` defines it (an opaque handle). Private helpers are `static`, so no other file can see them |
+| **Encapsulation** | Each "class" is a struct plus the functions that act on it: `Frame` with `Frame_*`, `RollList` with `RollList_*`, `FrameContext` with `FrameContext_*`. States change a `Frame`'s fields only through `Frame`'s own functions, and `RollList` keeps its array and its count together | A struct and a family of functions that take it as `self`, named with its prefix |
+| **Information hiding** | Callers can't see how a game works. `struct Game`'s layout, the State pattern behind it, the frame types and the pool size can all change without any caller changing | An opaque handle: `game.h` declares `struct Game` but only `game.c` defines it. `static` functions are invisible outside their file, and private headers stay in `src/` (see [Public and private headers](#public-and-private-headers)) |
 | **Abstraction** | `Frame` is an abstract type: "something that can take a roll and report its standing pins" | A `const FrameVtable` of function pointers (`src/frame.h`). `Frame` has no vtable of its own; only the derived states define one, so every usable `Frame` is one of them |
 | **Inheritance** | Each state *is a* `Frame` and reuses its fields and `Frame_Score` | The derived struct holds `Frame base` as its **first member**, so a `StrikeFrame *` is also a valid `Frame *` |
 | **Polymorphism** | Callers call `Frame_Roll(frame, context, pins)`, and the right state's code runs | `Frame_Roll` calls `self->vtable->roll(self, context, pins)`. Each state points at its own `static const` vtable |
@@ -117,8 +126,11 @@ storage for it is allocated. With no heap, objects are held by value, one inside
 - Each state holds a `Frame`.
 - Each `Frame` holds two `RollList`s.
 
-So those definitions are shared among the library's files, in `src/`. Where nothing needs
-the layout, it stays in the `.c` file:
+So those definitions are shared among the library's files, in `src/`. That makes `Frame`,
+`FrameContext` and `RollList` encapsulated but not hidden inside the library: other library
+files can see their fields, and only convention stops them writing to them. The hiding
+happens one level up, at the library boundary. Where nothing needs the layout, it stays in
+the `.c` file:
 - `struct Game`: callers only hold a pointer to it.
 - `struct FrameStateFactory`: `frame_context.h` only forward-declares it.
 
