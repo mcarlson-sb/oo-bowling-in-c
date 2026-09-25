@@ -41,6 +41,7 @@ void Frame_AddRoll(Frame *self, uint8_t pins)
 
 void Frame_AddBonusRoll(Frame *self, uint8_t pins)
 {
+    assert(self->bonus_count < FRAME_MAX_BONUS_ROLLS);
     self->bonus_rolls[self->bonus_count] = pins;
     self->bonus_count++;
 }
