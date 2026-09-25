@@ -11,7 +11,7 @@ set(OO_C_WARNINGS -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshad
 
 # ---- Library under test ---------------------------------------------------
 add_library(bowling STATIC
-    src/bowling_placeholder.c
+    src/game.c
 )
 target_include_directories(bowling PUBLIC include PRIVATE src)
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
