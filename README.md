@@ -5,6 +5,9 @@ problem is small on purpose, so the design is the thing to read. "Object-oriente
 of designing, not a language feature. C has no classes, so every mechanism has to be written
 out by hand, and that makes it easy to see how each one works and what it costs.
 
+For a picture-by-picture tour of how the code fits together, see
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Build and test
 
 Needs GCC, CMake 3.20 or later, and Ninja. GoogleTest is downloaded by CMake on the first
