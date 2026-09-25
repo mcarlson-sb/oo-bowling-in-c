@@ -194,3 +194,15 @@ TEST_F(GameTest, should_end_the_game_after_an_open_tenth_frame)
     EXPECT_EQ(GAME_ERR_GAME_OVER, Game_Roll(game, 1U));
     EXPECT_EQ(20U, Game_Score(game));
 }
+
+TEST_F(GameTest, should_give_a_tenth_frame_spare_exactly_one_fill_ball)
+{
+    for (int i = 0; i < 18; i++) {
+        Game_Roll(game, 0U);
+    }
+    Game_Roll(game, 5U);
+    Game_Roll(game, 5U);
+    EXPECT_EQ(GAME_OK, Game_Roll(game, 5U));
+    EXPECT_EQ(15U, Game_Score(game));
+    EXPECT_EQ(GAME_ERR_GAME_OVER, Game_Roll(game, 5U));
+}
