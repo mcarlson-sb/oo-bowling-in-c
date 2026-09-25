@@ -4,7 +4,7 @@ static RollResult StrikeFrame_Roll(Frame *self, uint8_t pins)
 {
     Frame_AddBonusRoll(self, pins);
     if (self->bonus_count == FRAME_MAX_BONUS_ROLLS) {
-        self->open = false;
+        Frame_Close(self);
     }
     return RollResult_Passed(pins);
 }
@@ -17,7 +17,6 @@ static const FrameVtable s_vtable = {
 Frame *StrikeFrame_Init(StrikeFrame *self, struct FrameContext *context)
 {
     Frame_Init(&self->base, &s_vtable, context);
-    self->base.rolls[0] = FRAME_ALL_PINS;
-    self->base.roll_count = 1U;
+    Frame_AddRoll(&self->base, FRAME_ALL_PINS);
     return &self->base;
 }

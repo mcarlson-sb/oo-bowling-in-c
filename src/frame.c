@@ -30,10 +30,30 @@ uint8_t Frame_AllPinsStanding(const Frame *self)
     return FRAME_ALL_PINS;
 }
 
+void Frame_AddRoll(Frame *self, uint8_t pins)
+{
+    self->rolls[self->roll_count] = pins;
+    self->roll_count++;
+}
+
 void Frame_AddBonusRoll(Frame *self, uint8_t pins)
 {
     self->bonus_rolls[self->bonus_count] = pins;
     self->bonus_count++;
+}
+
+void Frame_Close(Frame *self)
+{
+    self->open = false;
+}
+
+uint8_t Frame_PinsKnockedDown(const Frame *self)
+{
+    uint8_t pins = 0U;
+    for (uint8_t i = 0U; i < self->roll_count; i++) {
+        pins = (uint8_t)(pins + self->rolls[i]);
+    }
+    return pins;
 }
 
 uint16_t Frame_Score(const Frame *self)
@@ -42,10 +62,7 @@ uint16_t Frame_Score(const Frame *self)
         return 0U;
     }
 
-    uint16_t score = 0U;
-    for (uint8_t i = 0U; i < self->roll_count; i++) {
-        score = (uint16_t)(score + self->rolls[i]);
-    }
+    uint16_t score = Frame_PinsKnockedDown(self);
     for (uint8_t i = 0U; i < self->bonus_count; i++) {
         score = (uint16_t)(score + self->bonus_rolls[i]);
     }

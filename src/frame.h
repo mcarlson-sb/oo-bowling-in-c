@@ -70,8 +70,14 @@ uint8_t Frame_PinsStanding(const Frame *self);
 /* The pins_standing for any state whose next roll always starts on a full rack. */
 uint8_t Frame_AllPinsStanding(const Frame *self);
 
-/* Records a bonus roll. For derived classes only. */
+/* For derived classes only: the base class owns its fields' rules, so states change them
+ * through these, never by writing the fields directly. */
+void Frame_AddRoll(Frame *self, uint8_t pins);
 void Frame_AddBonusRoll(Frame *self, uint8_t pins);
+void Frame_Close(Frame *self);
+
+/* Pins knocked down by this frame's own rolls, without bonus rolls. */
+uint8_t Frame_PinsKnockedDown(const Frame *self);
 
 /* Not virtual: every state scores the same way, as its rolls plus its bonus rolls, and 0
  * while the frame is still open. */

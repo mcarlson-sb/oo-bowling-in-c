@@ -7,7 +7,7 @@ static uint8_t TenthFrame_FillRollsEarned(const Frame *self)
     if ((self->roll_count >= 1U) && (self->rolls[0] == FRAME_ALL_PINS)) {
         return 2U;
     }
-    if ((self->roll_count == FRAME_MAX_ROLLS) && ((self->rolls[0] + self->rolls[1]) == FRAME_ALL_PINS)) {
+    if ((self->roll_count == FRAME_MAX_ROLLS) && (Frame_PinsKnockedDown(self) == FRAME_ALL_PINS)) {
         return 1U;
     }
     return 0U;
@@ -19,15 +19,14 @@ static RollResult TenthFrame_Roll(Frame *self, uint8_t pins)
     if (fill_rolls_earned > 0U) {
         Frame_AddBonusRoll(self, pins);
         if (self->bonus_count == fill_rolls_earned) {
-            self->open = false;
+            Frame_Close(self);
         }
         return RollResult_Consumed();
     }
 
-    self->rolls[self->roll_count] = pins;
-    self->roll_count++;
+    Frame_AddRoll(self, pins);
     if ((self->roll_count == FRAME_MAX_ROLLS) && (TenthFrame_FillRollsEarned(self) == 0U)) {
-        self->open = false;
+        Frame_Close(self);
     }
     return RollResult_Consumed();
 }
@@ -36,7 +35,7 @@ static uint8_t TenthFrame_PinsStanding(const Frame *self)
 {
     const uint8_t fill_rolls_earned = TenthFrame_FillRollsEarned(self);
     if ((self->roll_count == 1U) && (fill_rolls_earned == 0U)) {
-        return (uint8_t)(FRAME_ALL_PINS - self->rolls[0]);
+        return (uint8_t)(FRAME_ALL_PINS - Frame_PinsKnockedDown(self));
     }
     /* After a strike, the second fill ball rolls at what the first one left standing,
      * unless the first cleared the rack. */

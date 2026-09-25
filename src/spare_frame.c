@@ -11,12 +11,11 @@ static RollResult SpareFrame_Roll(Frame *self, uint8_t pins)
 {
     if (SpareFrame_IsBonusRoll(self)) {
         Frame_AddBonusRoll(self, pins);
-        self->open = false;
+        Frame_Close(self);
         return RollResult_Passed(pins);
     }
 
-    self->rolls[self->roll_count] = pins;
-    self->roll_count++;
+    Frame_AddRoll(self, pins);
     return RollResult_Consumed();
 }
 
@@ -30,8 +29,7 @@ Frame *SpareFrame_Init(SpareFrame *self, struct FrameContext *context, const uin
 {
     Frame_Init(&self->base, &s_vtable, context);
     for (uint8_t i = 0U; i < roll_count; i++) {
-        self->base.rolls[i] = rolls[i];
+        Frame_AddRoll(&self->base, rolls[i]);
     }
-    self->base.roll_count = roll_count;
     return &self->base;
 }
