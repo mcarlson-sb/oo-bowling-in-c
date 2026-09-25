@@ -1,5 +1,8 @@
 #include "frame.h"
 
+#include <assert.h>
+#include <stddef.h>
+
 void Frame_Init(Frame *self, const FrameVtable *vtable)
 {
     self->vtable = vtable;
@@ -10,6 +13,7 @@ void Frame_Init(Frame *self, const FrameVtable *vtable)
 
 RollResult Frame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
+    assert(context != NULL); /* the roll() contract: see FrameVtable in frame.h */
     /* A complete frame passes every roll on. Handled once here, so each state's roll() only
      * ever sees rolls while its frame is still incomplete. */
     if (self->complete) {

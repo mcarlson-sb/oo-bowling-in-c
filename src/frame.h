@@ -44,12 +44,30 @@ typedef struct Frame Frame;
 
 #define FRAME_ALL_PINS 10U
 
+/* The state interface. Every state honors the same contract, so any of them can stand in
+ * for a Frame (Liskov substitution), and callers never need to know which one they have. */
 typedef struct {
-    /* The context passes itself in, so a state can switch the context to its next state
-     * without every frame storing a pointer back to it. */
+    /* Takes one roll.
+     *
+     * The caller guarantees:
+     *   - the frame is incomplete (Frame_Roll handles complete frames itself);
+     *   - `pins` is no more than pins_standing() allowed (Game_Roll has checked it);
+     *   - `context` is this frame's own context, never NULL.
+     *
+     * The state guarantees:
+     *   - it records the roll as one of its own rolls or bonus rolls, never more than a
+     *     RollList holds;
+     *   - it returns RollResult_Consumed() if it keeps the roll, or RollResult_Passed(pins),
+     *     with the same pins, if the next frame should also get it;
+     *   - it changes state only through `context`. Only RegularFrame does; the others
+     *     ignore `context`.
+     *
+     * The context passes itself in so that no frame stores a pointer back to it. */
     RollResult (*roll)(Frame *self, struct FrameContext *context, Pins pins);
-    /* Pins standing for the next roll, if this is the game's latest frame:
-     * FRAME_ALL_PINS unless the next roll is this frame's own, on a partly cleared rack. */
+
+    /* Pins standing for the next roll, if this is the game's latest frame: from 0 to
+     * FRAME_ALL_PINS. FRAME_ALL_PINS unless the next roll is this frame's own, on a partly
+     * cleared rack. Has no side effects. */
     Pins (*pins_standing)(const Frame *self);
 } FrameVtable;
 
@@ -63,8 +81,8 @@ struct Frame {
 /* Constructor for the base part; called by each derived class's constructor. */
 void Frame_Init(Frame *self, const FrameVtable *vtable);
 
-/* Virtual: each state rolls differently. A complete frame passes the roll on
- * without calling its state. */
+/* Virtual: each state rolls differently, under the contract on FrameVtable.roll above. A
+ * complete frame passes the roll on without calling its state. */
 RollResult Frame_Roll(Frame *self, struct FrameContext *context, Pins pins);
 Pins Frame_PinsStanding(const Frame *self);
 
