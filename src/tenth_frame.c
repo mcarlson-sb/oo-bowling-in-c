@@ -15,10 +15,6 @@ static uint8_t TenthFrame_FillRollsEarned(const Frame *self)
 
 static RollResult TenthFrame_Roll(Frame *self, uint8_t pins)
 {
-    if (!self->open) {
-        return RollResult_Passed(pins);
-    }
-
     const uint8_t fill_rolls_earned = TenthFrame_FillRollsEarned(self);
     if (fill_rolls_earned > 0U) {
         Frame_AddBonusRoll(self, pins);

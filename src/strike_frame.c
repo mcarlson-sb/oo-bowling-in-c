@@ -2,10 +2,6 @@
 
 static RollResult StrikeFrame_Roll(Frame *self, uint8_t pins)
 {
-    if (!self->open) {
-        return RollResult_Passed(pins);
-    }
-
     Frame_AddBonusRoll(self, pins);
     if (self->bonus_count == FRAME_MAX_BONUS_ROLLS) {
         self->open = false;

@@ -62,7 +62,8 @@ struct Frame {
 /* Constructor for the base part; called by each derived class's constructor. */
 void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *context);
 
-/* Virtual: each state rolls differently. */
+/* Virtual: each state rolls differently. A frame that is no longer open passes the roll on
+ * without calling its state. */
 RollResult Frame_Roll(Frame *self, uint8_t pins);
 uint8_t Frame_PinsStanding(const Frame *self);
 

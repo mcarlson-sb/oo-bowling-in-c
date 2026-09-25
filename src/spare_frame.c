@@ -9,10 +9,6 @@ static bool SpareFrame_IsBonusRoll(const Frame *self)
 
 static RollResult SpareFrame_Roll(Frame *self, uint8_t pins)
 {
-    if (!self->open) {
-        return RollResult_Passed(pins);
-    }
-
     if (SpareFrame_IsBonusRoll(self)) {
         Frame_AddBonusRoll(self, pins);
         self->open = false;

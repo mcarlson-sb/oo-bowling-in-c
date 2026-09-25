@@ -21,10 +21,6 @@ static bool RegularFrame_IsSpare(const Frame *self, uint8_t pins)
 
 static RollResult RegularFrame_Roll(Frame *self, uint8_t pins)
 {
-    if (!self->open) {
-        return RollResult_Passed(pins);
-    }
-
     FrameContext *context = self->context;
     if (RegularFrame_IsStrike(self, pins)) {
         FrameContext_SetState(context, FrameContext_NewStrikeFrame(context));

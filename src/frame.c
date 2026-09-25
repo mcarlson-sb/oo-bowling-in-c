@@ -11,6 +11,11 @@ void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *con
 
 RollResult Frame_Roll(Frame *self, uint8_t pins)
 {
+    /* A finished frame passes every roll on. Handled once here, so each state's roll() only
+     * ever sees rolls while its frame is still open. */
+    if (!self->open) {
+        return RollResult_Passed(pins);
+    }
     return self->vtable->roll(self, pins);
 }
 
