@@ -238,3 +238,15 @@ TEST_F(GameTest, should_reject_a_tenth_frame_second_roll_larger_than_the_pins_st
     EXPECT_EQ(GAME_OK, Game_Roll(game, 10U));
     EXPECT_EQ(20U, Game_Score(game));
 }
+
+TEST_F(GameTest, should_reject_tenth_frame_strike_fill_balls_totalling_more_than_ten)
+{
+    for (int i = 0; i < 18; i++) {
+        Game_Roll(game, 0U);
+    }
+    Game_Roll(game, 10U);
+    Game_Roll(game, 5U);
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Game_Roll(game, 6U));
+    EXPECT_EQ(GAME_OK, Game_Roll(game, 5U));
+    EXPECT_EQ(20U, Game_Score(game));
+}

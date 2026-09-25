@@ -38,8 +38,15 @@ static RollResult TenthFrame_Roll(Frame *self, uint8_t pins)
 
 static uint8_t TenthFrame_PinsStanding(const Frame *self)
 {
-    if ((self->roll_count == 1U) && (TenthFrame_FillRollsEarned(self) == 0U)) {
+    const uint8_t fill_rolls_earned = TenthFrame_FillRollsEarned(self);
+    if ((self->roll_count == 1U) && (fill_rolls_earned == 0U)) {
         return (uint8_t)(FRAME_ALL_PINS - self->rolls[0]);
+    }
+    /* After a strike, the second fill ball rolls at what the first one left standing,
+     * unless the first cleared the rack. */
+    if ((fill_rolls_earned == 2U) && (self->bonus_count == 1U) &&
+        (self->bonus_rolls[0] != FRAME_ALL_PINS)) {
+        return (uint8_t)(FRAME_ALL_PINS - self->bonus_rolls[0]);
     }
     return FRAME_ALL_PINS;
 }
