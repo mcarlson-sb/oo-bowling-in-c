@@ -250,3 +250,11 @@ TEST_F(GameTest, should_reject_tenth_frame_strike_fill_balls_totalling_more_than
     EXPECT_EQ(GAME_OK, Game_Roll(game, 5U));
     EXPECT_EQ(20U, Game_Score(game));
 }
+
+/* ---- NULL handles -----------------------------------------------------------------------
+ * Game_Create returns NULL when the pool is empty, so every function accepts NULL. */
+
+TEST_F(GameTest, should_reject_a_roll_on_a_null_game)
+{
+    EXPECT_EQ(GAME_ERR_NULL_GAME, Game_Roll(nullptr, 3U));
+}

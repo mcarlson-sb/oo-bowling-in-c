@@ -18,7 +18,9 @@ typedef enum {
      * is left unchanged. */
     GAME_ERR_GAME_OVER,
     /* More pins than are standing. The roll is rejected and the game is left unchanged. */
-    GAME_ERR_INVALID_PINS
+    GAME_ERR_INVALID_PINS,
+    /* The game handle is NULL, for example because Game_Create ran out of games. */
+    GAME_ERR_NULL_GAME
 } GameStatus;
 
 Game *Game_Create(void);

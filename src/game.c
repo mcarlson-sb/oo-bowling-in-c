@@ -87,6 +87,9 @@ void Game_Destroy(Game *game)
 
 GameStatus Game_Roll(Game *game, uint8_t pins)
 {
+    if (game == NULL) {
+        return GAME_ERR_NULL_GAME;
+    }
     /* Both checks run before any frame sees the roll. Frames act on a roll as it passes
      * through them, and that can't be undone, so this is what leaves a rejected roll with
      * no effect. */
