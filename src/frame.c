@@ -1,5 +1,7 @@
 #include "frame.h"
 
+#include <assert.h>
+
 void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *context)
 {
     self->vtable = vtable;
@@ -32,6 +34,7 @@ uint8_t Frame_AllPinsStanding(const Frame *self)
 
 void Frame_AddRoll(Frame *self, uint8_t pins)
 {
+    assert(self->roll_count < FRAME_MAX_ROLLS);
     self->rolls[self->roll_count] = pins;
     self->roll_count++;
 }
