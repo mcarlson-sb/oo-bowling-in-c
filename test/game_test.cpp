@@ -149,3 +149,16 @@ TEST_F(GameTest, should_keep_two_games_independent)
     EXPECT_EQ(2U, Game_Score(other));
     Game_Destroy(other);
 }
+
+TEST_F(GameTest, should_return_null_when_no_game_is_free_and_reuse_a_destroyed_one)
+{
+    Game *second = Game_Create();
+    ASSERT_NE(nullptr, second);
+    EXPECT_EQ(nullptr, Game_Create());
+
+    Game_Destroy(second);
+    Game *reused = Game_Create();
+    ASSERT_NE(nullptr, reused);
+    EXPECT_EQ(0U, Game_Score(reused));
+    Game_Destroy(reused);
+}
