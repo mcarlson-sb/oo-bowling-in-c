@@ -1,7 +1,7 @@
 #ifndef FRAME_H
 #define FRAME_H
 
-/* Abstract base class for a frame state (Bowling-OO frame.ts).
+/* Abstract base class for a frame state.
  *
  * C has no classes, so the pattern is spelled out:
  *   - The "class" is a struct whose first member is a pointer to a const vtable.
@@ -19,8 +19,7 @@
 #define FRAME_MAX_ROLLS 2U
 
 /* What roll() did with the pins: kept them (consumed), or passed them on to the next
- * frame. Replaces the original's `number | null` return, where null meant "consumed".
- * `pins` is meaningful only when !consumed. */
+ * frame. `pins` is meaningful only when !consumed. */
 typedef struct {
     bool consumed;
     uint8_t pins;

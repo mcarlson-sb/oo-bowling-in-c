@@ -1,13 +1,13 @@
 #ifndef FRAME_CONTEXT_H
 #define FRAME_CONTEXT_H
 
-/* The State-pattern context (Bowling-OO frame-context.ts). Holds the frame's current
- * state and delegates roll() and score() to it.
+/* The State-pattern context: one per frame. Holds the frame's current state and forwards
+ * each call to it.
  *
- * TypeScript creates each new state with `new`. With no heap, the context owns the storage
- * for its states and hands it out when a state changes. The struct is defined here, not
- * hidden, so Game can hold contexts by value. The header is still private to the library
- * (src/, not include/). */
+ * There is no heap, so the context owns storage for every state it can be in and hands
+ * that storage out when the state changes. The struct is defined here, not hidden, so Game
+ * can hold contexts by value. The header is still private to the library (src/, not
+ * include/). */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -30,11 +30,9 @@ typedef struct FrameContext {
 void FrameContext_Init(FrameContext *self);
 void FrameContext_InitTenth(FrameContext *self);
 
-/* Stand-in for `new StrikeFrame(context)`. */
+/* Factories for the next state. Each builds the state in this context's own storage and
+ * returns it, ready for FrameContext_SetState. */
 Frame *FrameContext_NewStrikeFrame(FrameContext *self);
-
-/* Stand-in for `new SpareFrame(context, rolls)`: builds the state in this context's own
- * storage and returns it, ready for FrameContext_SetState. */
 Frame *FrameContext_NewSpareFrame(FrameContext *self, const uint8_t *rolls, uint8_t roll_count);
 
 void FrameContext_SetState(FrameContext *self, Frame *frame_state);

@@ -1,7 +1,8 @@
 #ifndef REGULAR_FRAME_H
 #define REGULAR_FRAME_H
 
-/* The state every frame starts in (Bowling-OO regular-frame.ts). */
+/* The state every frame except the tenth starts in: rolls that are neither a strike nor a
+ * spare. */
 
 #include "frame.h"
 

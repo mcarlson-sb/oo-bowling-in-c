@@ -1,7 +1,7 @@
 #ifndef STRIKE_FRAME_H
 #define STRIKE_FRAME_H
 
-/* A frame whose first roll knocked down all ten pins (Bowling-OO strike-frame.ts). */
+/* A frame whose first roll knocked down all ten pins. */
 
 #include "frame.h"
 

@@ -9,8 +9,7 @@
  * so a game never needs more. */
 #define GAME_FRAMES 10U
 
-/* Games available at once. Stands in for `new GameService()`: no heap, so games come from
- * a fixed pool. */
+/* Games available at once. There is no heap, so games come from a fixed pool. */
 #define GAME_POOL_SIZE 2U
 
 struct Game {

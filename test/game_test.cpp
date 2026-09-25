@@ -1,4 +1,5 @@
-/* Port of Bowling-OO game.service.spec.ts. Test names and order follow the spec. */
+/* Host tests for the Game API, one behavior per test. A frame scores 0 until it is
+ * complete, so a strike or spare adds nothing until its bonus rolls are in. */
 #include <gtest/gtest.h>
 
 #include "game.h"
@@ -10,6 +11,8 @@ protected:
     void SetUp() override { game = Game_Create(); }
     void TearDown() override { Game_Destroy(game); }
 };
+
+/* ---- Scoring ---------------------------------------------------------------------------- */
 
 TEST_F(GameTest, should_be_created)
 {
@@ -101,7 +104,7 @@ TEST_F(GameTest, should_score_correctly_with_a_gutter_ball)
 
 TEST_F(GameTest, should_score_a_full_game_correctly)
 {
-    /* Same rolls and running totals as the spec, one row per roll. */
+    /* The running total after every roll, one row per roll. */
     const struct {
         uint8_t pins;
         uint16_t expected_score;
@@ -117,10 +120,9 @@ TEST_F(GameTest, should_score_a_full_game_correctly)
     }
 }
 
-/* ---- C-specific: end of game ------------------------------------------------------------
- * TypeScript grows its frames array without limit. With no heap, the C version has exactly
- * ten frames, so a roll after the game is over must be reported, not written out of
- * bounds. */
+/* ---- End of game ------------------------------------------------------------------------
+ * A game holds exactly ten frames, with no heap. A roll after the game is over is
+ * reported, not written out of bounds, and leaves the game unchanged. */
 
 TEST_F(GameTest, should_score_a_perfect_game_and_reject_a_13th_roll)
 {
@@ -133,8 +135,8 @@ TEST_F(GameTest, should_score_a_perfect_game_and_reject_a_13th_roll)
     EXPECT_EQ(300U, Game_Score(game));
 }
 
-/* ---- C-specific: game storage -----------------------------------------------------------
- * `new GameService()` becomes a fixed pool of games. */
+/* ---- Game storage -----------------------------------------------------------------------
+ * Games come from a fixed pool, so Game_Create can run out. */
 
 TEST_F(GameTest, should_keep_two_games_independent)
 {
@@ -170,10 +172,9 @@ TEST_F(GameTest, should_ignore_destroying_a_null_game)
     EXPECT_NE(nullptr, game);
 }
 
-/* ---- Design improvement: TenthFrame -----------------------------------------------------
- * design-improvements-BowlingOO.md 2c: the original lets tenth-frame fill balls flow into
- * extra frames. The spec never rolls two fill balls that leave pins standing, so it never
- * sees them closing an 11th frame and being scored a second time. */
+/* ---- Tenth frame ------------------------------------------------------------------------
+ * Fill balls belong to the tenth frame and are scored once. They must not spill into a
+ * frame after it. */
 
 TEST_F(GameTest, should_score_a_tenth_frame_strike_with_open_fill_balls)
 {
@@ -208,8 +209,7 @@ TEST_F(GameTest, should_give_a_tenth_frame_spare_exactly_one_fill_ball)
 }
 
 /* ---- Input validation -------------------------------------------------------------------
- * The original accepts any pin count. An invalid roll is rejected and leaves the game
- * unchanged. */
+ * A roll of more pins than are standing is rejected and leaves the game unchanged. */
 
 TEST_F(GameTest, should_reject_a_roll_of_more_than_ten_pins)
 {
