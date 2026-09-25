@@ -7,8 +7,6 @@
 
 typedef struct {
     Frame base; /* must be first: StrikeFrame "extends" Frame */
-    uint8_t bonus_rolls[2];
-    uint8_t bonus_count;
 } StrikeFrame;
 
 Frame *StrikeFrame_Init(StrikeFrame *self, struct FrameContext *context);

@@ -48,7 +48,7 @@ the next frame.
 | Abstract class, virtual methods | A struct led by a pointer to a `const` table of function pointers (the vtable) | `src/frame.h` |
 | Inheritance | The derived struct holds its base struct as its **first** member, so a `StrikeFrame *` is also a valid `Frame *` | `src/strike_frame.h` |
 | Polymorphism | `Frame_Roll()` calls `self->vtable->roll(self, ...)`, and the right state's code runs | `src/frame.c` |
-| Downcast | Safe only inside a derived class's own methods, which only its vtable calls | `SpareFrame_From()` |
+| Shared base-class method | A plain function on the base struct, with no vtable entry: `Frame_Score()` is written once for all three states | `src/frame.c` |
 | Private methods | `static` functions: visible only in their own `.c` file | every `src/*.c` |
 | `new` | No heap. Each context owns storage for its states, and games come from a fixed pool | `FrameContext_NewStrikeFrame()`, `Game_Create()` |
 

@@ -25,9 +25,11 @@
 struct FrameContext;
 typedef struct Frame Frame;
 
+/* The most bonus rolls any frame earns (a strike's two). */
+#define FRAME_MAX_BONUS_ROLLS 2U
+
 typedef struct {
     int16_t (*roll)(Frame *self, uint8_t pins);
-    uint16_t (*score)(const Frame *self);
 } FrameVtable;
 
 struct Frame {
@@ -35,14 +37,22 @@ struct Frame {
     struct FrameContext *context;
     uint8_t rolls[FRAME_MAX_ROLLS];
     uint8_t roll_count;
+    uint8_t bonus_rolls[FRAME_MAX_BONUS_ROLLS];
+    uint8_t bonus_count; /* 0 for a RegularFrame, which earns no bonus */
     bool open;
 };
 
 /* Constructor for the base part; called by each derived class's constructor. */
 void Frame_Init(Frame *self, const FrameVtable *vtable, struct FrameContext *context);
 
-/* Virtual dispatch. */
+/* Virtual: each state rolls differently. */
 int16_t Frame_Roll(Frame *self, uint8_t pins);
+
+/* Records a bonus roll. For derived classes only. */
+void Frame_AddBonusRoll(Frame *self, uint8_t pins);
+
+/* Not virtual: every state scores the same way, as its rolls plus its bonus rolls, and 0
+ * while the frame is still open. */
 uint16_t Frame_Score(const Frame *self);
 
 #endif /* FRAME_H */
