@@ -7,6 +7,8 @@
 
 typedef struct {
     Frame base; /* must be first: SpareFrame "extends" Frame */
+    uint8_t bonus_rolls[1];
+    uint8_t bonus_count;
 } SpareFrame;
 
 /* The TypeScript constructor keeps a reference to the RegularFrame's rolls array. Here the

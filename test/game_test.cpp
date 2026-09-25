@@ -57,3 +57,11 @@ TEST_F(GameTest, should_score_a_spare_as_open)
     Game_Roll(game, 2U);
     EXPECT_EQ(0U, Game_Score(game));
 }
+
+TEST_F(GameTest, should_score_a_closed_spare_roll_8_2_1)
+{
+    Game_Roll(game, 8U);
+    Game_Roll(game, 2U);
+    Game_Roll(game, 1U);
+    EXPECT_EQ(11U, Game_Score(game));
+}
