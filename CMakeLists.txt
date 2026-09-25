@@ -26,6 +26,7 @@ add_library(bowling STATIC
     src/game.c
     src/regular_frame.c
     src/roll_list.c
+    src/slot_pool.c
     src/spare_frame.c
     src/strike_frame.c
     src/tenth_frame.c
@@ -47,10 +48,12 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 add_executable(bowling_tests
     test/roll_list_test.cpp
+    test/slot_pool_test.cpp
     test/game_test.cpp
 )
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
-# roll_list_test.cpp tests a private type directly, so it needs the private headers.
+# roll_list_test.cpp and slot_pool_test.cpp test private types directly, so they need the
+# private headers.
 target_include_directories(bowling_tests PRIVATE src)
 target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 
