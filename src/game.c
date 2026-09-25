@@ -6,8 +6,8 @@
 
 #include "frame_context.h"
 
-/* Frames in a game of bowling. The last one is a TenthFrame, which keeps its own fill balls,
- * so a game never needs more. */
+/* Frames in a game of bowling. The last one keeps its own fill balls, so a game never needs
+ * more. */
 #define GAME_FRAMES 10U
 
 /* Games available at once. There is no heap, so games come from a fixed pool. */
