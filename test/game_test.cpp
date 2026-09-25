@@ -41,3 +41,12 @@ TEST_F(GameTest, should_score_5_from_rolls_2_3_4)
     Game_Roll(game, 4U);
     EXPECT_EQ(5U, Game_Score(game));
 }
+
+TEST_F(GameTest, should_score_14_from_two_closed_frames_rolls_2_3_4_5)
+{
+    Game_Roll(game, 2U);
+    Game_Roll(game, 3U);
+    Game_Roll(game, 4U);
+    Game_Roll(game, 5U);
+    EXPECT_EQ(14U, Game_Score(game));
+}
