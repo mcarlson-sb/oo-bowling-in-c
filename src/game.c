@@ -1,5 +1,6 @@
 #include "game.h"
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -49,7 +50,9 @@ static void Game_AddNewFrame(Game *game, uint8_t pins)
     } else {
         FrameContext_Init(new_frame);
     }
-    (void)FrameContext_Roll(new_frame, pins);
+    const RollResult result = FrameContext_Roll(new_frame, pins);
+    assert(result.consumed); /* a new frame always keeps its first roll */
+    (void)result;            /* used only by the assert, which NDEBUG removes */
     game->frame_count++;
 }
 
