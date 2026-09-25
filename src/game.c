@@ -27,7 +27,7 @@ static bool Game_IsOver(const Game *game)
            FrameContext_IsComplete(&game->frames[GAME_FRAMES - 1U]);
 }
 
-static bool Game_IsFirstFrame(const Game *game)
+static bool Game_HasNoFrames(const Game *game)
 {
     return game->frame_count == 0U;
 }
@@ -36,7 +36,7 @@ static bool Game_IsFirstFrame(const Game *game)
  * ten pins standing. */
 static uint8_t Game_PinsStanding(const Game *game)
 {
-    if (Game_IsFirstFrame(game)) {
+    if (Game_HasNoFrames(game)) {
         return FRAME_ALL_PINS;
     }
     return FrameContext_PinsStanding(&game->frames[game->frame_count - 1U]);
