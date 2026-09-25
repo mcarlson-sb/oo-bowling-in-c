@@ -98,3 +98,21 @@ TEST_F(GameTest, should_score_correctly_with_a_gutter_ball)
     Game_Roll(game, 2U);
     EXPECT_EQ(12U, Game_Score(game));
 }
+
+TEST_F(GameTest, should_score_a_full_game_correctly)
+{
+    /* Same rolls and running totals as the spec, one row per roll. */
+    const struct {
+        uint8_t pins;
+        uint16_t expected_score;
+    } rolls[] = {
+        {10U, 0U},   {9U, 0U},    {1U, 20U},   {5U, 35U},   {5U, 35U},   {7U, 52U},
+        {2U, 61U},   {10U, 61U},  {10U, 61U},  {10U, 91U},  {9U, 120U},  {0U, 148U},
+        {8U, 148U},  {2U, 148U},  {9U, 167U},  {1U, 167U},  {10U, 187U},
+    };
+
+    for (const auto &roll : rolls) {
+        Game_Roll(game, roll.pins);
+        EXPECT_EQ(roll.expected_score, Game_Score(game)) << "after rolling " << +roll.pins;
+    }
+}
