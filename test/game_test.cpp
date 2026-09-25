@@ -15,3 +15,8 @@ TEST_F(GameTest, should_be_created)
 {
     EXPECT_NE(nullptr, game);
 }
+
+TEST_F(GameTest, should_get_a_score_of_0_from_a_new_game)
+{
+    EXPECT_EQ(0U, Game_Score(game));
+}

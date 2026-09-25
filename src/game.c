@@ -15,3 +15,9 @@ void Game_Destroy(Game *game)
 {
     (void)game;
 }
+
+uint16_t Game_Score(const Game *game)
+{
+    (void)game;
+    return 0U;
+}
