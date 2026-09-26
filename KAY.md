@@ -179,11 +179,14 @@ except `RollList` and `SlotPool`:
 Both are real improvements, but small ones. Neither changes any behavior a test can see.
 
 **What feature would pull it in.** One whose validity can't be expressed as "no more than the
-pins standing": a validity rule only the frame can know. Examples would be a variant with
-fouls (a roll that counts as 0 but still uses up a ball), or a caller-supplied frame type
-with rules of its own (candlepin's three balls). Then `Game` couldn't ask a question with a
-fixed answer shape, and telling the frame would be the only honest design. No such feature
-is in this brief.
+pins standing": a validity rule only the frame can know. The strong example is a
+caller-supplied frame type that changes a frame's *structure*, such as candlepin's three balls
+a frame. Then `Game` couldn't ask a question with a fixed answer shape, and telling the frame
+would be the only honest design. No such feature is in this brief.
+
+*Corrected after review:* an earlier draft also gave fouls as an example. That was wrong, and
+untested. A foul counts as 0 and still uses up a ball, and a rule at the door can do that if
+the caller's input says "foul". It changes the API, not where the rule lives.
 
 ### Kay's three properties
 
