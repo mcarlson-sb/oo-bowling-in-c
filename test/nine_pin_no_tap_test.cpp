@@ -39,3 +39,9 @@ TEST_F(NinePinNoTapTest, should_score_a_first_ball_nine_as_a_strike)
     RollAll({9U, 3U, 4U});
     EXPECT_EQ(24U, Game_Score(game)); /* (10 + 3 + 4) + (3 + 4) */
 }
+
+TEST_F(NinePinNoTapTest, should_count_a_no_tap_strike_as_ten_in_an_earlier_strikes_bonus)
+{
+    RollAll({10U, 9U, 3U, 4U});
+    EXPECT_EQ(47U, Game_Score(game)); /* (10 + 10 + 3) + (10 + 3 + 4) + (3 + 4) */
+}
