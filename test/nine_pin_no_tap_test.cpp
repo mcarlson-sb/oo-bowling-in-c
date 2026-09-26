@@ -55,6 +55,12 @@ TEST_F(NinePinNoTapTest, should_count_no_tap_strikes_in_the_tenth_frames_fill_ba
     EXPECT_EQ(30U, Game_Score(game));
 }
 
+TEST_F(NinePinNoTapTest, should_not_count_5_then_4_as_a_spare_under_a_first_ball_rule)
+{
+    RollAll({5U, 4U, 3U});
+    EXPECT_EQ(9U, Game_Score(game)); /* an open 5 + 4; the 3 starts frame 2 */
+}
+
 /* ---- A rule is caller code, so the library can't take it on trust ----------------------- */
 
 namespace {
