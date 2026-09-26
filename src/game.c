@@ -94,6 +94,9 @@ Game *Game_Create(void)
 
 Game *Game_CreateWithRule(PinCountRule count_pins)
 {
+    if (count_pins == NULL) {
+        return NULL;
+    }
     uint8_t slot = 0U;
     if (!SlotPool_Acquire(&s_pool, &slot)) {
         return NULL;

@@ -77,3 +77,9 @@ TEST(BrokenRuleTest, should_reject_a_roll_its_rule_counts_as_more_pins_than_were
     EXPECT_EQ(GAME_OK, Game_Roll(game, 4U));
     EXPECT_EQ(7U, Game_Score(game));
 }
+
+TEST(BrokenRuleTest, should_refuse_to_create_a_game_without_a_rule)
+{
+    GameHandle owner{Game_CreateWithRule(nullptr), &Game_Destroy};
+    EXPECT_EQ(nullptr, owner.get());
+}

@@ -35,7 +35,8 @@ typedef Pins (*PinCountRule)(Pins pins_standing, Pins pins_down);
 /* A standard game. */
 Game *Game_Create(void);
 
-/* A game whose rolls are counted by `count_pins`. */
+/* A game whose rolls are counted by `count_pins`. NULL if `count_pins` is NULL, or if no
+ * game is free. */
 Game *Game_CreateWithRule(PinCountRule count_pins);
 
 void Game_Destroy(Game *game);
