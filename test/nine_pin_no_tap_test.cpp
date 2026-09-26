@@ -54,3 +54,26 @@ TEST_F(NinePinNoTapTest, should_count_no_tap_strikes_in_the_tenth_frames_fill_ba
     RollAll({10U, 9U, 9U}); /* in standard bowling the second 9 would be too many pins */
     EXPECT_EQ(30U, Game_Score(game));
 }
+
+/* ---- A rule is caller code, so the library can't take it on trust ----------------------- */
+
+namespace {
+
+/* A buggy rule: counts a strike as more pins than there are. */
+Pins CountsTooMany(Pins pins_standing, Pins pins_down)
+{
+    return (pins_down == pins_standing) ? static_cast<Pins>(pins_standing + 1U) : pins_down;
+}
+
+} // namespace
+
+TEST(BrokenRuleTest, should_reject_a_roll_its_rule_counts_as_more_pins_than_were_standing)
+{
+    GameHandle owner{Game_CreateWithRule(&CountsTooMany), &Game_Destroy};
+    Game *game = owner.get();
+
+    EXPECT_EQ(GAME_ERR_RULE_OUT_OF_RANGE, Game_Roll(game, 10U));
+    EXPECT_EQ(GAME_OK, Game_Roll(game, 3U)); /* the game is unchanged, and still playable */
+    EXPECT_EQ(GAME_OK, Game_Roll(game, 4U));
+    EXPECT_EQ(7U, Game_Score(game));
+}

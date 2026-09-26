@@ -20,12 +20,16 @@ typedef enum {
     /* More pins than are standing. The roll is rejected and the game is left unchanged. */
     GAME_ERR_INVALID_PINS,
     /* The game handle is NULL, for example because Game_Create ran out of games. */
-    GAME_ERR_NULL_GAME
+    GAME_ERR_NULL_GAME,
+    /* The game's PinCountRule counted the roll as more pins than were standing. The roll
+     * is rejected and the game is left unchanged. */
+    GAME_ERR_RULE_OUT_OF_RANGE
 } GameStatus;
 
 /* How many pins a roll counts as, given how many were standing before it and how many it
  * knocked down. A caller supplies one to play a variant of the game; standard bowling
- * counts exactly the pins that fell. */
+ * counts exactly the pins that fell. It must return no more than pins_standing; Game_Roll
+ * rejects a roll whose count is out of range (GAME_ERR_RULE_OUT_OF_RANGE). */
 typedef Pins (*PinCountRule)(Pins pins_standing, Pins pins_down);
 
 /* A standard game. */

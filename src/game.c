@@ -142,6 +142,9 @@ GameStatus Game_Roll(Game *game, Pins pins)
     }
 
     const Pins pins_counted = game->count_pins(pins_standing, pins);
+    if (pins_counted > pins_standing) {
+        return GAME_ERR_RULE_OUT_OF_RANGE; /* the rule is caller code: check it, don't trust it */
+    }
     const RollResult result = Game_ApplyPinsToFrames(game, pins_counted);
     if (!result.consumed) {
         Game_AddNewFrame(game, result.pins);
