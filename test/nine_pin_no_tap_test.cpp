@@ -45,3 +45,12 @@ TEST_F(NinePinNoTapTest, should_count_a_no_tap_strike_as_ten_in_an_earlier_strik
     RollAll({10U, 9U, 3U, 4U});
     EXPECT_EQ(47U, Game_Score(game)); /* (10 + 10 + 3) + (10 + 3 + 4) + (3 + 4) */
 }
+
+TEST_F(NinePinNoTapTest, should_count_no_tap_strikes_in_the_tenth_frames_fill_balls)
+{
+    for (int i = 0; i < 18; i++) {
+        EXPECT_EQ(GAME_OK, Game_Roll(game, 0U));
+    }
+    RollAll({10U, 9U, 9U}); /* in standard bowling the second 9 would be too many pins */
+    EXPECT_EQ(30U, Game_Score(game));
+}
