@@ -23,12 +23,13 @@ Each layer talks only to the one below it. Only the top layer is visible to call
 ```
    caller (any C code)
         |
-        |  Game_Create  Game_Roll  Game_Score  Game_Destroy
+        |  Game_Create  Game_CreateWithRule  Game_Roll  Game_Score  Game_Destroy
         v
 +--------------------------------------------------------------+
 |  Game                                   include/game.h       |  public
 |  opaque handle, pool of 2 games,        src/game.c           |
-|  runs each roll along the chain of frames                    |
+|  counts each roll with its PinCountRule, then runs it along  |
+|  the chain of frames                                         |
 +--------------------------------------------------------------+
         |  FrameContext_Roll / _Score / _IsComplete / _PinsStanding
         v
@@ -335,7 +336,7 @@ Both tables are `static const` in `src/frame_context.c`; the header only forward
 
 ## 8. A roll's journey
 
-**`Game_Roll`, step by step.** All three checks run before any frame sees the roll, so a
+**`Game_Roll`, step by step.** All four checks run before any frame sees the roll, so a
 rejected roll changes nothing.
 
 ```
@@ -345,8 +346,13 @@ Game_Roll(game, pins)
    |-- tenth frame complete?              --yes--> GAME_ERR_GAME_OVER
    |-- pins > pins standing?              --yes--> GAME_ERR_INVALID_PINS
    |      (asks the latest frame: Frame_PinsStanding)
+   |
+   |   counted = game->count_pins(pins standing, pins)
+   |      (the game's PinCountRule: standard, or one the caller supplied)
+   |
+   |-- counted > pins standing?           --yes--> GAME_ERR_RULE_OUT_OF_RANGE
    v
-Game_ApplyPinsToFrames: offer the roll to each frame, oldest first
+Game_ApplyPinsToFrames: offer the counted roll to each frame, oldest first
    |
    |   frame 1 --> frame 2 --> ... --> latest frame
    |     each one either keeps the roll (consumed: stop)
@@ -360,6 +366,11 @@ GAME_OK
 
 This is Chain of Responsibility, with a twist: a strike or spare frame both *acts on* a
 roll (records it as a bonus) and *passes it on*.
+
+**Why the rule is applied at the door.** Counting a roll once, before any frame sees it, means
+every frame sees the same value. In nine-pin no-tap a first-ball 9 counts as a strike, so an
+earlier strike collecting its bonus must also receive a 10, not a 9. The frames never know
+that a rule exists.
 
 **Worked example: rolls 10, 3, 4.** `RollResult` is what each frame hands back.
 
@@ -408,6 +419,10 @@ test/game_test.cpp  (black box)            white box: private types, from src/
             v                                            v
    public API only, like a real caller       each private type, directly
 ```
+
+`test/nine_pin_no_tap_test.cpp` is a black-box test too: a client that plays nine-pin no-tap
+by passing its own `PinCountRule` to `Game_CreateWithRule`, plus two checks on rules that
+misbehave (one that counts too many pins, and none at all).
 
 Every test runs in three builds, debug, release (`NDEBUG`) and UBSan, with warnings as
 errors. `GameHandle` (a `std::unique_ptr` with `Game_Destroy` as its deleter) makes sure no

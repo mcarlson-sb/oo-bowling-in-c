@@ -337,7 +337,9 @@ same code in every frame, and never needs to know which frame it's in.
 ## 5. The complete transition table
 
 The event is **a roll of `p` pins**. By the time a state sees it, `Game_Roll` has already
-rejected invalid rolls: a game that is over, and more pins than are standing.
+rejected invalid rolls (a game that is over, more pins than are standing), and counted the
+roll with the game's `PinCountRule`. So `p` is the *counted* value: under a nine-pin no-tap
+rule, a first-ball 9 arrives as a 10, and the states never know a rule exists.
 
 | Current state | Condition | Next state | Recorded as | Returns |
 |---|---|---|---|---|
@@ -390,6 +392,7 @@ The same tables, as diagrams:
 |---|---|
 | A roll after the tenth frame is complete | `Game_Roll` returns `GAME_ERR_GAME_OVER` before any state sees it |
 | More pins than are standing | `Game_Roll` returns `GAME_ERR_INVALID_PINS` before any state sees it |
+| A caller's rule counting a roll as more pins than were standing | `Game_Roll` returns `GAME_ERR_RULE_OUT_OF_RANGE` before any state sees it |
 | A roll reaching a complete frame | `Frame_Roll` passes it on (section 4.5) |
 | A state recording more rolls than a frame holds | `RollList_Add` refuses it, and stops a debug build at an assert |
 | A spare on the first roll | Can't happen: a first roll of 10 is a strike, and `IsStrike` is checked first |
