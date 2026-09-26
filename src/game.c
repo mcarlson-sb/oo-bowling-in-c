@@ -17,6 +17,7 @@
 struct Game {
     FrameContext frames[GAME_FRAMES];
     uint8_t frame_count;
+    PinCountRule count_pins; /* how this game counts a roll: see Game_CreateWithRule */
 };
 
 /* The games themselves, and the pool that tracks which are in use. The pool's bookkeeping
@@ -79,7 +80,19 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
     return result;
 }
 
+/* Standard bowling: a roll counts as the pins it knocked down. */
+static Pins Game_CountPinsDown(Pins pins_standing, Pins pins_down)
+{
+    (void)pins_standing;
+    return pins_down;
+}
+
 Game *Game_Create(void)
+{
+    return Game_CreateWithRule(&Game_CountPinsDown);
+}
+
+Game *Game_CreateWithRule(PinCountRule count_pins)
 {
     uint8_t slot = 0U;
     if (!SlotPool_Acquire(&s_pool, &slot)) {
@@ -87,6 +100,7 @@ Game *Game_Create(void)
     }
     Game *game = &s_games[slot];
     game->frame_count = 0U;
+    game->count_pins = count_pins;
     return game;
 }
 
@@ -127,7 +141,8 @@ GameStatus Game_Roll(Game *game, Pins pins)
         return GAME_ERR_INVALID_PINS;
     }
 
-    const RollResult result = Game_ApplyPinsToFrames(game, pins);
+    const Pins pins_counted = game->count_pins(pins_standing, pins);
+    const RollResult result = Game_ApplyPinsToFrames(game, pins_counted);
     if (!result.consumed) {
         Game_AddNewFrame(game, result.pins);
     }

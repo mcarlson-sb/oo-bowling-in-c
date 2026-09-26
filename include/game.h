@@ -23,7 +23,17 @@ typedef enum {
     GAME_ERR_NULL_GAME
 } GameStatus;
 
+/* How many pins a roll counts as, given how many were standing before it and how many it
+ * knocked down. A caller supplies one to play a variant of the game; standard bowling
+ * counts exactly the pins that fell. */
+typedef Pins (*PinCountRule)(Pins pins_standing, Pins pins_down);
+
+/* A standard game. */
 Game *Game_Create(void);
+
+/* A game whose rolls are counted by `count_pins`. */
+Game *Game_CreateWithRule(PinCountRule count_pins);
+
 void Game_Destroy(Game *game);
 GameStatus Game_Roll(Game *game, Pins pins);
 Score Game_Score(const Game *game);
