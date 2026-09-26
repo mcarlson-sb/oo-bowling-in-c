@@ -136,3 +136,89 @@ remove. If the newest frame validates rolls itself, the rule can no longer be ap
 door by `Game`. The newest frame would have to apply it, so frames would need to know the
 rule. That, not this feature, is what might finally pull in a `Rules` object that frames
 consult. Whether it should is phase 2's question.
+
+---
+
+## Phase 2: tell, don't ask. Not done, deliberately
+
+**The brief.** Remove `Game`'s queries about pins standing and whether a frame is complete.
+Give each roll to the newest frame first; that frame validates the roll itself and passes
+bonus pins back to the frames before it, and completed frames ask their `Rules` for the next
+frame. Do it only if phase 1's clean-up makes it natural; otherwise explain why.
+
+**Decision: not done.** It isn't natural, and nothing pulls it in:
+
+- **No failing test asks for it.** Every behavior in the suite already works, so this would
+  be a restructuring with no feature behind it. That's exactly the machinery-ahead-of-need
+  that Beck's discipline rules out.
+- **Phase 1 moved the other way.** `Game_Roll` now uses the answer to "how many pins are
+  standing?" three times: to validate the roll (`pins > pins_standing`), as input to the
+  caller's rule (`count_pins(pins_standing, pins)`), and to check the rule's result
+  (`pins_counted > pins_standing`). The no-tap feature was easy *because* `Game` can ask that
+  question at the door. Removing the question means moving the rule into the frames.
+
+### What it would have taken
+
+Measured against the current code, telling instead of asking would change every module
+except `RollList` and `SlotPool`:
+
+| Change | Where | Why |
+|---|---|---|
+| `RollResult` gains a third outcome, *rejected*, with a reason | `frame.h`, every state | If the newest frame validates, it must be able to say no |
+| All five states' `roll()` validate their own roll and apply the rule | `regular_frame.c`, `strike_frame.c`, `spare_frame.c`, `tenth_frame.c` | Validation moves from `Game` into the frame that knows its rack |
+| The game's rule reaches every frame | `FrameContext_Init`, and the `roll()` signature or `frame_transition.h` | The frame that keeps the roll now has to count it |
+| Rolls travel newest first, then *back* to earlier frames | `game.c`, or a link from each frame to the one before | Either `Game` still walks the frames (so it's still orchestrating), or each frame points at its predecessor: the kind of back-pointer that smell #5 removed |
+| "Completed frames ask their `Rules` for the next frame" | a new `Rules` factory with access to `Game`'s frame storage and the frame number | Creation moves out of `Game`. The rules object would need the storage, and to know which frame is the tenth. That is the public frame protocol phase 1's guess predicted, now pulled in by a principle, not a feature |
+| Undo a rejected new frame | `game.c` | Today "a rejected roll changes nothing" holds because every check runs before any frame acts. Newest-first still gives that for most rolls, but a roll that opens a new frame and is then rejected by it would need the new frame taken back |
+
+**What it would buy.**
+- `Game` would stop enforcing a frame's rule itself. The `pins > pins_standing` check is
+  mild feature envy: `Game` using a frame's data to make the frame's decision.
+- `pins_standing` could become private to the states.
+
+Both are real improvements, but small ones. Neither changes any behavior a test can see.
+
+**What feature would pull it in.** One whose validity can't be expressed as "no more than the
+pins standing": a validity rule only the frame can know. Examples would be a variant with
+fouls (a roll that counts as 0 but still uses up a ball), or a caller-supplied frame type
+with rules of its own (candlepin's three balls). Then `Game` couldn't ask a question with a
+fixed answer shape, and telling the frame would be the only honest design. No such feature
+is in this brief.
+
+### Kay's three properties
+
+Nothing moved: no code changed in this phase.
+
+Had it been done, **messaging** would have moved a little in spirit, with `Game` telling where
+it now asks. It would still be synchronous C calls with a fixed signature, so not messages in
+Kay's sense. **Hiding** would have improved slightly (`pins_standing` private to the states).
+**Late binding:** no change.
+
+### Costs
+
+None this phase. The tests, the build and the design are unchanged, and nothing in the
+README or ARCHITECTURE.md needed updating.
+
+### The strongest argument against stopping here
+
+Tell-don't-ask is a sound principle, and `Game` *is* making a frame's decision with a frame's
+data. Declining it leaves a real, if small, smell. The counter-argument: fixing that smell
+means reshaping the core protocol (a rejection outcome, the rule inside the frames, a reversed
+roll order, and frame creation moved out of `Game`) with no test that fails today and passes
+afterwards. Here the principle and the discipline point different ways, and the brief puts the
+discipline first.
+
+### Would a `switch` be simpler?
+
+Not the relevant question this phase: the asking design is already the simpler one. The
+comparison worth recording is that the *current* code (`Game` asks the newest frame, then
+decides) is simpler than tell-don't-ask would be, for the features we have.
+
+### A note for phase 3
+
+The live scoreboard needs to know *when a frame completes*. Today only the frame knows that,
+at the moment it happens: inside a state's `roll()`, when it calls `Frame_Complete`. `Game`
+could detect it after the fact by comparing frames' `complete` flags before and after each
+roll, but that's asking again. So phase 3 may pull in the "frames tell" direction on its own:
+a frame, or its context, telling an observer that it completed. Phase 2 declined to force
+that shape; if phase 3 needs it, the test will say so.
