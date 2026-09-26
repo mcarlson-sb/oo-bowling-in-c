@@ -122,7 +122,8 @@ GameStatus Game_Roll(Game *game, Pins pins)
     if (Game_IsOver(game)) {
         return GAME_ERR_GAME_OVER;
     }
-    if (pins > Game_PinsStanding(game)) {
+    const Pins pins_standing = Game_PinsStanding(game);
+    if (pins > pins_standing) {
         return GAME_ERR_INVALID_PINS;
     }
 
