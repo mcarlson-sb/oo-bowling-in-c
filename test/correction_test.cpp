@@ -1,4 +1,6 @@
 /* A scorer fixing a roll entered wrongly: the game rescores everything after it. */
+#include <algorithm>
+#include <cstddef>
 #include <map>
 #include <random>
 #include <utility>
@@ -395,4 +397,85 @@ TEST(EditRollsTest, should_refuse_new_rolls_given_as_a_null_pointer)
 
     EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, 1U, 1U, nullptr, 1U));
     EXPECT_EQ(7U, Game_Score(game));
+}
+
+namespace {
+
+/* The same property for any edit: a random range of rolls (possibly none) replaced by up to
+ * two random rolls (possibly none), so replacing, inserting and deleting are all covered,
+ * including appending past the last roll and deleting every roll. A fresh game, fed the
+ * edited rolls, is the judge, as for corrections. */
+void CheckEditsAgainstFreshGames(GameHandle (*make_game)(), unsigned seed)
+{
+    std::mt19937 random(seed);
+    int edits_accepted = 0;
+    int edits_rejected = 0;
+    for (int trial = 0; trial < 3000; trial++) {
+        GameHandle owner = make_game();
+        Game *game = owner.get();
+        KeyedScoreboard scoreboard;
+        ASSERT_TRUE(Game_OnFrameChanged(game, &KeyedScoreboard_FrameChanged, &scoreboard));
+
+        std::vector<Pins> rolls;
+        const int length = 1 + static_cast<int>(random() % 21U);
+        for (int tries = 0; (static_cast<int>(rolls.size()) < length) && (tries < 200); tries++) {
+            const Pins pins = static_cast<Pins>(random() % 11U);
+            if (Game_Roll(game, pins) == GAME_OK) {
+                rolls.push_back(pins);
+            }
+        }
+
+        const auto first = static_cast<size_t>(random() % (rolls.size() + 1U)); /* index */
+        const size_t removable = std::min<size_t>(2U, rolls.size() - first);
+        const auto removed = static_cast<size_t>(random() % (removable + 1U));
+        std::vector<Pins> new_pins(random() % 3U);
+        for (Pins &pins : new_pins) {
+            pins = static_cast<Pins>(random() % 11U);
+        }
+        std::vector<Pins> edited_rolls = rolls;
+        edited_rolls.erase(edited_rolls.begin() + static_cast<std::ptrdiff_t>(first),
+                           edited_rolls.begin() + static_cast<std::ptrdiff_t>(first + removed));
+        edited_rolls.insert(edited_rolls.begin() + static_cast<std::ptrdiff_t>(first),
+                            new_pins.begin(), new_pins.end());
+
+        GameHandle fresh_owner = make_game();
+        Game *fresh = fresh_owner.get();
+        KeyedScoreboard fresh_scoreboard;
+        ASSERT_TRUE(Game_OnFrameChanged(fresh, &KeyedScoreboard_FrameChanged, &fresh_scoreboard));
+        bool fresh_accepts_all = true;
+        for (const Pins pins : edited_rolls) {
+            fresh_accepts_all = fresh_accepts_all && (Game_Roll(fresh, pins) == GAME_OK);
+        }
+
+        const std::map<int, int> scores_before = scoreboard.scores;
+        const Score score_before = Game_Score(game);
+        const bool accepted =
+            Game_EditRolls(game, static_cast<uint8_t>(first + 1U), static_cast<uint8_t>(removed),
+                           new_pins.data(), static_cast<uint8_t>(new_pins.size())) == GAME_OK;
+        ASSERT_EQ(fresh_accepts_all, accepted) << "trial " << trial;
+
+        if (accepted) {
+            edits_accepted++;
+            ASSERT_EQ(fresh_scoreboard.scores, scoreboard.scores) << "trial " << trial;
+            ASSERT_EQ(Game_Score(fresh), Game_Score(game)) << "trial " << trial;
+        } else {
+            edits_rejected++;
+            ASSERT_EQ(scores_before, scoreboard.scores) << "trial " << trial;
+            ASSERT_EQ(score_before, Game_Score(game)) << "trial " << trial;
+        }
+    }
+    EXPECT_GT(edits_accepted, 500);
+    EXPECT_GT(edits_rejected, 500);
+}
+
+} // namespace
+
+TEST(EditRollsPropertyTest, should_leave_listeners_as_a_fresh_game_of_the_edited_rolls_would)
+{
+    CheckEditsAgainstFreshGames(&MakeGame, 20260928U);
+}
+
+TEST(EditRollsPropertyTest, should_hold_under_the_no_tap_rule_too)
+{
+    CheckEditsAgainstFreshGames([] { return MakeGameWithRule(&NinePinNoTap); }, 20260929U);
 }
