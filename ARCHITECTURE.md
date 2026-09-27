@@ -58,8 +58,33 @@ Each layer talks only to the one below it. Only the top layer is visible to call
 |  up to two pin counts, bounds-checked                        |
 +--------------------------------------------------------------+
 
-  Pins, Score (include/bowling_types.h) are used at every layer.
+  Pins, Score (include/bowling_types.h) are used at every layer, and RollNumber and
+  FrameNumber wherever a roll or a frame is numbered from 1.
 ```
+
+**Inside `Game`, beside the frames: two value types.** `Game` holds both by value, as it
+holds its frames, and each has one job that used to be part of `game.c`:
+
+```
++--------------------------------------------------------------+
+|  Game                                   src/game.c           |
+|  the pool, a roll's checks and its way along the frames,     |
+|  replaying the log, and reporting changed frames             |
++--------------------------------------------------------------+
+     |  FrameListeners_Add / _Tell         |  RollLog_Append / _At / _Edit
+     |  / _AreBeingTold                    |
+     v                                     v
++-----------------------------+   +--------------------------------+
+|  FrameListeners  (value)    |   |  RollLog  (value)              |
+|  who to tell about changed  |   |  every roll, as the pins that  |
+|  frames, and whether they   |   |  fell; checks an edit's range  |
+|  are being told right now   |   |  and length, and splices it    |
+|  src/frame_listeners.*      |   |  src/roll_log.*                |
++-----------------------------+   +--------------------------------+
+```
+
+`Game_ReportFrames` is the one bridge between them: it reads the frames and tells the
+listeners. It is the only function that touches both, and it owns `frames_reported`.
 
 **Beside the game: the pinsetter.** The one part of the system that runs on another thread
 (in firmware, an interrupt handler). It never calls the game; the main loop carries each roll
@@ -110,12 +135,15 @@ PRIVATE  src/
 
   frame_transition.h   --> frame.h
 
+  frame_listeners.h --> bowling_types.h, game.h   (public)
+  roll_log.h        --> bowling_types.h, game.h (public), game_limits.h
+
   slot_pool.h                    (standard headers only)
   game_limits.h                  (GAME_MAX_ROLLS; no includes)
   pinsetter_hooks.h --> pinsetter.h  (the overlap check's switch, and a test hook)
 
 Source files that include a header from another module:
-  game.c           --> frame_context.h, game_limits.h, slot_pool.h
+  game.c           --> frame_context.h, frame_listeners.h, roll_log.h, slot_pool.h
   pinsetter.c      --> fault.h, game_limits.h, pinsetter_hooks.h, slot_pool.h
   frame_context.c  --> frame_transition.h
   regular_frame.c  --> frame_transition.h (the one state that switches states)
@@ -200,9 +228,9 @@ the whole game is laid out at compile time. Sizes are from the compiler on a 64-
 (measured with `sizeof` and `offsetof`); a 32-bit MCU, with 4-byte pointers, is smaller.
 
 ```
-s_games[2]                                          2,080 bytes
+s_games[2]                                          2,096 bytes
 +-------------------------------------------------------------+
-| Game [0]                                        1,040 bytes |
+| Game [0]                                        1,048 bytes |
 |  +-------------------------------------------------------+  |
 |  | frames[10]  : FrameContext                 10 x 96    |  |
 |  |  +-------------------------------------------------+  |  |
@@ -219,10 +247,10 @@ s_games[2]                                          2,080 bytes
 |  | frame_count     : uint8_t                             |  |
 |  | count_pins      : PinCountRule      the caller's rule |  |
 |  | frames_reported : uint8_t           told to listeners |  |
-|  | listeners[2]    : FrameChangedListener                |  |
-|  | listener_count  : uint8_t                             |  |
-|  | notifying       : bool              telling listeners |  |
-|  | log             : RollLog           21 pins + a count |  |
+|  | listeners       : FrameListeners          40 bytes    |  |
+|  |   entries[2], count, telling    (callback, context)   |  |
+|  | log             : RollLog                 22 bytes    |  |
+|  |   pins[21], count                                     |  |
 |  +-------------------------------------------------------+  |
 | Game [1]                                                    |
 +-------------------------------------------------------------+
@@ -296,11 +324,10 @@ current_state->vtable->roll(current_state, context, pins)
 The vtable is chosen once, when the state is built, in its `_Init` function:
 
 ```
-Frame *StrikeFrame_Init(StrikeFrame *self)        static const FrameVtable s_vtable = {
-{                                                     .roll          = StrikeFrame_Roll,
-    Frame_Init(&self->base, &s_vtable);  ------>      .pins_standing = Frame_AllPinsStanding,
-    ...                                           };
-}
+Frame *StrikeFrame_Init(StrikeFrame *self)             static const FrameVtable s_vtable = {
+{                                                          .roll          = StrikeFrame_Roll,
+    return Frame_InitStrike(&self->base, &s_vtable);  -->  .pins_standing = Frame_AllPinsStanding,
+}                                                      };
 ```
 
 ---
@@ -409,8 +436,8 @@ Game_ApplyPinsToFrames: offer the counted roll to each frame, oldest first
 nobody kept it?  --yes--> Game_AddNewFrame: start a new frame with this roll
    |
    v
-Game_ReportCompletedFrames: tell each listener about every frame this roll completed,
-   |   oldest first (Game_OnFrameChanged)
+Game_ReportFrames, from the first frame not yet reported: tell each listener
+   |   (FrameListeners_Tell) about every frame this roll completed, oldest first
    v
 GAME_OK
 ```
@@ -443,12 +470,13 @@ Game_EditRolls(game, first_roll, rolls_removed, new_pins, new_count)
    |
    |-- game == NULL?                        --yes--> GAME_ERR_NULL_GAME
    |-- called from inside a listener?       --yes--> GAME_ERR_DURING_NOTIFICATION
-   |-- range not rolls the game has had?    --yes--> GAME_ERR_NO_SUCH_ROLL
+   |
+   |  RollLog_Edit(&game->log, &edit, &edited), the edit's four values as one RollEdit:
+   |-- range not rolls the log has?         --yes--> GAME_ERR_NO_SUCH_ROLL
    |   (starts after the last roll, or new rolls promised, but NULL)
    |-- more than 21 rolls after the edit?   --yes--> GAME_ERR_TOO_MANY_ROLLS
+   |   edited = the rolls before the range, the new rolls, the rolls after it
    v
-build the edited log: the rolls before the range, the new rolls, the rolls after it
-   |
 Game_ApplyEditedLog
    |   saved = game->log             (a copy of plain values: safe, unlike the frames)
    |   game->log = edited
@@ -458,7 +486,7 @@ Game_ApplyEditedLog
    |-- a roll is now impossible?   --yes--> game->log = saved, replay that,
    |                                        and return the impossible roll's status
    v
-Game_ReportCorrection: tell each frame again, oldest first, the final state only
+Game_ReportFrames, from the first frame: tell each frame again, the final state only
    |   a complete frame   --> (number, new score, complete = true)
    |   a reopened frame   --> (number, 0,         complete = false)
    v

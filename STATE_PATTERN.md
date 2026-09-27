@@ -164,11 +164,14 @@ static const FrameVtable s_vtable = {
 
 Frame *StrikeFrame_Init(StrikeFrame *self)
 {
-    Frame_Init(&self->base, &s_vtable);
-    Frame_AddRoll(&self->base, FRAME_ALL_PINS);
-    return &self->base;
+    return Frame_InitStrike(&self->base, &s_vtable);
 }
 ```
+
+What a strike *is*, one roll of all the pins, is the base's to say, once, in
+`Frame_InitStrike`: both strike states, `StrikeFrame` and `TenthStrikeFrame`, build themselves
+with it and differ only in the vtable they pass. The spares do the same with
+`Frame_InitSpare`.
 
 Three C techniques are doing the work here:
 - **`static` functions** can't be called from any other file. The only way to reach

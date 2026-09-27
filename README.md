@@ -346,6 +346,8 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `include/game.h`, `src/game.c` | The public API and the `Game` object: the opaque handle, the pool, the roll chain, the listeners and the mailbox for rolls made from inside them |
 | `include/pinsetter.h`, `src/pinsetter.c` | The pinsetter: a lock-free ring of 21 rolls between the interrupt handler that posts them and the main loop that drains them into a game |
 | `src/game_limits.h` | `GAME_MAX_ROLLS`, shared by the game's roll log and the pinsetter's mailbox |
+| `src/frame_listeners.h/.c` | `FrameListeners`, the value type a game keeps its listeners in, with the flag that refuses changes from inside one |
+| `src/roll_log.h/.c` | `RollLog`, the value type a game keeps every roll in, and `RollEdit`: an edit's checks and splice |
 | `src/pinsetter_hooks.h` | The switch for the pinsetter's debug-only overlap check (`PINSETTER_CHECK_OVERLAP`), and the hook its white-box test uses |
 | `include/fault.h`, `src/fault.c` | `Fault_Stop`, the fail-stop for an error with no safe way on, such as more lanes than pinsetters. The host version writes the reason and calls `abort()`; a target build defines its own, and the linker then leaves this one out |
 | `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |

@@ -25,6 +25,9 @@ machinery is added ahead of a test that needs it.
   no change to the game, because phase 5 had already made the message describe a state. A
   second mailbox, inside the game, was added on principle and taken back out by the method:
   after phase 6, `game.c` is the 344 lines it was before it.
+- **The clean-up after phase 6 took two reasons to change out of `game.c`**, the listeners and
+  the roll log, with no change in behavior: 344 lines to 280. It cost 8 bytes of RAM a game,
+  and it found one stack increase that step-by-step measuring had missed.
 - **The costs landed at the same boundaries.** Every defect class the experiment found sits
   at one of them, and the closed interior never had any:
   - a buggy rule silently corrupting a game;
@@ -1122,7 +1125,7 @@ two producers' posts almost never overlap. With the check, it caught one overlap
 146,000 runs, and that overlap hadn't lost a roll. So the check sees overlaps a score check
 can't, but only when one happens. Recorded as **checked in debug, when posts overlap**.
 
-Still open for the user: when to start the clean-up.
+The clean-up followed, with the user's go: see "The clean-up deferred from phase 6".
 
 ### The debt
 
@@ -1136,7 +1139,161 @@ moved to `game_limits.h`. Counted together, the two boundary files, `game.c`
 and `pinsetter.c`, were 505 lines, 54% of the library at the end of phase 6. Now they are
 510 (344 and 166), 54% of 952: the pinsetter grew by its checks and contracts, and the game
 shrank back to where it started. The boundary is still more than half of the code, and the
-frames, which are the whole design on `main`, are the smaller part.
+frames, which are the whole design on `main`, are the smaller part. (After the clean-up that
+followed, `game.c` is 280 lines: see its own debt section.)
+
+---
+
+## The clean-up deferred from phase 6
+
+**The brief.** A refactoring, with no change in behavior: improve the design against SOLID,
+GRASP, measured coupling and cohesion, and the constitution's Embedded C smells (with Fowler's
+catalogue only where those don't reach). The tests don't change; all four builds stay green
+after every commit; the interrupt path gets no new calls, stack or indirection; and where a
+principle and simplicity disagree, simplicity wins and the disagreement is recorded here.
+Every commit was pushed on its own, so CI, ThreadSanitizer included, ran on each.
+
+### What was done
+
+| Commit | Serves | Smell (constitution's name and law) |
+|---|---|---|
+| `Frame_IsComplete: the context and RegularFrame ask the base, not its field` | Information Expert, encapsulation | Feature Envy / Deep struct navigation (`ENG-3.3`) |
+| `Frame_InitSpare: one place says how a spare is built, for both families` | Information Expert, High Cohesion | Duplicate code (`ENG-3.9`) |
+| `Frame_InitStrike: one place says how a strike is built, for both families` | Information Expert, High Cohesion | Duplicate code (`ENG-3.9`) |
+| `Game_ReportFrames: telling after a roll is telling after an edit, from the first unreported frame` | High Cohesion | Duplicate code (`ENG-3.9`): the same concept, restated |
+| `Extract the listeners from game.c into FrameListeners` | Single responsibility, High Cohesion, Pure Fabrication | Resource-budget drift (`ENG-1.3`), met with `static inline` |
+| `Extract the roll log from game.c into RollLog, with the edit as a RollEdit` | Single responsibility, Information Expert | Data clump (`ENG-3.9`) |
+| `RollNumber and FrameNumber: the numbers that count from 1 get names` | Protected Variations, intent | Primitive obsession (`ENG-3.7`) |
+| `Game_ReportFrames inline: less stack under every listener callback` | Low Coupling's cost, kept in budget | Resource-budget drift (`ENG-1.3`) |
+
+No Fowler smell was needed: each finding had a name in the embedded catalogue.
+
+### Measured: the modules, before and after
+
+Lines in the file (code lines, without comments or blanks), and the project headers each
+includes. Only the files that changed are listed.
+
+| File | Before | After | Includes, after |
+|---|---|---|---|
+| `src/game.c` | 344 (269) | **280 (216)** | `game.h`, `frame_context.h`, `frame_listeners.h`, `roll_log.h`, `slot_pool.h` (was `game_limits.h` in place of the two new ones) |
+| `src/frame_listeners.h/.c` | none | 58 + 21 (33 + 18) | `bowling_types.h`, `game.h` |
+| `src/roll_log.h/.c` | none | 50 + 52 (22 + 45) | `bowling_types.h`, `game.h`, `game_limits.h` |
+| `src/frame.c` | 94 (76) | 115 (94) | unchanged |
+| `src/frame.h` | 119 (49) | 128 (52) | unchanged |
+| `src/spare_frame.c` | 24 (19) | 21 (16) | unchanged |
+| `src/strike_frame.c` | 23 (20) | 21 (18) | unchanged |
+| `src/tenth_frame.c` | 64 (51) | 59 (46) | unchanged |
+| `include/bowling_types.h` | 20 (6) | 27 (8) | none |
+| all of `src/*.c` | 952 | 972 | |
+
+The library grew by 20 lines of `.c` in all: two small modules, each with its own boilerplate,
+in exchange for two reasons to change leaving `game.c`.
+
+### Measured: which of `Game`'s fields each function touches
+
+Before, three groups of fields, and two functions that needed all three:
+
+| Group | Fields | Functions touching only it |
+|---|---|---|
+| The frames | `frames`, `frame_count`, `count_pins` | `IsOver`, `HasNoFrames`, `PinsStanding`, `AddNewFrame`, `ApplyPinsToFrames`, `Score`, `Accept` |
+| The listeners | `listeners`, `listener_count`, `notifying` | `TellListeners`, `OnFrameChanged` |
+| The log | `log` | (none alone: `Roll` and `EditRolls` also set or read `notifying`) |
+| Spanning | `frames_reported` with the frames and the listeners | `ReportCompletedFrames`, `ReportCorrection` (both) |
+
+After, the listener group is one field (`listeners`, a `FrameListeners`) and the log is one
+(`log`, a `RollLog`), each reached only through its module's functions. What is left in
+`game.c` touches:
+
+| Function | Fields |
+|---|---|
+| `IsOver`, `PinsStanding`, `AddNewFrame`, `ApplyPinsToFrames`, `Score` | `frames`, `frame_count` |
+| `Accept` | `count_pins` (and the frames through the functions above) |
+| `ReportFrames`, the one bridge | `frames`, `frame_count`, `frames_reported`, `listeners` |
+| `Roll` | `listeners`, `log`, `frames_reported` |
+| `Replay`, `ApplyEditedLog`, `EditRolls` | `log` (and `frame_count`, `frames_reported` or `listeners` for their one step each) |
+| `CreateWithRule` | every field, once, to set it up |
+
+No function in `game.c` reaches into a listener entry or a logged roll any more.
+
+### Measured: stack and memory (`ENG-1.3`)
+
+Release build, `-fstack-usage`, on a 64-bit host. Chains add each function's frame to its
+callee's:
+
+| Chain | Before | After |
+|---|---|---|
+| `Game_Roll` to a listener callback | 80 | 128 |
+| `Game_CorrectRoll` to a listener callback | 288 | 224 |
+| `Game_Roll` to `Game_Accept` | 160 | 208 |
+| `Game_CorrectRoll` to `Game_Accept` (the deepest) | 368 | 304 |
+| `Pinsetter_Post`, the interrupt path | 8, no calls | 8, no calls: untouched |
+
+The deepest chain fell by 64 bytes, and so did the base under a callback after an edit. The
+base under a callback after a roll grew by 48, because the report walk now has two callers and
+is bigger when inlined into `Game_Roll`.
+
+**A correction.** My step-by-step stack notes missed that, for four commits. Merging the two
+report walks left GCC keeping the merged function out of line, so a callback after a roll ran
+on 176 bytes, not 80. The listener extraction's commit then said the stack was "back to exactly
+what it was", which was true only against its parent. Measuring the whole clean-up against its
+start found it, and one more commit (`Game_ReportFrames` inline) brought it down to the 128
+above. The lesson for a resource budget: compare with where you started, not with the last
+step.
+
+**Memory:** a `Game` grew from 1,040 to 1,048 bytes (the pool of two, 2,080 to 2,096). The
+listeners' count and flag used to sit in `Game`'s existing padding; inside their own struct they
+pad it to 40 bytes. That is the price of the listener module, paid once per game. On a 32-bit
+target, with 4-byte pointers, it should be less, but that is argued, not measured.
+
+### One module or two
+
+- **The listeners are one module, with their re-entry flag.** Phase 6 asked whether the
+  listeners and the game's mailbox were one module or two. The mailbox is gone, so what is left
+  is the listeners and the flag that refuses a change from inside one, and they are one module:
+  the flag is set only by telling the listeners, and read only to refuse a change.
+- **The roll log is one module, with its edit.** Whether a range is rolls the log has, and
+  whether the edited log still fits, are questions about its own count, so the checks and the
+  splice moved with it. Replaying the log did not: it needs `Game_Accept` and the frames, so it
+  stays in `game.c`.
+- **`frames_reported` belongs to neither.** It is "how many frames the listeners have been told
+  are complete": a fact about the frames and the listeners together. It stays in `Game`, the one
+  place that sees both, with `Game_ReportFrames`, the only function that uses both.
+
+### Considered and not done
+
+| Candidate | Why not |
+|---|---|
+| `SlotPool_Make`, dead code (`ENG-3.6`) | Its only callers are `slot_pool_test.cpp`. Removing it means changing that test, which isn't a test moving with its code |
+| `Game_EditRolls`'s five parameters, Long Parameter List (`ENG-3.1`) | Changing the public signature changes the tests. Inside the library the four edit values are now one `RollEdit`, passed by `const` pointer |
+| Splitting `game.h` by client (interface segregation) | No client benefits. The pinsetter uses `Game`, `GameStatus` and `Game_Roll`; the two new modules use `GameStatus` or `FrameChangedCallback`; the tests use everything, through one `test_support.h`, which would have to change. The `frame_context.h` / `frame_transition.h` split on `main` hid calls from a client that must not make them; nothing here is like that |
+| Dependency inversion for the pinsetter (a roll sink in place of `Game_Roll`) | One sink exists, and none is planned: Speculative generality (`PRD-1.1`), and an indirect call on the drain path |
+| The frames group as its own module | It is what a `Game` *is*: the frames and the rule that feeds them. Taking it out would leave `Game` forwarding every call, the constitution's Ravioli (`ENG-3.9`). Simplicity wins; recorded |
+| The two pool lookups (`Game_FindSlot`, `Pinsetter_Destroy`) | Duplicate code (`ENG-3.9`), but a shared version needs `void *` and an element size, or pointer subtraction: types lost, and MISRA's pointer-arithmetic rules in play, for two five-line loops |
+| Moving roll validation into the frames (tell, don't ask) | Declined in phase 2, and the clean-up didn't make it more natural: `Game_Accept` still asks the latest frame how many pins are standing, and no step here moved that. Not raised as a change |
+
+### Where principle and simplicity disagreed
+
+- **Encapsulation against stack.** As ordinary calls into their own file,
+  `FrameListeners_Tell` and `_AreBeingTold` added a frame under every callback. They are
+  `static inline` in their header instead: the module still owns them, but the caller can see
+  their bodies. The embedded catalogue decided it.
+- **Cohesion against stack.** Merging the report walks was right by cohesion, and cost stack
+  until the merged function was marked `static inline`.
+- **Small functions against call overhead.** `Frame_InitStrike` and `Frame_InitSpare` are small,
+  but each states a whole concept once. They make the states' `Init`s tail calls, and stack went
+  down, not up.
+
+### The debt, after the clean-up
+
+Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on
+purpose. Phase 6 ended at 344 again, 36% of the library's `.c` files. After the clean-up it is
+**280 lines (216 of code), 29% of 972.**
+
+`game.c`'s reasons to change, before: the pool; a roll's checks; its way along the frames;
+creating frames; the roll log, with an edit's checks and splice, and replay; the listener
+registry, with its re-entry flag; and reporting changed frames. After: the pool; the checks;
+the way along the frames; creating frames; replay; and reporting. Two reasons left: how the
+listeners are kept, and how the log is kept and edited.
 
 ---
 
