@@ -193,6 +193,62 @@ TEST(PinsetterTest, should_count_lost_rolls_right_across_the_count_wrapping_arou
     EXPECT_EQ(10U, Pinsetter_RollsLost(pinsetter));
 }
 
+namespace {
+
+/* A fake interrupt handler, fired at a chosen moment: from inside a listener, so while the
+ * main loop is in the middle of draining a roll into the game. It posts one roll, and notes
+ * what the game's score was just after, to show the post itself never reached the game. */
+struct InterruptDuringDrain {
+    Game *game = nullptr;
+    Pinsetter *pinsetter = nullptr;
+    Pins pins = 0U;
+    bool fired = false;
+    bool posted = false;
+    Score score_before = 0U;
+    Score score_after = 0U;
+};
+
+void InterruptDuringDrain_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                       bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    auto *interrupt = static_cast<InterruptDuringDrain *>(context);
+    if (!interrupt->fired) {
+        interrupt->fired = true;
+        interrupt->score_before = Game_Score(interrupt->game);
+        interrupt->posted = Pinsetter_Post(interrupt->pinsetter, interrupt->pins);
+        interrupt->score_after = Game_Score(interrupt->game);
+    }
+}
+
+} // namespace
+
+TEST(PinsetterTest, should_take_a_roll_posted_by_an_interrupt_in_the_middle_of_a_drain)
+{
+    /* The interrupt fires as frame 1 completes, mid-drain, with the 6 still waiting. Posting
+     * does nothing to the game: the 3 it posts waits behind the 6, and goes in after it. */
+    GameHandle game_owner = MakeGame();
+    Game *game = game_owner.get();
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+    InterruptDuringDrain interrupt;
+    interrupt.game = game;
+    interrupt.pinsetter = pinsetter;
+    interrupt.pins = 3U;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &InterruptDuringDrain_FrameChanged, &interrupt));
+
+    for (const Pins pins : {Pins{3U}, Pins{4U}, Pins{6U}}) {
+        EXPECT_TRUE(Pinsetter_Post(pinsetter, pins));
+    }
+    EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, game));
+
+    EXPECT_TRUE(interrupt.posted);
+    EXPECT_EQ(interrupt.score_before, interrupt.score_after); /* posting touched no game */
+    EXPECT_EQ(16U, Game_Score(game)); /* 3+4, then 6+3 */
+}
+
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
 {
     /* A real thread plays the interrupt handler: it only posts, retrying while the mailbox
