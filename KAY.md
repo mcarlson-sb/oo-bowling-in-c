@@ -1515,8 +1515,9 @@ what it had mostly done, and four things it hadn't:
   build's 107 tests, so the assert is live;
 - `FrameNumber_FromIndex` and `RollNumber_ToIndex` replace the bare `+ 1` and `- 1`.
 
-The stack figures in `game.h` stay for now. The notes put them with the history, but an
-earlier review asked for them in the header, so that is the user's call.
+The stack figures in `game.h` stay. The notes put them with the history, but an earlier
+review asked for them in the header; asked, the user chose to keep them there: they are part
+of the contract a caller sizes a callback's stack by.
 
 **Measured again**, as comment-only lines against lines with code (the notes' measure), from
 `a16b859` to now:
