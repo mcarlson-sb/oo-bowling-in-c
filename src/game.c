@@ -316,8 +316,9 @@ GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
         return GAME_ERR_ROLL_DURING_NOTIFICATION;
     }
     const uint8_t first = (uint8_t)(first_roll - 1U); /* index of the first roll replaced */
-    if ((first_roll == 0U) || ((first + rolls_removed) > game->log.count)) {
-        return GAME_ERR_NO_SUCH_ROLL;
+    if ((first_roll == 0U) || (first_roll > game->log.count) ||
+        ((first + rolls_removed) > game->log.count)) {
+        return GAME_ERR_NO_SUCH_ROLL; /* an edit starts at a roll the game has had */
     }
     if ((new_pins == NULL) && (new_count > 0U)) {
         return GAME_ERR_NO_SUCH_ROLL; /* new rolls promised, but none given */

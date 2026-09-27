@@ -389,6 +389,26 @@ TEST(EditRollsTest, should_reject_an_edit_that_would_make_more_rolls_than_a_game
     EXPECT_EQ(33U, Game_Score(game));
 }
 
+TEST(EditRollsTest, should_reject_an_edit_that_starts_past_the_last_roll)
+{
+    /* An edit changes rolls the game has had. Inserting just past the last one would be a
+     * second way to roll, reported to the listeners as a correction. A forgotten last roll is
+     * a Game_Roll. */
+    GameHandle empty_owner = MakeGame();
+    Game *empty = empty_owner.get();
+    const Pins new_pins[] = {3U, 4U};
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(empty, 1U, 0U, new_pins, 2U));
+    EXPECT_EQ(0U, Game_Score(empty));
+
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollAll(game, {3U, 4U});
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, 3U, 0U, new_pins, 2U));
+    EXPECT_EQ(7U, Game_Score(game));
+    RollAll(game, {3U, 4U}); /* the game is still where it was */
+    EXPECT_EQ(14U, Game_Score(game));
+}
+
 TEST(EditRollsTest, should_refuse_new_rolls_given_as_a_null_pointer)
 {
     GameHandle owner = MakeGame();
@@ -403,8 +423,9 @@ namespace {
 
 /* The same property for any edit: a random range of rolls (possibly none) replaced by up to
  * two random rolls (possibly none), so replacing, inserting and deleting are all covered,
- * including appending past the last roll and deleting every roll. A fresh game, fed the
- * edited rolls, is the judge, as for corrections. */
+ * including deleting every roll. A fresh game, fed the edited rolls, is the judge, as for
+ * corrections, with one rule of its own: an edit starting past the last roll is rejected
+ * even when the fresh game would accept it, because adding a roll is Game_Roll's job. */
 void CheckEditsAgainstFreshGames(GameHandle (*make_game)(), unsigned seed)
 {
     std::mt19937 random(seed);
@@ -452,7 +473,8 @@ void CheckEditsAgainstFreshGames(GameHandle (*make_game)(), unsigned seed)
         const bool accepted =
             Game_EditRolls(game, static_cast<uint8_t>(first + 1U), static_cast<uint8_t>(removed),
                            new_pins.data(), static_cast<uint8_t>(new_pins.size())) == GAME_OK;
-        ASSERT_EQ(fresh_accepts_all, accepted) << "trial " << trial;
+        const bool starts_at_a_roll = first < rolls.size();
+        ASSERT_EQ(starts_at_a_roll && fresh_accepts_all, accepted) << "trial " << trial;
 
         if (accepted) {
             edits_accepted++;

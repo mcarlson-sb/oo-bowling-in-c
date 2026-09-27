@@ -30,8 +30,8 @@ typedef enum {
      * Allowing it would tell listeners about frames out of order, so it is rejected and the
      * game is left unchanged. Call again once the callback has returned. */
     GAME_ERR_ROLL_DURING_NOTIFICATION,
-    /* Game_CorrectRoll was given a roll number the game hasn't had (rolls start at 1). Nothing
-     * is changed. */
+    /* Game_CorrectRoll or Game_EditRolls was given a roll number the game hasn't had (rolls
+     * start at 1), or a range that runs past the last roll. Nothing is changed. */
     GAME_ERR_NO_SUCH_ROLL
 } GameStatus;
 
@@ -89,7 +89,8 @@ GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins);
  *
  * The edit is checked, and told to the listeners, only in its final state: they never hear
  * about a game in between. Rejected, changing nothing, if the edited game has an impossible
- * roll (that roll's status), if the range isn't rolls the game has had or `new_pins` is NULL
+ * roll (that roll's status), if the range isn't rolls the game has had (so an edit can't add
+ * rolls after the last one: that is Game_Roll's job) or `new_pins` is NULL
  * with rolls promised (GAME_ERR_NO_SUCH_ROLL), if it would make more than 21 rolls
  * (GAME_ERR_GAME_OVER), or if called from inside a callback
  * (GAME_ERR_ROLL_DURING_NOTIFICATION). */
