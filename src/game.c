@@ -74,7 +74,7 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
 /* Tells the listeners about the frames from index `first` on, and about a frame they were told
  * was complete, and no longer is, as reopened. Complete frames always come first, so
  * frames_told_complete ends as the number complete. Inline, like the two below, because every
- * callback's stack sits on top of it (as a call it cost 112 bytes more). */
+ * callback's stack sits on top of it. */
 static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t were_told_complete)
 {
     game->frames_told_complete = first;
