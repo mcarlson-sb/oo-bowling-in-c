@@ -5,7 +5,6 @@
 void FrameListeners_Init(FrameListeners *self)
 {
     self->count = 0U;
-    self->telling = false;
 }
 
 bool FrameListeners_Add(FrameListeners *self, FrameChangedCallback callback, void *context)

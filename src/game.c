@@ -23,6 +23,7 @@ struct Game {
     PinCountRule count_pins; /* how this game counts a roll: see Game_CreateWithRule */
     uint8_t frames_reported; /* frames already told to the listeners */
     FrameListeners listeners; /* who to tell when a frame changes: see Game_OnFrameChanged */
+    bool busy; /* true while the listeners are being told: see Game_Roll */
     RollLog log; /* see Game_CorrectRoll */
 };
 
@@ -89,6 +90,7 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
  * host). Callers use the two below, which say which walk they want. */
 static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_reported)
 {
+    game->busy = true;
     game->frames_reported = first;
     const uint8_t frames = (was_reported > game->frame_count) ? was_reported : game->frame_count;
     for (uint8_t i = first; i < frames; i++) {
@@ -101,6 +103,7 @@ static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_repo
             FrameListeners_Tell(&game->listeners, frame_number, 0U, false); /* reopened */
         }
     }
+    game->busy = false;
 }
 
 /* After a roll: nothing before the frames already reported can have changed, and nothing can
@@ -143,6 +146,7 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     game->count_pins = count_pins;
     game->frames_reported = 0U;
     FrameListeners_Init(&game->listeners);
+    game->busy = false;
     RollLog_Init(&game->log);
     return game;
 }
@@ -201,7 +205,7 @@ GameStatus Game_Roll(Game *game, Pins pins)
     if (game == NULL) {
         return GAME_ERR_NULL_GAME;
     }
-    if (FrameListeners_AreBeingTold(&game->listeners)) {
+    if (game->busy) {
         return GAME_ERR_DURING_NOTIFICATION;
     }
     const GameStatus status = Game_Accept(game, pins);
@@ -283,7 +287,7 @@ GameStatus Game_EditRolls(Game *game, const RollEdit *edit)
     if (game == NULL) {
         return GAME_ERR_NULL_GAME;
     }
-    if (FrameListeners_AreBeingTold(&game->listeners)) {
+    if (game->busy) {
         return GAME_ERR_DURING_NOTIFICATION;
     }
     RollLog edited;
