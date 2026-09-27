@@ -243,14 +243,34 @@ bool Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *co
     return true;
 }
 
-GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
+/* Empties the frames and replays the roll log from the start. Stops at, and returns the
+ * status of, the first roll that can't happen. */
+static GameStatus Game_Replay(Game *game)
 {
-    game->rolls[roll_number - 1U] = pins;
-
-    /* Replay every roll, the corrected one included, from an empty game. */
     game->frame_count = 0U;
     for (uint8_t i = 0U; i < game->roll_count; i++) {
-        (void)Game_Accept(game, game->rolls[i]);
+        const GameStatus status = Game_Accept(game, game->rolls[i]);
+        if (status != GAME_OK) {
+            return status;
+        }
     }
     return GAME_OK;
+}
+
+GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
+{
+    const uint8_t index = (uint8_t)(roll_number - 1U);
+    const Pins was = game->rolls[index];
+    game->rolls[index] = pins;
+
+    const GameStatus status = Game_Replay(game);
+    if (status != GAME_OK) {
+        /* The correction makes some roll impossible: put the log back as it was, and
+         * replay that. Every roll in it was accepted before, so this can't fail. */
+        game->rolls[index] = was;
+        const GameStatus restored = Game_Replay(game);
+        assert(restored == GAME_OK);
+        (void)restored; /* used only by the assert, which NDEBUG removes */
+    }
+    return status;
 }
