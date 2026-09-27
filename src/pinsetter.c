@@ -31,6 +31,7 @@ Pinsetter *Pinsetter_Create(void)
     atomic_store(&pinsetter->post_at, 0U);
     atomic_store(&pinsetter->drain_at, 0U);
     atomic_store(&pinsetter->rolls_lost, 0U);
+    pinsetter->draining = false;
 #if PINSETTER_CHECK_OVERLAP
     atomic_flag_clear(&pinsetter->posting);
 #endif
@@ -46,7 +47,8 @@ void Pinsetter_Destroy(Pinsetter *pinsetter)
     }
 }
 
-GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
+/* Rolls the waiting rolls into the game, stopping at the first it refuses. */
+static GameStatus Pinsetter_DrainWaiting(Pinsetter *pinsetter, Game *game)
 {
     /* Only the rolls waiting now: one read of the post position, so a drain applies at most a
      * mailbox's worth, however fast the interrupt side posts. Later rolls wait for the next. */
@@ -64,6 +66,17 @@ GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
     return GAME_OK;
 }
 
+/* The drain keeps its own copy of the read position while Game_Roll runs the listeners, and
+ * writes it back after each roll. So while it runs, a discard from a listener is refused:
+ * written over, it would have reported success and changed nothing. */
+GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
+{
+    pinsetter->draining = true;
+    const GameStatus status = Pinsetter_DrainWaiting(pinsetter, game);
+    pinsetter->draining = false;
+    return status;
+}
+
 uint16_t Pinsetter_RollsLost(const Pinsetter *pinsetter)
 {
     /* Only read: never cleared, so the interrupt side stays its only writer, and any number of
@@ -73,6 +86,9 @@ uint16_t Pinsetter_RollsLost(const Pinsetter *pinsetter)
 
 bool Pinsetter_DiscardOldest(Pinsetter *pinsetter)
 {
+    if (pinsetter->draining) {
+        return false; /* from inside a drain: see Pinsetter_Drain */
+    }
     const unsigned drain_at = atomic_load_explicit(&pinsetter->drain_at, memory_order_relaxed);
     if (drain_at == atomic_load_explicit(&pinsetter->post_at, memory_order_acquire)) {
         return false; /* nothing waiting */

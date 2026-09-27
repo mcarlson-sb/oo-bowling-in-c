@@ -73,7 +73,9 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins);
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game);
 
 /* Main-loop side. Throws away the oldest waiting roll: the one a drain stopped at, when the
- * scorer decides the machine got it wrong. Returns false if no roll is waiting. */
+ * scorer decides the machine got it wrong. Returns false, discarding nothing, if no roll is
+ * waiting, or if a drain is running (from inside a frame-changed callback, during
+ * Pinsetter_Drain): the scorer discards once the drain has stopped. */
 bool Pinsetter_DiscardOldest(Pinsetter *pinsetter);
 
 /* Main-loop side. How many rolls Pinsetter_Post has ever refused because the mailbox was

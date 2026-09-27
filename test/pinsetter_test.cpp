@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <thread>
+#include <vector>
 
 #include "test_support.h"
 
@@ -340,6 +341,56 @@ TEST(PinsetterTest, should_refuse_a_drain_from_inside_a_listener)
 
     EXPECT_EQ(GAME_ERR_DURING_NOTIFICATION, listener.status);
     EXPECT_EQ(GAME_ERR_INVALID_PINS, Pinsetter_Drain(pinsetter, game)); /* still there */
+}
+
+namespace {
+
+/* A listener that tries to discard two waiting rolls each time a frame completes: during a
+ * drain, that is from inside the drain. */
+struct DiscardsFromInside {
+    Pinsetter *pinsetter = nullptr;
+    std::vector<bool> discarded;
+};
+
+void DiscardsFromInside_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                     bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    auto *listener = static_cast<DiscardsFromInside *>(context);
+    listener->discarded.push_back(Pinsetter_DiscardOldest(listener->pinsetter));
+    listener->discarded.push_back(Pinsetter_DiscardOldest(listener->pinsetter));
+}
+
+} // namespace
+
+TEST(PinsetterTest, should_refuse_a_discard_made_while_a_drain_is_running)
+{
+    /* The drain keeps its own place in the ring while the game runs the listeners, and writes
+     * it back after each roll. A discard from in there would move the shared place, report
+     * success, and be written over. So it is refused, and every roll goes in. Outside a drain,
+     * a discard still works. */
+    GameHandle game_owner = MakeGame();
+    Game *game = game_owner.get();
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+    DiscardsFromInside listener;
+    listener.pinsetter = pinsetter;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &DiscardsFromInside_FrameChanged, &listener));
+    for (const Pins pins : {Pins{3U}, Pins{4U}, Pins{5U}, Pins{1U}}) {
+        EXPECT_TRUE(Pinsetter_Post(pinsetter, pins));
+    }
+
+    EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, game));
+
+    EXPECT_EQ((std::vector<bool>{false, false, false, false}), listener.discarded);
+    EXPECT_EQ(13U, Game_Score(game)); /* 3+4, then 5+1: every roll went in */
+
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 11U)); /* a glitch, outside any drain */
+    EXPECT_TRUE(Pinsetter_DiscardOldest(pinsetter));
+    EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, game));
+    EXPECT_EQ(13U, Game_Score(game));
 }
 
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)

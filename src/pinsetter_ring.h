@@ -8,6 +8,7 @@
  * Private to those two files: lives in src/, and nothing else includes it. */
 
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "bowling_types.h"
@@ -45,6 +46,7 @@ struct Pinsetter {
     atomic_uint post_at;
     atomic_uint drain_at;
     _Atomic uint16_t rolls_lost; /* posts ever refused. Only the interrupt side writes it */
+    bool draining; /* a drain is running: see Pinsetter_DiscardOldest. Main loop only, so plain */
 #if PINSETTER_CHECK_OVERLAP
     atomic_flag posting; /* set while a post is under way: see Pinsetter_Post */
 #endif
