@@ -425,6 +425,20 @@ TEST(EditRollsTest, should_refuse_new_rolls_given_as_a_null_pointer)
     EXPECT_EQ(7U, Game_Score(game));
 }
 
+TEST(EditRollsTest, should_refuse_an_edit_given_as_a_null_pointer)
+{
+    /* No edit at all is refused the same way as new rolls promised but not given, and changes
+     * nothing. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollAll(game, {3U, 4U});
+
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, nullptr));
+    EXPECT_EQ(7U, Game_Score(game));
+    RollAll(game, {3U, 4U}); /* the game is still where it was */
+    EXPECT_EQ(14U, Game_Score(game));
+}
+
 namespace {
 
 /* The same property for any edit: a random range of rolls (possibly none) replaced by up to

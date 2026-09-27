@@ -25,6 +25,9 @@ Pins RollLog_At(const RollLog *self, uint8_t index)
 
 GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edited)
 {
+    if (edit == NULL) {
+        return GAME_ERR_NO_SUCH_ROLL; /* no edit at all: like new rolls promised, but none given */
+    }
     const uint8_t first = (uint8_t)(edit->first_roll - 1U); /* index of the first roll replaced */
     if ((edit->first_roll == 0U) || (edit->first_roll > self->count) ||
         ((first + edit->rolls_removed) > self->count)) {

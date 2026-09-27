@@ -103,8 +103,8 @@ GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins);
  * The edit is checked, and told to the listeners, only in its final state: they never hear
  * about a game in between. Rejected, changing nothing, if the edited game has an impossible
  * roll (that roll's status), if the range isn't rolls the game has had (so an edit can't add
- * rolls after the last one: that is Game_Roll's job) or `new_pins` is NULL
- * with rolls promised (GAME_ERR_NO_SUCH_ROLL), if it would make more than 21 rolls
+ * rolls after the last one: that is Game_Roll's job), `new_pins` is NULL with rolls promised,
+ * or `edit` itself is NULL (GAME_ERR_NO_SUCH_ROLL), if it would make more than 21 rolls
  * (GAME_ERR_TOO_MANY_ROLLS), or if called from inside a callback
  * (GAME_ERR_DURING_NOTIFICATION). */
 GameStatus Game_EditRolls(Game *game, const RollEdit *edit);

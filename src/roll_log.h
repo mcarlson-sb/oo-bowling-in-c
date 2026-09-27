@@ -32,8 +32,9 @@ Pins RollLog_At(const RollLog *self, uint8_t index);
 
 /* Writes to `edited` this log with `edit` (see RollEdit, in game.h) applied: the rolls before
  * the range, the new rolls, then the rolls after it. Returns GAME_OK, or, writing nothing:
- *   - GAME_ERR_NO_SUCH_ROLL if the range isn't rolls this log has (so an edit can't add rolls
- *     after the last one), or new rolls are promised but `new_pins` is NULL;
+ *   - GAME_ERR_NO_SUCH_ROLL if `edit` is NULL, if the range isn't rolls this log has (so an
+ *     edit can't add rolls after the last one), or if new rolls are promised but `new_pins`
+ *     is NULL;
  *   - GAME_ERR_TOO_MANY_ROLLS if the edited log would hold more than a game can have. */
 GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edited);
 
