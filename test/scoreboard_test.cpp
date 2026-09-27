@@ -85,24 +85,7 @@ TEST(ScoreboardNullTest, should_ignore_setting_a_callback_on_a_null_game)
 
 /* ---- A second, independent subscriber --------------------------------------------------- */
 
-namespace {
-
-/* Running stats: how many frames are complete, and their average score. */
-struct RunningStats {
-    int frames = 0;
-    int total = 0;
-    double Average() const { return (frames == 0) ? 0.0 : static_cast<double>(total) / frames; }
-};
-
-void RunningStats_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
-{
-    (void)frame_number;
-    auto *stats = static_cast<RunningStats *>(context);
-    stats->frames++;
-    stats->total += frame_score;
-}
-
-} // namespace
+/* RunningStats, the second subscriber, is in test_support.h, shared with the correction tests. */
 
 TEST_F(ScoreboardTest, should_tell_a_second_independent_subscriber_too)
 {

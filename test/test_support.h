@@ -34,6 +34,23 @@ inline void RollAll(Game *game, std::initializer_list<Pins> rolls)
     }
 }
 
+/* ---- Client-side subscribers ------------------------------------------------------------ */
+
+/* Running stats: how many frames are complete, and their average score. */
+struct RunningStats {
+    int frames = 0;
+    int total = 0;
+    double Average() const { return (frames == 0) ? 0.0 : static_cast<double>(total) / frames; }
+};
+
+inline void RunningStats_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
+{
+    (void)frame_number;
+    auto *stats = static_cast<RunningStats *>(context);
+    stats->frames++;
+    stats->total += frame_score;
+}
+
 /* ---- Client-side rules ------------------------------------------------------------------ *
  * The library contains none of these. Tests supply them, as a caller would. */
 
