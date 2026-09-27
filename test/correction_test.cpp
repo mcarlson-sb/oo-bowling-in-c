@@ -296,3 +296,64 @@ TEST(CorrectionTest, should_correct_the_first_and_last_rolls_of_the_longest_game
     EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_CorrectRoll(game, 22U, 1U)); /* no 22nd roll */
     EXPECT_EQ(GAME_ERR_GAME_OVER, Game_Roll(game, 1U)); /* still over after correcting */
 }
+
+/* ---- Editing a range of rolls ----------------------------------------------------------- */
+
+namespace {
+
+/* Every message a listener hears, in order. */
+struct Transcript {
+    struct Message {
+        int frame;
+        int score;
+        bool complete;
+        bool operator==(const Message &other) const
+        {
+            return (frame == other.frame) && (score == other.score) && (complete == other.complete);
+        }
+    };
+    std::vector<Message> messages;
+
+    std::vector<Message> AboutFrame(int frame) const
+    {
+        std::vector<Message> about;
+        for (const Message &message : messages) {
+            if (message.frame == frame) {
+                about.push_back(message);
+            }
+        }
+        return about;
+    }
+};
+
+void Transcript_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                             bool frame_complete)
+{
+    auto *transcript = static_cast<Transcript *>(context);
+    transcript->messages.push_back({frame_number, frame_score, frame_complete});
+}
+
+} // namespace
+
+TEST(EditRollsTest, should_fix_a_tenth_frame_entered_with_a_roll_too_many_in_one_edit)
+{
+    /* Entered as 10, 0, 0 in the tenth (a strike and two fill balls), but it was really 9, 0.
+     * The fix changes one roll and removes another. Done as one edit, it is checked, and told
+     * to the listeners, only in its final state: they never hear about a tenth frame waiting
+     * for a fill ball, a game that never existed. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    for (int i = 0; i < 18; i++) {
+        ASSERT_EQ(GAME_OK, Game_Roll(game, 0U));
+    }
+    RollAll(game, {10U, 0U, 0U});
+    ASSERT_EQ(10U, Game_Score(game));
+    Transcript transcript;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &Transcript_FrameChanged, &transcript));
+
+    const Pins really[] = {9U, 0U};
+    EXPECT_EQ(GAME_OK, Game_EditRolls(game, 19U, 3U, really, 2U)); /* rolls 19 to 21 become 9, 0 */
+
+    EXPECT_EQ(9U, Game_Score(game));
+    EXPECT_EQ((std::vector<Transcript::Message>{{10, 9, true}}), transcript.AboutFrame(10));
+}

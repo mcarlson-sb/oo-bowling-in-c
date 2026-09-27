@@ -316,3 +316,32 @@ GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
     edited.pins[roll_number - 1U] = pins;
     return Game_ApplyEditedLog(game, &edited);
 }
+
+GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
+                          const Pins *new_pins, uint8_t new_count)
+{
+    if (game == NULL) {
+        return GAME_ERR_NULL_GAME;
+    }
+    if (game->notifying) {
+        return GAME_ERR_ROLL_DURING_NOTIFICATION;
+    }
+    const uint8_t first = (uint8_t)(first_roll - 1U); /* index of the first roll replaced */
+    if ((first_roll == 0U) || ((first + rolls_removed) > game->log.count)) {
+        return GAME_ERR_NO_SUCH_ROLL;
+    }
+
+    /* The rolls before the range, then the new rolls, then the rolls after it. */
+    RollLog edited;
+    edited.count = 0U;
+    for (uint8_t i = 0U; i < first; i++) {
+        edited.pins[edited.count++] = game->log.pins[i];
+    }
+    for (uint8_t i = 0U; i < new_count; i++) {
+        edited.pins[edited.count++] = new_pins[i];
+    }
+    for (uint8_t i = (uint8_t)(first + rolls_removed); i < game->log.count; i++) {
+        edited.pins[edited.count++] = game->log.pins[i];
+    }
+    return Game_ApplyEditedLog(game, &edited);
+}
