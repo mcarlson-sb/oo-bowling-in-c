@@ -357,3 +357,16 @@ TEST(EditRollsTest, should_fix_a_tenth_frame_entered_with_a_roll_too_many_in_one
     EXPECT_EQ(9U, Game_Score(game));
     EXPECT_EQ((std::vector<Transcript::Message>{{10, 9, true}}), transcript.AboutFrame(10));
 }
+
+TEST(EditRollsTest, should_fix_a_strike_that_was_really_9_then_1)
+{
+    /* The scorer's most likely mistake: a 10 entered for 9 then 1. Replacing one roll can't
+     * fix it (9 then the 3 would be too many pins); replacing it with two rolls can. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollAll(game, {10U, 3U, 4U}); /* 17 + 7 = 24 */
+
+    const Pins really[] = {9U, 1U};
+    EXPECT_EQ(GAME_OK, Game_EditRolls(game, 1U, 1U, really, 2U));
+    EXPECT_EQ(20U, Game_Score(game)); /* a spare, 9 + 1 + 3, then 3 + 4 */
+}
