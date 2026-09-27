@@ -251,33 +251,52 @@ TEST(PinsetterTest, should_take_a_roll_posted_by_an_interrupt_in_the_middle_of_a
 
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
 {
-    /* A real thread plays the interrupt handler: it only posts, retrying while the mailbox
-     * is full. The main loop drains until that thread is done. 9 then 1, 21 times over: a
-     * lost, repeated or reordered roll changes the score. The mailbox holds 8, so it wraps,
-     * and fills up, along the way. CI runs this under ThreadSanitizer. */
-    for (int game_number = 0; game_number < 20; game_number++) {
-        GameHandle game_owner = MakeGame();
-        Game *game = game_owner.get();
+    /* A real thread plays the interrupt handler: it only posts, retrying when the mailbox is
+     * full, and counts each refusal. The main loop drains, and starts the next game each time a
+     * drain stops at a finished one. Five games of 9 then 1, 21 rolls each, go through one
+     * pinsetter: a lost, repeated or reordered roll changes a score. 105 rolls through 22 slots
+     * wrap the ring four times, and fill it whenever the main loop falls behind. The main loop
+     * reads the lost-roll count while the other thread is still writing it. CI runs this under
+     * ThreadSanitizer. */
+    constexpr int kRuns = 20;
+    constexpr int kGames = 5;
+    for (int run = 0; run < kRuns; run++) {
         PinsetterHandle owner = MakePinsetter();
         Pinsetter *pinsetter = owner.get();
         std::atomic<bool> interrupts_done{false};
+        int refusals = 0; /* the interrupt thread's own; read only after it has joined */
 
-        std::thread interrupts([pinsetter, &interrupts_done] {
-            for (int roll = 0; roll < 21; roll++) {
-                const Pins pins = ((roll % 2) == 0) ? Pins{9U} : Pins{1U};
+        std::thread interrupts([pinsetter, &interrupts_done, &refusals] {
+            for (int roll = 0; roll < (kGames * 21); roll++) {
+                const Pins pins = (((roll % 21) % 2) == 0) ? Pins{9U} : Pins{1U};
                 while (!Pinsetter_Post(pinsetter, pins)) {
+                    refusals++;
                     std::this_thread::yield(); /* full: wait for the main loop */
                 }
             }
             interrupts_done = true;
         });
+
+        GameHandle game_owner = MakeGame();
+        int games_over = 0;
+        int lost = 0;
+        const auto drain = [&] {
+            while (Pinsetter_Drain(pinsetter, game_owner.get()) == GAME_ERR_GAME_OVER) {
+                EXPECT_EQ(190U, Game_Score(game_owner.get())) << "run " << run;
+                games_over++;
+                game_owner = MakeGame(); /* the next bowler's rolls are waiting for it */
+            }
+            lost += Pinsetter_RollsLost(pinsetter);
+        };
         while (!interrupts_done) {
-            Pinsetter_Drain(pinsetter, game);
+            drain();
             std::this_thread::yield();
         }
         interrupts.join();
-        Pinsetter_Drain(pinsetter, game); /* whatever was posted last */
+        drain(); /* whatever was posted last */
 
-        ASSERT_EQ(190U, Game_Score(game)) << "game " << game_number;
+        ASSERT_EQ(kGames - 1, games_over) << "run " << run; /* no roll refuses the last game */
+        ASSERT_EQ(190U, Game_Score(game_owner.get())) << "run " << run;
+        ASSERT_EQ(refusals, lost) << "run " << run;
     }
 }
