@@ -181,9 +181,11 @@ TEST(CorrectionPropertyTest, should_leave_listeners_as_a_fresh_game_of_the_corre
     /* Random games (fixed seed, so it repeats), each corrected at a random roll. Whenever the
      * game accepts the correction, its listener must end up exactly where a listener on a
      * fresh game fed the corrected rolls from the start would be: the same frames, the same
-     * scores, with any reopened frame dropped. */
+     * scores, with any reopened frame dropped. Whenever it rejects one, nothing
+     * may change. */
     std::mt19937 random(20260926U);
     int corrections_accepted = 0;
+    int corrections_rejected = 0;
     for (int trial = 0; trial < 3000; trial++) {
         GameHandle owner = MakeGame();
         Game *game = owner.get();
@@ -201,7 +203,13 @@ TEST(CorrectionPropertyTest, should_leave_listeners_as_a_fresh_game_of_the_corre
 
         const auto roll_number = static_cast<uint8_t>(1U + random() % rolls.size());
         const Pins corrected = static_cast<Pins>(random() % 11U);
+        const std::map<int, int> scores_before = scoreboard.scores;
+        const Score score_before = Game_Score(game);
         if (Game_CorrectRoll(game, roll_number, corrected) != GAME_OK) {
+            /* A rejected correction changes nothing, and tells the listeners nothing new. */
+            corrections_rejected++;
+            ASSERT_EQ(scores_before, scoreboard.scores) << "trial " << trial;
+            ASSERT_EQ(score_before, Game_Score(game)) << "trial " << trial;
             continue;
         }
         corrections_accepted++;
@@ -218,7 +226,8 @@ TEST(CorrectionPropertyTest, should_leave_listeners_as_a_fresh_game_of_the_corre
         ASSERT_EQ(fresh_scoreboard.scores, scoreboard.scores) << "trial " << trial;
         ASSERT_EQ(Game_Score(fresh), Game_Score(game)) << "trial " << trial;
     }
-    EXPECT_GT(corrections_accepted, 500); /* the property was really exercised */
+    EXPECT_GT(corrections_accepted, 500); /* both halves of the property were really */
+    EXPECT_GT(corrections_rejected, 500); /* exercised */
 }
 
 /* ---- After review ----------------------------------------------------------------------- */
