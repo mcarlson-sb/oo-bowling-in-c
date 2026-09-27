@@ -137,3 +137,33 @@ TEST_F(ScoreboardTest, should_refuse_a_subscriber_once_every_slot_is_taken)
     EXPECT_EQ(1, stats.frames);
     EXPECT_EQ(0, one_too_many.frames);
 }
+
+/* ---- What running stats needs under a caller's rule ------------------------------------- */
+
+namespace {
+
+/* Nine-pin no-tap, as the client in nine_pin_no_tap_test.cpp writes it. */
+Pins NinePinNoTap(Pins pins_standing, Pins pins_down)
+{
+    const bool nine_on_a_full_rack = (pins_standing == 10U) && (pins_down == 9U);
+    return nine_on_a_full_rack ? static_cast<Pins>(10U) : pins_down;
+}
+
+} // namespace
+
+TEST(RunningStatsNoTapTest, should_average_the_counted_scores_under_no_tap)
+{
+    /* A league average is built from scores, and under no-tap a first-ball 9 scores as a
+     * strike. So counted values, the ones the notification carries, are what stats needs. */
+    GameHandle owner{Game_CreateWithRule(&NinePinNoTap), &Game_Destroy};
+    Game *game = owner.get();
+    RunningStats stats;
+    ASSERT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
+
+    for (const Pins pins : {Pins{9U}, Pins{3U}, Pins{4U}}) {
+        EXPECT_EQ(GAME_OK, Game_Roll(game, pins)) << "setup roll of " << +pins;
+    }
+
+    EXPECT_EQ(2, stats.frames);
+    EXPECT_DOUBLE_EQ((17.0 + 7.0) / 2.0, stats.Average());
+}
