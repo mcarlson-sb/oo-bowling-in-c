@@ -1424,8 +1424,9 @@ purpose. Phase 6 ended at 344 again, 36% of the library's `.c` files. After the 
 `game.c`'s reasons to change, before: the pool; a roll's checks; its way along the frames;
 creating frames; the roll log, with an edit's checks and splice, and replay; the listener
 registry, with its re-entry flag; and reporting changed frames. After: the pool; the checks;
-the way along the frames; creating frames; replay; and reporting. Two reasons left: how the
-listeners are kept, and how the log is kept and edited. After the second round, `game.c` is
+the way along the frames; creating frames; replay; and reporting. Two reasons moved out of
+`game.c`, into modules of their own: how the listeners are kept, and how the log is kept and
+edited. After the second round, `game.c` is
 295 lines (225 of code), 30% of 979: nine lines more, for the report walk's two named entry
 points.
 
