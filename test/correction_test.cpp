@@ -59,8 +59,12 @@ struct KeyedScoreboard {
 void KeyedScoreboard_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
                                   bool frame_complete)
 {
-    (void)frame_complete; /* every message so far is a completion */
-    static_cast<KeyedScoreboard *>(context)->scores[frame_number] = frame_score;
+    auto *scoreboard = static_cast<KeyedScoreboard *>(context);
+    if (frame_complete) {
+        scoreboard->scores[frame_number] = frame_score;
+    } else {
+        scoreboard->scores.erase(frame_number); /* reopened by a correction */
+    }
 }
 
 } // namespace
@@ -89,4 +93,24 @@ TEST(CorrectionListenerTest, should_keep_running_stats_right_after_a_correction)
     EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 5U)); /* frames of 9 and 7 */
     EXPECT_EQ(2, stats.Frames());
     EXPECT_DOUBLE_EQ(8.0, stats.Average());
+}
+
+TEST(CorrectionListenerTest, should_tell_the_listeners_when_a_correction_reopens_a_frame)
+{
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    KeyedScoreboard scoreboard;
+    RunningStats stats;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &KeyedScoreboard_FrameChanged, &scoreboard));
+    ASSERT_TRUE(Game_OnFrameChanged(game, &RunningStats_FrameChanged, &stats));
+    RollAll(game, {3U, 4U}); /* frame 1 complete: 7 */
+
+    /* The first ball was really a strike: frame 1 now waits for a second bonus roll. */
+    EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 10U));
+    EXPECT_EQ(0U, Game_Score(game));
+    EXPECT_TRUE(scoreboard.scores.empty());
+    EXPECT_EQ(0, stats.Frames());
+
+    RollAll(game, {2U}); /* its second bonus: frame 1 is 16, frame 2 is 6 */
+    EXPECT_EQ((std::map<int, int>{{1, 16}, {2, 6}}), scoreboard.scores);
 }

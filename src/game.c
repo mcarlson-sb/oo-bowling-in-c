@@ -258,8 +258,31 @@ static GameStatus Game_Replay(Game *game)
     return GAME_OK;
 }
 
+/* After a correction: tells the listeners about each frame again. A complete frame is sent
+ * with its new score. A frame they were told was complete, but no longer is, is sent with
+ * complete = false. `was_reported` is how many frames they had been told were complete.
+ * Complete frames always come first, so the new count of frames reported is simply how
+ * many are complete. */
+static void Game_ReportCorrection(Game *game, uint8_t was_reported)
+{
+    game->notifying = true;
+    game->frames_reported = 0U;
+    const uint8_t frames = (was_reported > game->frame_count) ? was_reported : game->frame_count;
+    for (uint8_t i = 0U; i < frames; i++) {
+        const uint8_t frame_number = (uint8_t)(i + 1U);
+        if ((i < game->frame_count) && FrameContext_IsComplete(&game->frames[i])) {
+            Game_TellListeners(game, frame_number, FrameContext_Score(&game->frames[i]), true);
+            game->frames_reported = frame_number;
+        } else if (i < was_reported) {
+            Game_TellListeners(game, frame_number, 0U, false); /* reopened */
+        }
+    }
+    game->notifying = false;
+}
+
 GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
 {
+    const uint8_t was_reported = game->frames_reported;
     const uint8_t index = (uint8_t)(roll_number - 1U);
     const Pins was = game->rolls[index];
     game->rolls[index] = pins;
@@ -274,10 +297,7 @@ GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
         (void)restored; /* used only by the assert, which NDEBUG removes */
     }
     if (status == GAME_OK) {
-        /* Tell the listeners every complete frame again, with its new score. They treat a
-         * frame number they have heard before as an update. */
-        game->frames_reported = 0U;
-        Game_ReportCompletedFrames(game);
+        Game_ReportCorrection(game, was_reported);
     }
     return status;
 }

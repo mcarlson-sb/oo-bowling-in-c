@@ -57,8 +57,12 @@ struct RunningStats {
 inline void RunningStats_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
                                       bool frame_complete)
 {
-    (void)frame_complete; /* every message so far is a completion */
-    static_cast<RunningStats *>(context)->frame_scores[frame_number] = frame_score;
+    auto *stats = static_cast<RunningStats *>(context);
+    if (frame_complete) {
+        stats->frame_scores[frame_number] = frame_score;
+    } else {
+        stats->frame_scores.erase(frame_number); /* reopened by a correction */
+    }
 }
 
 /* ---- Client-side rules ------------------------------------------------------------------ *
