@@ -26,12 +26,13 @@ typedef enum {
     /* The game's PinCountRule counted the roll as more pins than were standing. The roll
      * is rejected and the game is left unchanged. */
     GAME_ERR_RULE_OUT_OF_RANGE,
-    /* Game_Roll, Game_CorrectRoll, Game_EditRolls or Pinsetter_Drain was called while the
-     * game was busy with another roll or edit: from inside a frame-changed callback, or from
-     * inside the game's PinCountRule. A change then would happen under the one in progress,
-     * and tell the listeners about frames out of order or twice, so it is rejected and the
-     * game is left unchanged. Call again once the callback or the rule has returned. */
-    GAME_ERR_DURING_NOTIFICATION,
+    /* The game, or the pinsetter draining into it, was busy: Game_Roll, Game_CorrectRoll,
+     * Game_EditRolls or Pinsetter_Drain was called from inside a frame-changed callback or the
+     * game's PinCountRule, while another roll or edit was in progress, or Pinsetter_Drain from
+     * inside a drain. A change then would happen under the one in progress, and tell the
+     * listeners about frames out of order or twice, so it is rejected and nothing is changed.
+     * Call again once the callback, the rule or the drain has returned. */
+    GAME_ERR_BUSY,
     /* Game_CorrectRoll or Game_EditRolls was given a roll number the game hasn't had (rolls
      * start at 1), or a range that runs past the last roll. Nothing is changed. */
     GAME_ERR_NO_SUCH_ROLL,
@@ -85,7 +86,7 @@ void Game_Destroy(Game *game);
  *   - After a correction (Game_CorrectRoll), it is told again about every complete frame,
  *     with its new score: a frame number it has heard before is an update.
  * A callback may read the game (Game_Score sees the whole roll), but not change it: a roll,
- * an edit or a drain from inside a callback returns GAME_ERR_DURING_NOTIFICATION.
+ * an edit or a drain from inside a callback returns GAME_ERR_BUSY.
  *
  * Stack: a callback runs on top of the library's own frames. The most under it is after a
  * correction: 272 bytes at -O2, 416 at -O0 (128 and 240 after Game_Roll). Those are 64-bit host
@@ -123,7 +124,7 @@ typedef struct {
  * rule. The listeners are told the result (see FrameChangedCallback). Rejected, changing
  * nothing, if it would make any roll impossible (the status of that roll, such as
  * GAME_ERR_INVALID_PINS), if the roll hasn't been made (GAME_ERR_NO_SUCH_ROLL), or if called
- * from inside a callback (GAME_ERR_DURING_NOTIFICATION). */
+ * from inside a callback (GAME_ERR_BUSY). */
 GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins);
 
 /* Applies `edit` (see RollEdit) to the game's rolls, and rescores the game.
@@ -134,7 +135,7 @@ GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins);
  * rolls after the last one: that is Game_Roll's job), `new_pins` is NULL with rolls promised,
  * or `edit` itself is NULL (GAME_ERR_NO_SUCH_ROLL), if it would make more than 21 rolls
  * (GAME_ERR_TOO_MANY_ROLLS), or if called from inside a callback
- * (GAME_ERR_DURING_NOTIFICATION). */
+ * (GAME_ERR_BUSY). */
 GameStatus Game_EditRolls(Game *game, const RollEdit *edit);
 Score Game_Score(const Game *game);
 

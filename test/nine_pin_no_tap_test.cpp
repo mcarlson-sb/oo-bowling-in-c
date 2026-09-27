@@ -126,7 +126,7 @@ TEST(BrokenRuleTest, should_refuse_a_roll_or_an_edit_made_from_inside_the_rule)
 
     RollAll(s_rule_game, {3U, 4U});
 
-    EXPECT_EQ(GAME_ERR_DURING_NOTIFICATION, s_roll_from_rule);
-    EXPECT_EQ(GAME_ERR_DURING_NOTIFICATION, s_correction_from_rule);
+    EXPECT_EQ(GAME_ERR_BUSY, s_roll_from_rule);
+    EXPECT_EQ(GAME_ERR_BUSY, s_correction_from_rule);
     EXPECT_EQ(7U, Game_Score(s_rule_game));
 }

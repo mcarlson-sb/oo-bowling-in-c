@@ -221,7 +221,7 @@ TEST(ListenerReentryTest, should_refuse_a_roll_made_from_inside_a_listener)
 
     RollAll(game, {5U, 5U, 3U}); /* the 3 completes frame 1, a spare (13) */
 
-    EXPECT_EQ(GAME_ERR_DURING_NOTIFICATION, rolls_from_inside.status);
+    EXPECT_EQ(GAME_ERR_BUSY, rolls_from_inside.status);
     EXPECT_EQ((Frames{{1, 13}}), other.frames); /* the refused roll changed nothing */
     EXPECT_EQ(13U, Game_Score(game));
 
@@ -402,7 +402,7 @@ TEST(LateListenerTest, should_let_a_listener_being_caught_up_read_the_game_but_n
 
     ASSERT_TRUE(Game_OnFrameChanged(game, &RollsWhileCatchingUp_FrameChanged, &late));
 
-    EXPECT_EQ((std::vector<GameStatus>{GAME_ERR_DURING_NOTIFICATION}), late.statuses);
+    EXPECT_EQ((std::vector<GameStatus>{GAME_ERR_BUSY}), late.statuses);
     EXPECT_EQ(7U, Game_Score(game));
 }
 

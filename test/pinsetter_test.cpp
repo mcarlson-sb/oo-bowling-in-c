@@ -352,7 +352,7 @@ TEST(PinsetterTest, should_refuse_a_drain_from_inside_a_listener)
 
     RollAll(game, {3U, 4U}); /* frame 1 completes, and the listener drains */
 
-    EXPECT_EQ(GAME_ERR_DURING_NOTIFICATION, listener.status);
+    EXPECT_EQ(GAME_ERR_BUSY, listener.status);
     EXPECT_EQ(GAME_ERR_INVALID_PINS, Pinsetter_Drain(pinsetter, game)); /* still there */
 }
 
@@ -448,7 +448,7 @@ TEST(PinsetterTest, should_keep_refusing_a_discard_after_a_nested_drain_is_refus
 
     EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, game));
 
-    EXPECT_EQ((std::vector<GameStatus>(2U, GAME_ERR_DURING_NOTIFICATION)), listener.drained);
+    EXPECT_EQ((std::vector<GameStatus>(2U, GAME_ERR_BUSY)), listener.drained);
     EXPECT_EQ((std::vector<bool>{false, false}), listener.discarded);
     EXPECT_EQ(13U, Game_Score(game)); /* 3+4, then 5+1: every roll went in */
 }

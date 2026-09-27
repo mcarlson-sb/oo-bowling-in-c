@@ -127,7 +127,7 @@ Behind them:
 
   A listener may read the game, but not change it. The game is busy for the whole of a roll
   or an edit, and the caller's code runs inside both, the rule and the listeners. So a roll,
-  an edit or a drain from inside either is refused (`GAME_ERR_DURING_NOTIFICATION`), adding a
+  an edit or a drain from inside either is refused (`GAME_ERR_BUSY`), adding a
   listener returns `false`, and destroying the game stops the program. A listener added
   mid-game is caught up at once: it, and only it, is told every frame already complete.
   Destroying a game twice also stops the program.
@@ -163,12 +163,12 @@ Behind them:
   - the game is over (`GAME_ERR_GAME_OVER`);
   - it knocks down more pins than are standing (`GAME_ERR_INVALID_PINS`);
   - the game's rule counts it as more pins than were standing (`GAME_ERR_RULE_OUT_OF_RANGE`);
-  - it is made from inside a listener or the game's rule (`GAME_ERR_DURING_NOTIFICATION`).
+  - it is made from inside a listener or the game's rule (`GAME_ERR_BUSY`).
 
   An edit is also rejected for rolls that haven't been made, including an edit that starts
   after the last roll (`GAME_ERR_NO_SUCH_ROLL`): adding a roll is `Game_Roll`'s job. It is
   also rejected if it would make more than 21 rolls (`GAME_ERR_TOO_MANY_ROLLS`), or if it is
-  made from inside a listener or the rule (`GAME_ERR_DURING_NOTIFICATION`).
+  made from inside a listener or the rule (`GAME_ERR_BUSY`).
 
 ## Why this is object-oriented
 

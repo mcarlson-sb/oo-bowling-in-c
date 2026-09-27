@@ -76,7 +76,7 @@ static GameStatus Pinsetter_DrainWaiting(Pinsetter *pinsetter, Game *game)
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 {
     if (pinsetter->draining) {
-        return GAME_ERR_DURING_NOTIFICATION;
+        return GAME_ERR_BUSY;
     }
     pinsetter->draining = true;
     const GameStatus status = Pinsetter_DrainWaiting(pinsetter, game);

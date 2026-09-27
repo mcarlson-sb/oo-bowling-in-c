@@ -1454,6 +1454,15 @@ it before the edit. Their assertions about the edit are unchanged. One mutation 
 the way: a mutant that left a variable unused failed to build under `-Werror`, and `ctest` ran
 the old binary; the mutant was rewritten so it built, and then failed its test as it should.
 
+**A name that stopped fitting.** The follow-up review noted that `GAME_ERR_DURING_NOTIFICATION`
+now also answers a call from inside the counting rule, which isn't a notification, and a
+drain from inside a drain. It is now `GAME_ERR_BUSY`, matching the flag, in the same enum slot,
+so no status changes number. A mechanical rename across the public header, the library, the
+tests, README.md and ARCHITECTURE.md. This log keeps the names that were in force when each
+section was written: `GAME_ERR_ROLL_DURING_NOTIFICATION`, then
+`GAME_ERR_EDIT_DURING_NOTIFICATION`, then `GAME_ERR_DURING_NOTIFICATION`, and now
+`GAME_ERR_BUSY`.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on

@@ -87,7 +87,7 @@ holds its frames, and each has one job that used to be part of `game.c`:
 (`Game_Roll`) and of an edit (`Game_EditRolls`, and so `Game_CorrectRoll`), and while a new
 listener is caught up. The caller's code runs inside all three: the rule while a roll is
 counted, the listeners while frames are told. While `busy` is set, a roll, an edit or a drain
-gets `GAME_ERR_DURING_NOTIFICATION`, adding a listener gets `false`, and `Game_Destroy` stops
+gets `GAME_ERR_BUSY`, adding a listener gets `false`, and `Game_Destroy` stops
 the program. Reading the game (`Game_Score`) is always allowed.
 
 `Game_ReportFrames` is the one bridge between them: it reads the frames and tells the
@@ -432,7 +432,7 @@ rejected roll changes nothing.
 Game_Roll(game, pins)
    |
    |-- game == NULL?                      --yes--> GAME_ERR_NULL_GAME
-   |-- game busy (inside a listener or   --yes--> GAME_ERR_DURING_NOTIFICATION
+   |-- game busy (inside a listener or   --yes--> GAME_ERR_BUSY
    |   the rule)?
    |
    |   busy = true, until the roll returns
@@ -489,7 +489,7 @@ inserting and deleting are all the same edit. `Game_CorrectRoll` is one roll out
 Game_EditRolls(game, &edit)     edit: a RollEdit {first_roll, rolls_removed, new_pins, new_count}
    |
    |-- game == NULL?                        --yes--> GAME_ERR_NULL_GAME
-   |-- game busy (inside a listener or the rule)?  --yes--> GAME_ERR_DURING_NOTIFICATION
+   |-- game busy (inside a listener or the rule)?  --yes--> GAME_ERR_BUSY
    |
    |  RollLog_Edit(&game->log, edit, &edited):
    |-- range not rolls the log has?         --yes--> GAME_ERR_NO_SUCH_ROLL
@@ -548,7 +548,7 @@ main loop: Pinsetter_Drain(pinsetter, game)
    |
    |   status = Game_Roll(game, rolls[drain_at])
    |-- the game rejected it?  --yes--> return its status; the roll stays waiting
-   |      (from inside a listener, that is every roll: GAME_ERR_DURING_NOTIFICATION)
+   |      (from inside a listener, that is every roll: GAME_ERR_BUSY)
    |
    |   drain_at = the next slot (release)   the interrupt side may reuse this one
    '-- and round again

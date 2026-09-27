@@ -217,7 +217,7 @@ GameStatus Game_Roll(Game *game, Pins pins)
         return GAME_ERR_NULL_GAME;
     }
     if (game->busy) {
-        return GAME_ERR_DURING_NOTIFICATION;
+        return GAME_ERR_BUSY;
     }
     game->busy = true;
     const GameStatus status = Game_Accept(game, pins);
@@ -319,7 +319,7 @@ GameStatus Game_EditRolls(Game *game, const RollEdit *edit)
         return GAME_ERR_NULL_GAME;
     }
     if (game->busy) {
-        return GAME_ERR_DURING_NOTIFICATION;
+        return GAME_ERR_BUSY;
     }
     RollLog edited;
     GameStatus status = RollLog_Edit(&game->log, edit, &edited);
