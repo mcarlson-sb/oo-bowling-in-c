@@ -196,6 +196,9 @@ Score Game_Score(const Game *game)
 
 void Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context)
 {
+    if (game == NULL) {
+        return;
+    }
     game->on_frame_completed = callback;
     game->on_frame_completed_context = context;
 }

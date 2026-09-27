@@ -85,3 +85,10 @@ TEST_F(ScoreboardTest, should_tell_the_scoreboard_the_tenth_frame_completes_only
     RollAll({4U}); /* the second fill ball */
     EXPECT_EQ((Frames{{10, 17}}), scoreboard.frames);
 }
+
+TEST(ScoreboardNullTest, should_ignore_setting_a_callback_on_a_null_game)
+{
+    Scoreboard scoreboard;
+    Game_OnFrameCompleted(nullptr, &Scoreboard_FrameCompleted, &scoreboard);
+    EXPECT_TRUE(scoreboard.frames.empty());
+}
