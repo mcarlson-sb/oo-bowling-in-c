@@ -338,7 +338,7 @@ TEST(PinsetterTest, should_refuse_a_drain_from_inside_a_listener)
 
     RollAll(game, {3U, 4U}); /* frame 1 completes, and the listener drains */
 
-    EXPECT_EQ(GAME_ERR_EDIT_DURING_NOTIFICATION, listener.status);
+    EXPECT_EQ(GAME_ERR_DURING_NOTIFICATION, listener.status);
     EXPECT_EQ(GAME_ERR_INVALID_PINS, Pinsetter_Drain(pinsetter, game)); /* still there */
 }
 

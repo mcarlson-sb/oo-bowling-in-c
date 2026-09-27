@@ -350,7 +350,7 @@ GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
         return GAME_ERR_NULL_GAME;
     }
     if (game->notifying) {
-        return GAME_ERR_EDIT_DURING_NOTIFICATION;
+        return GAME_ERR_DURING_NOTIFICATION;
     }
     const uint8_t first = (uint8_t)(first_roll - 1U); /* index of the first roll replaced */
     if ((first_roll == 0U) || (first_roll > game->log.count) ||

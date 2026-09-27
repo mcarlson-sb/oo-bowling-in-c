@@ -60,7 +60,7 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins);
  * with Game_CorrectRoll, and the next drain carries on from it.
  *
  * Not from inside a frame-changed callback: there it drains nothing and returns
- * GAME_ERR_EDIT_DURING_NOTIFICATION. */
+ * GAME_ERR_DURING_NOTIFICATION. */
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game);
 
 /* Main-loop side. Throws away the oldest waiting roll: the one a drain stopped at, when the

@@ -31,7 +31,7 @@ typedef enum {
      * it is rejected and the game is left unchanged. Call again once the callback has
      * returned. (A roll from inside a callback is queued instead: see GAME_QUEUED.)
      * Pinsetter_Drain returns it too, from inside a callback, and drains nothing. */
-    GAME_ERR_EDIT_DURING_NOTIFICATION,
+    GAME_ERR_DURING_NOTIFICATION,
     /* Game_CorrectRoll or Game_EditRolls was given a roll number the game hasn't had (rolls
      * start at 1), or a range that runs past the last roll. Nothing is changed. */
     GAME_ERR_NO_SUCH_ROLL,
@@ -90,7 +90,7 @@ GameStatus Game_Roll(Game *game, Pins pins);
  * rule. The listeners are told the result (see FrameChangedCallback). Rejected, changing
  * nothing, if it would make any roll impossible (the status of that roll, such as
  * GAME_ERR_INVALID_PINS), if the roll hasn't been made (GAME_ERR_NO_SUCH_ROLL), or if called
- * from inside a callback (GAME_ERR_EDIT_DURING_NOTIFICATION). */
+ * from inside a callback (GAME_ERR_DURING_NOTIFICATION). */
 GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins);
 
 /* Replaces `rolls_removed` rolls, starting at roll number `first_roll` (the first roll is 1),
@@ -103,7 +103,7 @@ GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins);
  * rolls after the last one: that is Game_Roll's job) or `new_pins` is NULL
  * with rolls promised (GAME_ERR_NO_SUCH_ROLL), if it would make more than 21 rolls
  * (GAME_ERR_TOO_MANY_ROLLS), or if called from inside a callback
- * (GAME_ERR_EDIT_DURING_NOTIFICATION). */
+ * (GAME_ERR_DURING_NOTIFICATION). */
 GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
                           const Pins *new_pins, uint8_t new_count);
 Score Game_Score(const Game *game);

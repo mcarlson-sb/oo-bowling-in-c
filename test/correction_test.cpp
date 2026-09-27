@@ -172,7 +172,7 @@ TEST(CorrectionTest, should_refuse_a_correction_made_from_inside_a_listener)
     ASSERT_TRUE(Game_OnFrameChanged(game, &CorrectsFromInside_FrameChanged, &listener));
 
     RollAll(game, {3U, 4U});
-    EXPECT_EQ(GAME_ERR_EDIT_DURING_NOTIFICATION, listener.status);
+    EXPECT_EQ(GAME_ERR_DURING_NOTIFICATION, listener.status);
     EXPECT_EQ(7U, Game_Score(game)); /* the refused correction changed nothing */
 }
 
