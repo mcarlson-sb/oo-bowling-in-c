@@ -33,6 +33,26 @@ TEST(PinsetterTest, should_roll_the_posted_pins_into_the_game_in_order_when_drai
     EXPECT_EQ(24U, Game_Score(game)); /* 10 + 3 + 4, then 3 + 4 */
 }
 
+TEST(PinsetterTest, should_refuse_a_post_when_the_mailbox_is_full)
+{
+    /* The mailbox holds 8 rolls. A ninth, before the main loop drains, can't overwrite the
+     * oldest: the pinsetter is told, and can report the lost roll. */
+    GameHandle game_owner = MakeGame();
+    Game *game = game_owner.get();
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 5U));
+    for (int i = 0; i < 7; i++) {
+        EXPECT_TRUE(Pinsetter_Post(pinsetter, 0U));
+    }
+    EXPECT_FALSE(Pinsetter_Post(pinsetter, 9U));
+
+    Pinsetter_Drain(pinsetter, game);
+    EXPECT_EQ(5U, Game_Score(game)); /* the 5 and seven gutter balls; no 9 */
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 9U)); /* drained, there is room again */
+}
+
 TEST(PinsetterTest, should_apply_rolls_still_waiting_after_a_correction_made_meanwhile)
 {
     /* Only rolls wait in a mailbox. An edit applies at once, to the rolls the game has had,

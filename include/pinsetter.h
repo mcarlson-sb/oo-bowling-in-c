@@ -25,7 +25,8 @@ Pinsetter *Pinsetter_Create(void);
 
 void Pinsetter_Destroy(Pinsetter *pinsetter);
 
-/* Interrupt side. Posts the pins that fell in one roll. */
+/* Interrupt side. Posts the pins that fell in one roll. Returns false, posting nothing, if
+ * the mailbox is full: 8 rolls are waiting that the main loop hasn't drained. */
 bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins);
 
 /* Main-loop side. Rolls every posted roll into `game`, oldest first, with Game_Roll. */

@@ -47,6 +47,9 @@ void Pinsetter_Destroy(Pinsetter *pinsetter)
 
 bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
 {
+    if ((pinsetter->posted - pinsetter->drained) == PINSETTER_CAPACITY) {
+        return false; /* full: never overwrite a roll the main loop hasn't seen */
+    }
     pinsetter->rolls[pinsetter->posted % PINSETTER_CAPACITY] = pins;
     pinsetter->posted++;
     return true;
