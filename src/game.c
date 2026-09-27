@@ -303,18 +303,7 @@ static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
 
 GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
 {
-    if (game == NULL) {
-        return GAME_ERR_NULL_GAME;
-    }
-    if (game->notifying) {
-        return GAME_ERR_ROLL_DURING_NOTIFICATION;
-    }
-    if ((roll_number == 0U) || (roll_number > game->log.count)) {
-        return GAME_ERR_NO_SUCH_ROLL;
-    }
-    RollLog edited = game->log;
-    edited.pins[roll_number - 1U] = pins;
-    return Game_ApplyEditedLog(game, &edited);
+    return Game_EditRolls(game, roll_number, 1U, &pins, 1U); /* one roll out, one in */
 }
 
 GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
