@@ -75,3 +75,16 @@ TEST(CorrectionListenerTest, should_tell_the_scoreboard_the_rescored_frames)
     EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 5U)); /* frame 1 was 5, 4 */
     EXPECT_EQ((std::map<int, int>{{1, 9}, {2, 7}}), scoreboard.scores);
 }
+
+TEST(CorrectionListenerTest, should_keep_running_stats_right_after_a_correction)
+{
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RunningStats stats;
+    ASSERT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
+    RollAll(game, {3U, 4U, 5U, 2U}); /* frames of 7 and 7 */
+
+    EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 5U)); /* frames of 9 and 7 */
+    EXPECT_EQ(2, stats.Frames());
+    EXPECT_DOUBLE_EQ(8.0, stats.Average());
+}

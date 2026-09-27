@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <initializer_list>
+#include <map>
 #include <memory>
 
 #include "game.h"
@@ -36,19 +37,26 @@ inline void RollAll(Game *game, std::initializer_list<Pins> rolls)
 
 /* ---- Client-side subscribers ------------------------------------------------------------ */
 
-/* Running stats: how many frames are complete, and their average score. */
+/* Running stats: how many frames are complete, and their average score. It keeps the latest
+ * score heard for each frame, so a frame told again after a correction is an update, not a
+ * new frame. */
 struct RunningStats {
-    int frames = 0;
-    int total = 0;
-    double Average() const { return (frames == 0) ? 0.0 : static_cast<double>(total) / frames; }
+    std::map<int, int> frame_scores; /* frame number -> latest score */
+
+    int Frames() const { return static_cast<int>(frame_scores.size()); }
+    double Average() const
+    {
+        int total = 0;
+        for (const auto &frame : frame_scores) {
+            total += frame.second;
+        }
+        return frame_scores.empty() ? 0.0 : static_cast<double>(total) / Frames();
+    }
 };
 
 inline void RunningStats_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
 {
-    (void)frame_number;
-    auto *stats = static_cast<RunningStats *>(context);
-    stats->frames++;
-    stats->total += frame_score;
+    static_cast<RunningStats *>(context)->frame_scores[frame_number] = frame_score;
 }
 
 /* ---- Client-side rules ------------------------------------------------------------------ *

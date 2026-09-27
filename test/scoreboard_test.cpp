@@ -95,7 +95,7 @@ TEST_F(ScoreboardTest, should_tell_a_second_independent_subscriber_too)
     RollAll(game, {3U, 4U, 10U, 5U, 5U, 1U});
 
     EXPECT_EQ((Frames{{1, 7}, {2, 20}, {3, 11}}), scoreboard.frames);
-    EXPECT_EQ(3, stats.frames);
+    EXPECT_EQ(3, stats.Frames());
     EXPECT_DOUBLE_EQ(38.0 / 3.0, stats.Average());
 }
 
@@ -107,8 +107,8 @@ TEST_F(ScoreboardTest, should_refuse_a_subscriber_once_every_slot_is_taken)
     EXPECT_FALSE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &one_too_many));
 
     RollAll(game, {3U, 4U});
-    EXPECT_EQ(1, stats.frames);
-    EXPECT_EQ(0, one_too_many.frames);
+    EXPECT_EQ(1, stats.Frames());
+    EXPECT_EQ(0, one_too_many.Frames());
 }
 
 /* ---- What running stats needs under a caller's rule ------------------------------------- */
@@ -126,7 +126,7 @@ TEST(RunningStatsNoTapTest, should_average_the_counted_scores_under_no_tap)
         EXPECT_EQ(GAME_OK, Game_Roll(game, pins)) << "setup roll of " << +pins;
     }
 
-    EXPECT_EQ(2, stats.frames);
+    EXPECT_EQ(2, stats.Frames());
     EXPECT_DOUBLE_EQ((17.0 + 7.0) / 2.0, stats.Average());
 }
 
