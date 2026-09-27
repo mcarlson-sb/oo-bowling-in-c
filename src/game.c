@@ -18,6 +18,9 @@ struct Game {
     FrameContext frames[GAME_FRAMES];
     uint8_t frame_count;
     PinCountRule count_pins; /* how this game counts a roll: see Game_CreateWithRule */
+    uint8_t frames_reported; /* frames already told to on_frame_completed */
+    FrameCompletedCallback on_frame_completed;
+    void *on_frame_completed_context;
 };
 
 /* The games themselves, and the pool that tracks which are in use. The pool's bookkeeping
@@ -80,6 +83,25 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
     return result;
 }
 
+/* Tells the game's callback about every frame that has completed since the last roll.
+ *
+ * A frame never completes before the one before it: its bonus rolls, if any, are the next
+ * frames' own rolls. So the frames already reported are always the first few, and one roll
+ * can only complete frames just past them, in order. Keeping a count of frames reported is
+ * enough; no before-and-after copy of every frame's flag is needed. */
+static void Game_ReportCompletedFrames(Game *game)
+{
+    while ((game->frames_reported < game->frame_count) &&
+           FrameContext_IsComplete(&game->frames[game->frames_reported])) {
+        const FrameContext *frame = &game->frames[game->frames_reported];
+        game->frames_reported++;
+        if (game->on_frame_completed != NULL) {
+            game->on_frame_completed(game->on_frame_completed_context, game->frames_reported,
+                                     FrameContext_Score(frame));
+        }
+    }
+}
+
 /* Standard bowling: a roll counts as the pins it knocked down. */
 static Pins Game_CountPinsDown(Pins pins_standing, Pins pins_down)
 {
@@ -104,6 +126,9 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     Game *game = &s_games[slot];
     game->frame_count = 0U;
     game->count_pins = count_pins;
+    game->frames_reported = 0U;
+    game->on_frame_completed = NULL;
+    game->on_frame_completed_context = NULL;
     return game;
 }
 
@@ -152,6 +177,7 @@ GameStatus Game_Roll(Game *game, Pins pins)
     if (!result.consumed) {
         Game_AddNewFrame(game, result.pins);
     }
+    Game_ReportCompletedFrames(game);
     return GAME_OK;
 }
 
@@ -166,4 +192,10 @@ Score Game_Score(const Game *game)
         score = (Score)(score + FrameContext_Score(&game->frames[i]));
     }
     return score;
+}
+
+void Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context)
+{
+    game->on_frame_completed = callback;
+    game->on_frame_completed_context = context;
 }

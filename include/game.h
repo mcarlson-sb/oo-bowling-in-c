@@ -40,6 +40,15 @@ Game *Game_Create(void);
 Game *Game_CreateWithRule(PinCountRule count_pins);
 
 void Game_Destroy(Game *game);
+
+/* Told each time a frame completes, after the roll that completed it: the frame's number (1
+ * to 10) and its score. When one roll completes several frames, it is told about each,
+ * oldest first. */
+typedef void (*FrameCompletedCallback)(void *context, uint8_t frame_number, Score frame_score);
+
+/* Sets the one callback this game tells about completed frames. `context` is passed back to
+ * it unchanged. */
+void Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context);
 GameStatus Game_Roll(Game *game, Pins pins);
 Score Game_Score(const Game *game);
 

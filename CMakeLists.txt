@@ -52,6 +52,7 @@ add_executable(bowling_tests
     test/slot_pool_test.cpp
     test/game_test.cpp
     test/nine_pin_no_tap_test.cpp
+    test/scoreboard_test.cpp
 )
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
 # frame_test.cpp, roll_list_test.cpp and slot_pool_test.cpp test private types directly, so
