@@ -214,6 +214,15 @@ Pins FrameContext_PinsStanding(const FrameContext *self)
 `Game` calls these and never asks what state a frame is in. There is no `switch` on a state
 anywhere in `game.c`.
 
+**A context can't be copied.** `current_state` points at one of the context's *own* slots,
+such as `&self->regular`. Copy the struct, and the copy's `current_state` still points into
+the original. Once the original is gone or changes, the copy is running a state that isn't
+its own. So a frame is an object, with an identity, not a value. Anything that needs a copy,
+such as undoing a rejected edit, copies plain values instead (the roll log) and rebuilds the
+frames from them. `KAY.md` shows the probe that found this: after a copy-back, every frame
+pointed outside its game
+([phase 5b, section 2](KAY.md#2-replay-into-a-scratch-copy-would-have-left-dangling-pointers)).
+
 ### 4.4 Transitions: the states decide
 
 In this design **the state decides when to change state**. Only `RegularFrame` ever does:

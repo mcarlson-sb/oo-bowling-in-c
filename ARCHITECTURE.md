@@ -403,8 +403,8 @@ Game_EditRolls(game, first_roll, rolls_removed, new_pins, new_count)
    |-- game == NULL?                        --yes--> GAME_ERR_NULL_GAME
    |-- called from inside a listener?       --yes--> GAME_ERR_ROLL_DURING_NOTIFICATION
    |-- range not rolls the game has had?    --yes--> GAME_ERR_NO_SUCH_ROLL
-   |   (or new rolls promised, but NULL)
-   |-- more than 21 rolls after the edit?   --yes--> GAME_ERR_GAME_OVER
+   |   (starts after the last roll, or new rolls promised, but NULL)
+   |-- more than 21 rolls after the edit?   --yes--> GAME_ERR_TOO_MANY_ROLLS
    v
 build the edited log: the rolls before the range, the new rolls, the rolls after it
    |

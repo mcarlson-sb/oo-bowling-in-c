@@ -648,7 +648,8 @@ accepted when it should be.
 - **The result:** the mutation now fails the no-tap property. The standard property can't
   catch it, because under the standard rule counted and fallen pins are the same.
 - **Random range edits** are now property-tested the same way, under both rules. That covers
-  replacing, inserting, deleting, appending, and deleting every roll.
+  replacing, inserting, deleting, appending (wrongly, see the review below), and deleting
+  every roll.
 
 ### 4. Two small things
 
@@ -682,6 +683,25 @@ accepted when it should be.
 The edit is a *function call with an array argument*, not a message object that could be
 stored, forwarded or sent to more than one receiver. "One edit is one message" is true at
 the level of *this* API's meaning, not in how C calls it.
+
+### After review: one hole, and one status doing two jobs
+
+- **An edit could add rolls after the last one.** On an empty game, editing at roll 1 and
+  inserting 3, 4 returned `GAME_OK`. So did inserting at roll 3 after two rolls. The range
+  check allowed `first_roll` to be one past the last roll. That made the edit a second way to
+  roll, and one the listeners heard as a correction, every frame sent again, and not as a
+  roll. An edit now has to start at a roll the game has had. A forgotten last roll is a
+  `Game_Roll`.
+  - **The property test had the bug built in.** It picked edit positions up to and including
+    one past the last roll, and called that "appending". Once the fix was in, it failed: the
+    fresh game accepted rolls that the edit now rejected. The property now has one rule the
+    fresh game can't judge: an edit past the last roll is rejected.
+- **`GAME_ERR_GAME_OVER` meant two things:** "the tenth frame is complete" and "this edit
+  would make more than 21 rolls". A caller could only tell them apart by knowing which call
+  it had made. More than 21 rolls is now `GAME_ERR_TOO_MANY_ROLLS`, added at the end of the
+  enum so the values that already existed keep their numbers.
+- **The copy trap is now in `STATE_PATTERN.md` too** (section 4.3), where a learner reading
+  about the context will find it.
 
 ---
 

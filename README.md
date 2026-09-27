@@ -111,8 +111,9 @@ The public API is eight functions in `include/game.h`: `Game_Create`, `Game_Crea
     read the game, but not roll it or edit it: that would tell listeners about frames out of
     order.
 
-  An edit is also rejected for rolls that haven't been made (`GAME_ERR_NO_SUCH_ROLL`), and if it
-  would make more than 21 rolls (`GAME_ERR_GAME_OVER`).
+  An edit is also rejected for rolls that haven't been made, including an edit that starts
+  after the last roll (`GAME_ERR_NO_SUCH_ROLL`): adding a roll is `Game_Roll`'s job. It is
+  also rejected if it would make more than 21 rolls (`GAME_ERR_TOO_MANY_ROLLS`).
 
 ## Why this is object-oriented
 
