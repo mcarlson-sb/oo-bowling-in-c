@@ -98,6 +98,9 @@ void Frame_Complete(Frame *self);
 /* Copies another frame's rolls into this one, for a state built from the one it replaces. */
 void Frame_CopyRolls(Frame *self, const Frame *from);
 
+/* Whether the frame has all it will ever take: its rolls and any bonus rolls. */
+bool Frame_IsComplete(const Frame *self);
+
 /* Pins knocked down by this frame's own rolls, without bonus rolls. */
 Pins Frame_PinsKnockedDown(const Frame *self);
 

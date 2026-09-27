@@ -85,6 +85,11 @@ bool Frame_HasAllBonusRolls(const Frame *self)
     return RollList_IsFull(&self->bonus_rolls);
 }
 
+bool Frame_IsComplete(const Frame *self)
+{
+    return self->complete;
+}
+
 Score Frame_Score(const Frame *self)
 {
     if (!self->complete) {

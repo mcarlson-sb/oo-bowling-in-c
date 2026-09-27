@@ -37,7 +37,7 @@ static RollResult RegularFrame_Roll(Frame *self, struct FrameContext *context, P
  * roll starts a new frame on a full rack. */
 static Pins RegularFrame_PinsStanding(const Frame *self)
 {
-    if (self->complete) {
+    if (Frame_IsComplete(self)) {
         return FRAME_ALL_PINS;
     }
     return (Pins)(FRAME_ALL_PINS - Frame_PinsKnockedDown(self));

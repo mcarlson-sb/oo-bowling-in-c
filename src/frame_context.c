@@ -83,7 +83,7 @@ Score FrameContext_Score(const FrameContext *self)
 
 bool FrameContext_IsComplete(const FrameContext *self)
 {
-    return self->current_state->complete;
+    return Frame_IsComplete(self->current_state);
 }
 
 Pins FrameContext_PinsStanding(const FrameContext *self)
