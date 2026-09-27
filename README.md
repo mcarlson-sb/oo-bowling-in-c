@@ -91,7 +91,10 @@ The public API is six functions in `include/game.h`: `Game_Create`, `Game_Create
 - A roll is rejected, and the game left unchanged, if:
   - the game is over (`GAME_ERR_GAME_OVER`);
   - it knocks down more pins than are standing (`GAME_ERR_INVALID_PINS`);
-  - the game's rule counts it as more pins than were standing (`GAME_ERR_RULE_OUT_OF_RANGE`).
+  - the game's rule counts it as more pins than were standing (`GAME_ERR_RULE_OUT_OF_RANGE`);
+  - it is made from inside a listener (`GAME_ERR_ROLL_DURING_NOTIFICATION`). A listener may
+    read the game, but not roll it: that would tell listeners about frames out of order.
+
 ## Why this is object-oriented
 
 The four pillars of OO, each done with a plain C mechanism, plus information hiding. That one

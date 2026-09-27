@@ -341,13 +341,14 @@ Both tables are `static const` in `src/frame_context.c`; the header only forward
 
 ## 8. A roll's journey
 
-**`Game_Roll`, step by step.** All four checks run before any frame sees the roll, so a
+**`Game_Roll`, step by step.** All five checks run before any frame sees the roll, so a
 rejected roll changes nothing.
 
 ```
 Game_Roll(game, pins)
    |
    |-- game == NULL?                      --yes--> GAME_ERR_NULL_GAME
+   |-- called from inside a listener?     --yes--> GAME_ERR_ROLL_DURING_NOTIFICATION
    |-- tenth frame complete?              --yes--> GAME_ERR_GAME_OVER
    |-- pins > pins standing?              --yes--> GAME_ERR_INVALID_PINS
    |      (asks the latest frame: Frame_PinsStanding)
@@ -384,7 +385,9 @@ that a rule exists.
 tells each listener (up to two, set with `Game_OnFrameCompleted`) about every frame the roll
 completed, oldest first. A frame never completes before the one before it, so `Game` only
 keeps a count of frames already reported, and checks the frames just past it. Frames don't
-hold listeners, and no listener is called while a roll is half applied. KAY.md records why
+hold listeners, and no listener is called while a roll is half applied. A listener may read
+the game (`Game_Score` then sees the whole roll) but not roll it: a roll from inside a
+listener would tell the listeners about frames out of order, so it is refused. KAY.md records why
 this won over frames telling the listeners themselves.
 
 **Worked example: rolls 10, 3, 4.** `RollResult` is what each frame hands back.

@@ -351,7 +351,8 @@ open-ended conversation between objects.
 
 The callback earns its place only because the subscribers belong to the caller.
 
-### A note for phase 4
+
+### A note for phase 4 (written before the review)
 
 Phase 4, a receiver that can decline a message it doesn't understand (`doesNotUnderstand`),
 is optional, "only if features 1 to 3 leave a real need". So far nothing does:
@@ -362,3 +363,101 @@ A need would first appear with a second kind of notification that some listeners
 about. Even then, the simplest answer is probably a separate subscription per kind, not a
 generic receiver that can decline. The phase 4 review should confirm that before anything is
 built.
+
+### After review: calling back into the game from inside a listener
+
+The review asked for the mid-roll argument to become a test. Messaging brings a hazard the
+closed design never had: a listener can call back into the game while it is being told.
+
+| Commit | Tag | What |
+|---|---|---|
+| `Live scoreboard: a listener that reads the score sees the whole roll` | make-change | Passed without new code |
+| `Refuse a roll made from inside a frame-completed listener` | make-change | New `GAME_ERR_ROLL_DURING_NOTIFICATION` |
+
+**Reading the score inside a callback.** When one roll completes frames 8 and 9, a listener
+that calls `Game_Score` must see the score after the whole roll, both times: `{24, 24}`.
+- The diff-in-`Game` design passes, because it reports only once the roll has gone all the
+  way through.
+- To see whether the test separates the two designs, a mutation reproduced frames-telling
+  timing, reporting inside the chain loop right after each frame takes the roll. This test,
+  and only this test, failed. It saw `{17, 24}`: frame 8's notification arrived before frame 9
+  had taken the 4.
+
+So phase 3's timing argument is no longer just reasoning: this test is what separates the
+designs, where the double-completion test didn't.
+
+**Rolling inside a callback.** Before deciding, a probe showed what the code did on its own.
+A listener that rolled a 4 from inside frame 1's notification:
+- was **accepted** (`GAME_OK`);
+- completed frame 2 **in the middle of frame 1's notification**;
+- so the other listener heard `(2, 7)` **before** `(1, 13)`, silently breaking the
+  oldest-first promise in `game.h`.
+
+It was the same kind of hole as phase 1's rule probe: no build and no sanitizer noticed. There
+were two ways to fix it:
+- **Allow it and keep the order.** That needs a queue of rolls held back until notification
+  ends, fixed-size because there's no heap. That's machinery no feature asks for.
+- **Refuse it.** One flag, set while the game is notifying.
+
+**Refused.** `Game_Roll` from inside a callback returns `GAME_ERR_ROLL_DURING_NOTIFICATION`
+and changes nothing; the same roll made after the callback returns is fine. `game.h` now says
+what a callback may do: read the game, not roll it.
+
+**Still untested, and recorded here, not fixed:** a listener could also call `Game_Destroy`
+or `Game_OnFrameCompleted` from inside its callback. Destroying the game would leave `Game`
+reporting on a released slot. Subscribing would add a listener to the list being walked. No
+feature needs either, and the same one-flag answer would cover both if one ever did.
+
+---
+
+## Phase 4: `doesNotUnderstand`. Skipped, deliberately
+
+**The brief.** Optional, and only if features 1 to 3 leave a real need: a receiver that can
+decline a message it doesn't understand, as Smalltalk's `doesNotUnderstand` allows.
+
+**Decision: not built. Nothing needs it.**
+- There is **one** kind of notification, and every listener wants it.
+- There is **one** rule, and every game needs exactly one.
+- No receiver is ever sent something it wasn't written to handle.
+
+A need would first appear with a second *kind* of notification that some listeners don't care
+about. Even then, the simplest answer is a separate subscription per kind, so that no
+listener is ever sent the message. A generic receiver that can decline is heavier. In C it
+would also mean building a message selector and a dispatch step: exactly the
+`objc_msgSend`-style runtime this experiment said it would note rather than build.
+
+---
+
+## Conclusion: late binding pays at the boundaries between owners
+
+Across the three phases, Kay's properties moved **only where a feature crossed a boundary
+between owners**:
+- a counting rule the caller owns (phase 1);
+- listeners the caller owns (phase 3).
+
+Inside the library, where one party owns everything, the closed Simula-style design held up
+against every test. The evidence is in the diff: **of the 20 library files, the experiment
+changed only `game.h` and `game.c`**, the boundary. The frame classes, the states, the context,
+`RollList` and `SlotPool` are untouched since `main`. Phase 2, the one attempt to push late
+binding *inward* ("tell, don't ask"), had no feature behind it and was declined.
+
+The cost landed in exactly the same place. Every defect class the experiment found or
+guarded against sits at one of those two boundaries, and the closed interior never had any of
+them:
+
+| Boundary | What late binding cost there |
+|---|---|
+| The caller's rule | A buggy rule silently corrupted a game (the pins-standing wrap to 255); a `NULL` rule would crash. Now `GAME_ERR_RULE_OUT_OF_RANGE`, and `NULL` refused |
+| The caller's listeners | A wrong cast of the `void *` context is undefined behavior no build can catch; a `NULL` callback wasted a slot; a third subscriber overflowed the array for a commit; a roll from inside a listener broke the ordering promise. Now refused, refused, refused, and `GAME_ERR_ROLL_DURING_NOTIFICATION` |
+
+**The teachable conclusion: use late binding at the boundaries between owners, where it pays
+for itself, and nowhere else.** Where the caller owns a variation, a function pointer or a
+callback is the simplest honest design, and a `switch` can't do the job. Inside one owner's
+code, the closed design is simpler, safer and fully checked by the compiler. Every boundary
+you open also needs guarding: the new checks all appeared right there, and none was needed
+anywhere else.
+
+What the experiment did **not** reach is Kay's OO proper: messages as first-class things,
+receivers that can decline, and binding that stays open while the program runs. Each would
+have meant rebuilding part of a language runtime in C (message selectors, dispatch,
+`doesNotUnderstand`). No feature asked for that, so it wasn't built.
