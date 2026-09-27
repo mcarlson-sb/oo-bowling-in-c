@@ -4,10 +4,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "game_limits.h"
 #include "slot_pool.h"
 
-/* Rolls the mailbox holds before the main loop must drain it. */
-#define PINSETTER_CAPACITY 8U
+/* Rolls the mailbox holds before the main loop must drain it: a whole game's. A drain stops
+ * at a roll the game refuses, and the rolls behind it wait until the scorer resolves it. Any
+ * fewer, and the interrupt handler could lose a roll of the game while they wait. */
+#define PINSETTER_CAPACITY GAME_MAX_ROLLS
+_Static_assert(PINSETTER_CAPACITY >= GAME_MAX_ROLLS,
+               "the mailbox must hold every roll of a game while a drain is stopped");
 
 /* One slot more than it holds, so that a full mailbox (the next post would land on the oldest
  * waiting roll) and an empty one (nothing between the two positions) look different. */

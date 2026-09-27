@@ -5,14 +5,12 @@
 #include <stddef.h>
 
 #include "frame_context.h"
+#include "game_limits.h"
 #include "slot_pool.h"
 
 /* Frames in a game of bowling. The last one keeps its own fill balls, so a game never needs
  * more. */
 #define GAME_FRAMES 10U
-
-/* The most rolls a game can take: two in each of frames 1 to 9, and three in the tenth. */
-#define GAME_MAX_ROLLS 21U
 
 /* Every accepted roll, as the pins that fell. Plain values only, so a RollLog can be copied
  * safely: saving one before an edit, and putting it back, is how a rejected edit is undone.

@@ -36,26 +36,6 @@ TEST(PinsetterTest, should_roll_the_posted_pins_into_the_game_in_order_when_drai
     EXPECT_EQ(24U, Game_Score(game)); /* 10 + 3 + 4, then 3 + 4 */
 }
 
-TEST(PinsetterTest, should_refuse_a_post_when_the_mailbox_is_full)
-{
-    /* The mailbox holds 8 rolls. A ninth, before the main loop drains, can't overwrite the
-     * oldest: the pinsetter is told, and can report the lost roll. */
-    GameHandle game_owner = MakeGame();
-    Game *game = game_owner.get();
-    PinsetterHandle owner = MakePinsetter();
-    Pinsetter *pinsetter = owner.get();
-
-    EXPECT_TRUE(Pinsetter_Post(pinsetter, 5U));
-    for (int i = 0; i < 7; i++) {
-        EXPECT_TRUE(Pinsetter_Post(pinsetter, 0U));
-    }
-    EXPECT_FALSE(Pinsetter_Post(pinsetter, 9U));
-
-    Pinsetter_Drain(pinsetter, game);
-    EXPECT_EQ(5U, Game_Score(game)); /* the 5 and seven gutter balls; no 9 */
-    EXPECT_TRUE(Pinsetter_Post(pinsetter, 9U)); /* drained, there is room again */
-}
-
 TEST(PinsetterTest, should_apply_rolls_still_waiting_after_a_correction_made_meanwhile)
 {
     /* Only rolls wait in a mailbox. An edit applies at once, to the rolls the game has had,
@@ -142,6 +122,33 @@ TEST(PinsetterTest, should_keep_rolls_made_after_the_game_is_over_for_the_next_g
     Game *next = next_owner.get();
     EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, next));
     EXPECT_EQ(7U, Game_Score(next));
+}
+
+TEST(PinsetterTest, should_hold_a_whole_game_of_rolls_while_a_drain_is_stopped)
+{
+    /* The worst case for a stopped drain: the game is over, the main loop hasn't moved on,
+     * and the next bowler bowls a whole game, 21 rolls. None may be lost. The mailbox holds
+     * exactly that many: a 22nd roll is refused. */
+    GameHandle first_owner = MakeGame();
+    Game *first = first_owner.get();
+    for (int i = 0; i < 20; i++) {
+        EXPECT_EQ(GAME_OK, Game_Roll(first, 0U));
+    }
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 9U));
+    EXPECT_EQ(GAME_ERR_GAME_OVER, Pinsetter_Drain(pinsetter, first));
+
+    for (int roll = 1; roll < 21; roll++) { /* 9 then 1, ten times over, then a fill 9 */
+        EXPECT_TRUE(Pinsetter_Post(pinsetter, ((roll % 2) == 0) ? Pins{9U} : Pins{1U}))
+            << "roll " << roll + 1;
+    }
+    EXPECT_FALSE(Pinsetter_Post(pinsetter, 0U));
+
+    GameHandle next_owner = MakeGame();
+    Game *next = next_owner.get();
+    EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, next));
+    EXPECT_EQ(190U, Game_Score(next)); /* ten spares, each with a 9 as its bonus */    EXPECT_TRUE(Pinsetter_Post(pinsetter, 0U)); /* drained, there is room again */
 }
 
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
