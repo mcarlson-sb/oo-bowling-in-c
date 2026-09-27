@@ -169,14 +169,10 @@ void Game_Destroy(Game *game)
     }
 }
 
-GameStatus Game_Roll(Game *game, Pins pins)
+/* Checks a roll and, if it can happen, applies it to the frames. Tells no one: a caller that
+ * wants listeners told does that itself. */
+static GameStatus Game_Accept(Game *game, Pins pins)
 {
-    if (game == NULL) {
-        return GAME_ERR_NULL_GAME;
-    }
-    if (game->notifying) {
-        return GAME_ERR_ROLL_DURING_NOTIFICATION;
-    }
     /* Every check runs before any frame sees the roll. Frames act on a roll as it passes
      * through them, and that can't be undone, so this is what leaves a rejected roll with
      * no effect. */
@@ -196,8 +192,22 @@ GameStatus Game_Roll(Game *game, Pins pins)
     if (!result.consumed) {
         Game_AddNewFrame(game, result.pins);
     }
-    Game_ReportCompletedFrames(game);
     return GAME_OK;
+}
+
+GameStatus Game_Roll(Game *game, Pins pins)
+{
+    if (game == NULL) {
+        return GAME_ERR_NULL_GAME;
+    }
+    if (game->notifying) {
+        return GAME_ERR_ROLL_DURING_NOTIFICATION;
+    }
+    const GameStatus status = Game_Accept(game, pins);
+    if (status == GAME_OK) {
+        Game_ReportCompletedFrames(game);
+    }
+    return status;
 }
 
 Score Game_Score(const Game *game)
