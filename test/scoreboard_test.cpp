@@ -206,11 +206,11 @@ void RollsFromInside_FrameChanged(void *context, uint8_t frame_number, Score fra
 
 } // namespace
 
-TEST(ListenerReentryTest, should_queue_a_roll_made_from_inside_a_listener_until_it_returns)
+TEST(ListenerReentryTest, should_refuse_a_roll_made_from_inside_a_listener)
 {
-    /* Applied at once, a roll from inside a notification completed frame 2 and told the other
-     * listener about it before frame 1: out of order. Queued in the game's mailbox, it is
-     * applied once every listener has heard about frame 1. */
+    /* Allowed, a roll from inside a notification completed frame 2 and told the other
+     * listener about it before frame 1: out of order. Refusing it keeps the promise, the same
+     * way an edit or a drain from inside a listener is refused. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     RollsFromInside rolls_from_inside;
@@ -221,95 +221,10 @@ TEST(ListenerReentryTest, should_queue_a_roll_made_from_inside_a_listener_until_
 
     RollAll(game, {5U, 5U, 3U}); /* the 3 completes frame 1, a spare (13) */
 
-    EXPECT_EQ(GAME_QUEUED, rolls_from_inside.status); /* not judged yet: it was only queued */
-    EXPECT_EQ((Frames{{1, 13}, {2, 7}}), other.frames); /* the 4 completed frame 2, after 1 */
-    EXPECT_EQ(20U, Game_Score(game));
-}
+    EXPECT_EQ(GAME_ERR_DURING_NOTIFICATION, rolls_from_inside.status);
+    EXPECT_EQ((Frames{{1, 13}}), other.frames); /* the refused roll changed nothing */
+    EXPECT_EQ(13U, Game_Score(game));
 
-namespace {
-
-/* A listener that, the first time it hears anything, queues 22 gutter balls: more rolls than
- * any game has. */
-struct FloodsTheMailbox {
-    Game *game = nullptr;
-    std::vector<GameStatus> statuses;
-};
-
-void FloodsTheMailbox_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
-                                   bool frame_complete)
-{
-    (void)frame_number;
-    (void)frame_score;
-    (void)frame_complete;
-    auto *listener = static_cast<FloodsTheMailbox *>(context);
-    if (listener->statuses.empty()) {
-        for (int i = 0; i < 22; i++) {
-            listener->statuses.push_back(Game_Roll(listener->game, 0U));
-        }
-    }
-}
-
-} // namespace
-
-namespace {
-
-/* A listener that, the first time it hears anything, queues an impossible roll and then two
- * good ones. */
-struct QueuesABadRoll {
-    Game *game = nullptr;
-    std::vector<GameStatus> statuses;
-};
-
-void QueuesABadRoll_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
-                                 bool frame_complete)
-{
-    (void)frame_number;
-    (void)frame_score;
-    (void)frame_complete;
-    auto *listener = static_cast<QueuesABadRoll *>(context);
-    if (listener->statuses.empty()) {
-        for (const Pins pins : {Pins{11U}, Pins{2U}, Pins{3U}}) {
-            listener->statuses.push_back(Game_Roll(listener->game, pins));
-        }
-    }
-}
-
-} // namespace
-
-TEST(ListenerReentryTest, should_drop_a_queued_roll_that_turns_out_impossible)
-{
-    /* A queued roll is judged when it is applied, like any roll. An impossible one changes
-     * nothing, as it wouldn't have if made directly, and the rolls after it still apply.
-     * Its sender was told GAME_QUEUED, and hears nothing more. */
-    GameHandle owner = MakeGame();
-    Game *game = owner.get();
-    QueuesABadRoll listener;
-    listener.game = game;
-    Scoreboard scoreboard;
-    ASSERT_TRUE(Game_OnFrameChanged(game, &QueuesABadRoll_FrameChanged, &listener));
-    ASSERT_TRUE(Game_OnFrameChanged(game, &Scoreboard_FrameChanged, &scoreboard));
-
-    RollAll(game, {3U, 4U});
-
-    EXPECT_EQ((std::vector<GameStatus>(3U, GAME_QUEUED)), listener.statuses);
-    EXPECT_EQ((Frames{{1, 7}, {2, 5}}), scoreboard.frames);
-    EXPECT_EQ(12U, Game_Score(game));
-}
-
-TEST(ListenerReentryTest, should_refuse_to_queue_more_rolls_than_a_game_can_have)
-{
-    GameHandle owner = MakeGame();
-    Game *game = owner.get();
-    FloodsTheMailbox listener;
-    listener.game = game;
-    ASSERT_TRUE(Game_OnFrameChanged(game, &FloodsTheMailbox_FrameChanged, &listener));
-
-    RollAll(game, {3U, 4U}); /* frame 1 complete: the game has 2 of its 21 rolls */
-
-    /* 19 more rolls could still be real; the 3 after them can't be. */
-    std::vector<GameStatus> expected(19U, GAME_QUEUED);
-    expected.insert(expected.end(), 3U, GAME_ERR_TOO_MANY_ROLLS);
-    EXPECT_EQ(expected, listener.statuses);
-    EXPECT_EQ(7U, Game_Score(game));
-    EXPECT_EQ(GAME_ERR_GAME_OVER, Game_Roll(game, 0U)); /* 18 gutter balls ended the game */
+    RollAll(game, {4U}); /* the same roll, made normally, is fine */
+    EXPECT_EQ((Frames{{1, 13}, {2, 7}}), other.frames);
 }

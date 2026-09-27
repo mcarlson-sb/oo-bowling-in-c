@@ -162,9 +162,8 @@ void CorrectsFromInside_FrameChanged(void *context, uint8_t frame_number, Score 
 
 TEST(CorrectionTest, should_refuse_a_correction_made_from_inside_a_listener)
 {
-    /* A replay mid-notification would tell listeners about frames out of order, or twice. A
-     * roll from inside a listener waits in the mailbox; an edit only ever arrives from the
-     * scorer, outside any notification, so none waits: it is refused. */
+    /* A replay mid-notification would tell listeners about frames out of order, or twice. So
+     * it is refused, like a roll from inside a listener. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     CorrectsFromInside listener;

@@ -111,7 +111,7 @@ GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
     while (drain_at != post_at) {
         const Pins pins = pinsetter->rolls[drain_at];
         const GameStatus status = Game_Roll(game, pins); /* on the main loop's thread */
-        if ((status != GAME_OK) && (status != GAME_QUEUED)) {
+        if (status != GAME_OK) {
             return status; /* the machine reported it: keep it, and let the scorer decide */
         }
         drain_at = Pinsetter_Next(drain_at);

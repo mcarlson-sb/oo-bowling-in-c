@@ -26,22 +26,17 @@ typedef enum {
     /* The game's PinCountRule counted the roll as more pins than were standing. The roll
      * is rejected and the game is left unchanged. */
     GAME_ERR_RULE_OUT_OF_RANGE,
-    /* Game_CorrectRoll or Game_EditRolls was called from inside a frame-changed callback.
-     * Replaying the game then would tell listeners about frames out of order, or twice, so
-     * it is rejected and the game is left unchanged. Call again once the callback has
-     * returned. (A roll from inside a callback is queued instead: see GAME_QUEUED.)
-     * Pinsetter_Drain returns it too, from inside a callback, and drains nothing. */
+    /* Game_Roll, Game_CorrectRoll, Game_EditRolls or Pinsetter_Drain was called from inside
+     * a frame-changed callback. A roll then would tell the listeners about frames out of
+     * order, and an edit's replay would tell them out of order or twice, so it is rejected
+     * and the game is left unchanged. Call again once the callback has returned. */
     GAME_ERR_DURING_NOTIFICATION,
     /* Game_CorrectRoll or Game_EditRolls was given a roll number the game hasn't had (rolls
      * start at 1), or a range that runs past the last roll. Nothing is changed. */
     GAME_ERR_NO_SUCH_ROLL,
-    /* Game_EditRolls would leave more rolls than any game can have (21), or a callback
-     * queued more rolls than the game has left. Nothing is changed. */
-    GAME_ERR_TOO_MANY_ROLLS,
-    /* Not an error. Game_Roll was called from inside a frame-changed callback, so the roll
-     * went into the game's mailbox. It is checked and applied, like any roll, as soon as
-     * the listeners have heard about the roll before it. */
-    GAME_QUEUED
+    /* Game_EditRolls would leave more rolls than any game can have (21). Nothing is
+     * changed. */
+    GAME_ERR_TOO_MANY_ROLLS
 } GameStatus;
 
 /* How many pins a roll counts as, given how many were standing before it and how many it
@@ -72,9 +67,8 @@ void Game_Destroy(Game *game);
  *   - After a roll, it is told about each frame the roll completed, oldest first.
  *   - After a correction (Game_CorrectRoll), it is told again about every complete frame,
  *     with its new score: a frame number it has heard before is an update.
- * A callback may read the game (Game_Score sees the whole roll). It may also roll: Game_Roll
- * from inside a callback returns GAME_QUEUED, and the roll is applied once the listeners
- * have heard about the roll before it. */
+ * A callback may read the game (Game_Score sees the whole roll), but not change it: a roll,
+ * an edit or a drain from inside a callback returns GAME_ERR_DURING_NOTIFICATION. */
 typedef void (*FrameChangedCallback)(void *context, uint8_t frame_number, Score frame_score,
                                      bool frame_complete);
 
