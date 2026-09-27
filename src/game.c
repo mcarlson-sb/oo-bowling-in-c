@@ -282,6 +282,9 @@ static void Game_ReportCorrection(Game *game, uint8_t was_reported)
 
 GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
 {
+    if (game == NULL) {
+        return GAME_ERR_NULL_GAME;
+    }
     if ((roll_number == 0U) || (roll_number > game->roll_count)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }

@@ -127,3 +127,8 @@ TEST(CorrectionTest, should_reject_correcting_a_roll_that_has_not_been_made)
     EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_CorrectRoll(game, 3U, 5U)); /* only 2 so far */
     EXPECT_EQ(7U, Game_Score(game));
 }
+
+TEST(CorrectionTest, should_reject_correcting_a_null_game)
+{
+    EXPECT_EQ(GAME_ERR_NULL_GAME, Game_CorrectRoll(nullptr, 1U, 5U));
+}
