@@ -112,11 +112,11 @@ PRIVATE  src/
 
   slot_pool.h                    (standard headers only)
   game_limits.h                  (GAME_MAX_ROLLS; no includes)
-  game_internal.h  --> game.h    (Game_IsNotifying, for the library's own modules)
+  pinsetter_hooks.h --> pinsetter.h  (the overlap check's switch, and a test hook)
 
 Source files that include a header from another module:
-  game.c           --> frame_context.h, game_internal.h, game_limits.h, slot_pool.h
-  pinsetter.c      --> fault.h, game_internal.h, game_limits.h, slot_pool.h
+  game.c           --> frame_context.h, game_limits.h, slot_pool.h
+  pinsetter.c      --> fault.h, game_limits.h, pinsetter_hooks.h, slot_pool.h
   frame_context.c  --> frame_transition.h
   regular_frame.c  --> frame_transition.h (the one state that switches states)
 ```
@@ -200,9 +200,9 @@ the whole game is laid out at compile time. Sizes are from the compiler on a 64-
 (measured with `sizeof` and `offsetof`); a 32-bit MCU, with 4-byte pointers, is smaller.
 
 ```
-s_games[2]                                          2,128 bytes
+s_games[2]                                          2,080 bytes
 +-------------------------------------------------------------+
-| Game [0]                                        1,064 bytes |
+| Game [0]                                        1,040 bytes |
 |  +-------------------------------------------------------+  |
 |  | frames[10]  : FrameContext                 10 x 96    |  |
 |  |  +-------------------------------------------------+  |  |
@@ -223,8 +223,6 @@ s_games[2]                                          2,128 bytes
 |  | listener_count  : uint8_t                             |  |
 |  | notifying       : bool              telling listeners |  |
 |  | log             : RollLog           21 pins + a count |  |
-|  | mailbox         : RollLog           rolls a listener  |  |
-|  |                                     made, oldest first|  |
 |  +-------------------------------------------------------+  |
 | Game [1]                                                    |
 +-------------------------------------------------------------+
@@ -236,7 +234,7 @@ s_pinsetters[2]                                        72 bytes
 |  post_at    : atomic_uint      written by the interrupt side|
 |  drain_at   : atomic_uint      written by the main loop     |
 |  rolls_lost : _Atomic uint16_t posts refused, ever          |
-|  (2 bytes of padding)                                       |
+|  posting    : atomic_flag  a post under way (debug builds)  |
 | Pinsetter [1]                                               |
 +-------------------------------------------------------------+
 ```
@@ -383,16 +381,14 @@ Both tables are `static const` in `src/frame_context.c`; the header only forward
 
 ## 8. A roll's journey
 
-**`Game_Roll`, step by step.** All four checks run before any frame sees the roll, so a
+**`Game_Roll`, step by step.** All five checks run before any frame sees the roll, so a
 rejected roll changes nothing.
 
 ```
 Game_Roll(game, pins)
    |
    |-- game == NULL?                      --yes--> GAME_ERR_NULL_GAME
-   |-- called from inside a listener?     --yes--> put it in the game's mailbox:
-   |                                               GAME_QUEUED, or GAME_ERR_TOO_MANY_ROLLS
-   |                                               if the game has no rolls left for it
+   |-- called from inside a listener?     --yes--> GAME_ERR_DURING_NOTIFICATION
    |
    |  Game_Accept:
    |-- tenth frame complete?              --yes--> GAME_ERR_GAME_OVER
@@ -416,10 +412,7 @@ nobody kept it?  --yes--> Game_AddNewFrame: start a new frame with this roll
 Game_ReportCompletedFrames: tell each listener about every frame this roll completed,
    |   oldest first (Game_OnFrameChanged)
    v
-any rolls in the mailbox?  --yes--> apply each, oldest first, the same way: Game_Accept,
-   |                                then tell the listeners (an impossible one is dropped)
-   v
-the first roll's status (GAME_OK)
+GAME_OK
 ```
 
 This is Chain of Responsibility, with a twist: a strike or spare frame both *acts on* a
@@ -435,9 +428,9 @@ tells each listener (up to two, set with `Game_OnFrameChanged`) about every fram
 completed, oldest first. A frame never completes before the one before it, so `Game` only
 keeps a count of frames already reported, and checks the frames just past it. Frames don't
 hold listeners, and no listener is called while a roll is half applied. A listener may read
-the game (`Game_Score` then sees the whole roll). It may roll too, but not at once: that would
-tell the listeners about frames out of order. So its roll waits in the game's mailbox until
-every listener has heard about the roll before it. An edit from inside a listener is refused.
+the game (`Game_Score` then sees the whole roll), but not change it: a roll from inside a
+listener would tell the listeners about frames out of order, so it is refused, as are an edit
+and a drain.
 KAY.md records why this won over frames telling the listeners themselves.
 
 **Editing rolls.** The game keeps every accepted roll in a log, as the pins that fell, so a
@@ -449,7 +442,7 @@ inserting and deleting are all the same edit. `Game_CorrectRoll` is one roll out
 Game_EditRolls(game, first_roll, rolls_removed, new_pins, new_count)
    |
    |-- game == NULL?                        --yes--> GAME_ERR_NULL_GAME
-   |-- called from inside a listener?       --yes--> GAME_ERR_EDIT_DURING_NOTIFICATION
+   |-- called from inside a listener?       --yes--> GAME_ERR_DURING_NOTIFICATION
    |-- range not rolls the game has had?    --yes--> GAME_ERR_NO_SUCH_ROLL
    |   (starts after the last roll, or new rolls promised, but NULL)
    |-- more than 21 rolls after the edit?   --yes--> GAME_ERR_TOO_MANY_ROLLS
@@ -490,6 +483,8 @@ each writes only its own position, so neither needs a lock:
 ```
 interrupt handler: Pinsetter_Post(pinsetter, pins)
    |
+   |-- (debug) another post under way?  --yes--> Fault_Stop: only one handler may post
+   |
    |   next = the slot after post_at (wrapping after the 22nd)
    |-- next == drain_at (acquire)?  --yes--> full: count it in rolls_lost, return false
    |
@@ -500,13 +495,12 @@ true
 
 main loop: Pinsetter_Drain(pinsetter, game)
    |
-   |-- called from inside a listener? --yes--> GAME_ERR_EDIT_DURING_NOTIFICATION
-   |
    |   end = post_at (acquire), read once: rolls posted from now on wait for the next drain
    |-- drain_at == end?  --yes--> GAME_OK: nothing (more) was waiting
    |
    |   status = Game_Roll(game, rolls[drain_at])
    |-- the game rejected it?  --yes--> return its status; the roll stays waiting
+   |      (from inside a listener, that is every roll: GAME_ERR_DURING_NOTIFICATION)
    |
    |   drain_at = the next slot (release)   the interrupt side may reuse this one
    '-- and round again
@@ -607,7 +601,9 @@ byte buffer, and a decoder with only the bytes rebuilds the scoreboard, through 
 that reopens a frame.
 
 `test/frame_test.cpp` is white-box too: a debug-build death test that `Frame_Roll` enforces the
-`roll()` contract (a context is never NULL).
+`roll()` contract (a context is never NULL). So is `test/pinsetter_overlap_test.cpp`: through a
+hook in `src/pinsetter_hooks.h`, it leaves a post under way, and checks that the next post
+stops the program, in the builds that have the check.
 
 Every test runs in four builds, debug, release (`NDEBUG`), UBSan and ThreadSanitizer (in CI,
 on Linux), with warnings as errors. `GameHandle` (a `std::unique_ptr` with `Game_Destroy` as its deleter) makes sure no

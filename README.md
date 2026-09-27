@@ -110,10 +110,9 @@ Behind them:
   `test/remote_scoreboard_test.cpp` sends each message down a wire as 4 bytes, and rebuilds
   the scoreboard from the bytes alone.
 
-  A listener may read the game. It may also roll: the roll waits in the game's **mailbox**
-  (`Game_Roll` returns `GAME_QUEUED`) and is applied once every listener has heard about the
-  roll before it, so the listeners still hear about frames in order. A listener may not edit
-  the game (`GAME_ERR_EDIT_DURING_NOTIFICATION`).
+  A listener may read the game, but not change it: a roll, an edit or a drain from inside a
+  listener is refused (`GAME_ERR_DURING_NOTIFICATION`), because the listeners would then
+  hear about frames out of order.
 - The **pinsetter** (`include/pinsetter.h`) is the machine that counts the pins, and in
   firmware it reports each roll from an interrupt handler. It never touches a game: the
   interrupt side only posts the pins to the pinsetter's own mailbox, a lock-free ring with
@@ -123,7 +122,9 @@ Behind them:
   roll's status and leaves it waiting, until the scorer corrects the earlier roll or discards
   the reported one (`Pinsetter_DiscardOldest`). A pinsetter is never `NULL`: running out of
   them is a configuration error, so `Pinsetter_Create` stops the program (`Fault_Stop`, in
-  every build) rather than return one. Each drain takes only the rolls waiting when
+  every build) rather than return one. Only one interrupt handler may post to a pinsetter,
+  and a debug build stops the program if it catches two posts overlapping. Each drain takes
+  only the rolls waiting when
   it starts, so the main loop's work per pass is bounded, and a drain from inside a listener
   is refused. A post the full mailbox refuses is counted: `Pinsetter_RollsLost` returns the
   total, and each reader takes its own difference. `test/pinsetter_test.cpp` covers both
@@ -143,16 +144,12 @@ Behind them:
   - the game is over (`GAME_ERR_GAME_OVER`);
   - it knocks down more pins than are standing (`GAME_ERR_INVALID_PINS`);
   - the game's rule counts it as more pins than were standing (`GAME_ERR_RULE_OUT_OF_RANGE`);
-  - it is made from inside a listener, and the rolls already queued there would make more
-    than a game can have (`GAME_ERR_TOO_MANY_ROLLS`).
-
-  A roll queued from inside a listener is checked when it is applied. If it is impossible
-  then, it is dropped and the queued rolls after it still apply.
+  - it is made from inside a listener (`GAME_ERR_DURING_NOTIFICATION`).
 
   An edit is also rejected for rolls that haven't been made, including an edit that starts
   after the last roll (`GAME_ERR_NO_SUCH_ROLL`): adding a roll is `Game_Roll`'s job. It is
   also rejected if it would make more than 21 rolls (`GAME_ERR_TOO_MANY_ROLLS`), or if it is
-  made from inside a listener (`GAME_ERR_EDIT_DURING_NOTIFICATION`).
+  made from inside a listener (`GAME_ERR_DURING_NOTIFICATION`).
 
 ## Why this is object-oriented
 
@@ -238,7 +235,8 @@ the `.c` file:
   `test/correction_test.cpp`, `test/pinsetter_test.cpp` and `test/remote_scoreboard_test.cpp`
   use only the public headers (through `test/test_support.h`), as a real caller would. They
   are black-box tests of the public API.
-- `test/frame_test.cpp`, `test/roll_list_test.cpp` and `test/slot_pool_test.cpp` are white-box
+- `test/frame_test.cpp`, `test/roll_list_test.cpp`, `test/slot_pool_test.cpp` and
+  `test/pinsetter_overlap_test.cpp` are white-box
   tests of private types. They are the only tests granted `src/`, and `CMakeLists.txt` says
   why.
 
@@ -348,7 +346,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `include/game.h`, `src/game.c` | The public API and the `Game` object: the opaque handle, the pool, the roll chain, the listeners and the mailbox for rolls made from inside them |
 | `include/pinsetter.h`, `src/pinsetter.c` | The pinsetter: a lock-free ring of 21 rolls between the interrupt handler that posts them and the main loop that drains them into a game |
 | `src/game_limits.h` | `GAME_MAX_ROLLS`, shared by the game's roll log and the pinsetter's mailbox |
-| `src/game_internal.h` | `Game_IsNotifying`, which the pinsetter asks before draining; private to the library |
+| `src/pinsetter_hooks.h` | The switch for the pinsetter's debug-only overlap check (`PINSETTER_CHECK_OVERLAP`), and the hook its white-box test uses |
 | `include/fault.h`, `src/fault.c` | `Fault_Stop`, the fail-stop for an error with no safe way on, such as more lanes than pinsetters. The host version writes the reason and calls `abort()`; a target build defines its own, and the linker then leaves this one out |
 | `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |
 | `src/frame.h/.c` | Abstract base `Frame`: its vtable, shared fields and methods, and `RollResult` |
@@ -365,6 +363,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `test/correction_test.cpp` | A scorer correcting and editing rolls: rescoring, the rule applied again on replay, rejected edits, listeners told only the final state, and property tests against a fresh game under both rules |
 | `test/pinsetter_test.cpp` | The pinsetter: rolls posted and drained in order, a drain stopped at an impossible roll and resolved, a whole game waiting, lost rolls counted (two readers, and the count wrapping), a fake interrupt in the middle of a drain, a drain refused from inside a listener, creation stopping when the pool is used up (in every build), and a real second thread (run under ThreadSanitizer in CI) |
 | `test/remote_scoreboard_test.cpp` | A listener that writes each message into a byte buffer, and a decoder that rebuilds the scoreboard from the bytes alone |
+| `test/pinsetter_overlap_test.cpp` | A debug-build death test that two overlapping posts stop the program |
 | `test/test_support.h` | What the black-box tests share: `GameHandle`, `RollAll`, `RunningStats` and the client-side no-tap rule |
 | `test/roll_list_test.cpp` | Tests of `RollList`, including its bounds checks in debug and release builds |
 | `test/slot_pool_test.cpp` | Tests of `SlotPool` |
