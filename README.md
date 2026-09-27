@@ -67,9 +67,9 @@ The release build reaches 100% of lines and every branch except that loop condit
 
 ## What the code does
 
-The public API is seven functions in `include/game.h`: `Game_Create`, `Game_CreateWithRule`,
-`Game_OnFrameChanged`, `Game_Roll`, `Game_CorrectRoll`, `Game_Score` and `Game_Destroy`.
-Behind them:
+The public API is eight functions in `include/game.h`: `Game_Create`, `Game_CreateWithRule`,
+`Game_OnFrameChanged`, `Game_Roll`, `Game_EditRolls`, `Game_CorrectRoll`, `Game_Score` and
+`Game_Destroy`. Behind them:
 
 - A **`Game`** holds up to ten frames. Each roll goes to the frames in order until one keeps
   it. If none does, a new frame is started with it.
@@ -77,16 +77,19 @@ Behind them:
   as. `Game_Create` uses the standard rule: the pins that fell. `Game_CreateWithRule` takes a
   rule from the caller, so a variant of the game can be played without the library knowing
   it. `test/nine_pin_no_tap_test.cpp` plays nine-pin no-tap that way.
-- The game keeps a **log of every roll**, as the pins that fell. `Game_CorrectRoll` fixes a
-  roll entered wrongly: it replays the log from the start, counting each roll again with the
-  game's rule, and rescores everything after it. A correction that would make a later roll
-  impossible is rejected, and nothing changes.
+- The game keeps a **log of every roll**, as the pins that fell, so the scorer can fix rolls
+  entered wrongly. `Game_EditRolls` replaces a range of rolls with new ones: one edit covers
+  replacing a roll, inserting rolls and deleting them, so a fix that needs two changes (a
+  tenth frame entered as 10, 0, 0 that was really 9, 0) is one edit. `Game_CorrectRoll`, one
+  roll for one, is a wrapper around it. An edit replays the whole log, counting each roll
+  again with the game's rule. An edit that would make any roll impossible is rejected, and
+  nothing changes.
 - The game tells up to two **listeners**, set with `Game_OnFrameChanged`, when a frame
   changes: its number, its score, and whether it is complete.
   - After a roll, it tells them about every frame that roll completed, oldest first.
-  - After a correction, it tells them every complete frame again, with its new score (a
-    frame number they have heard before is an update). A frame the correction reopened is
-    sent with `complete = false`.
+  - After an edit, it tells them every complete frame again, with its new score (a frame
+    number they have heard before is an update). A frame the edit reopened is sent with
+    `complete = false`. They only ever hear an edit's final state, never a game in between.
 
   `test/scoreboard_test.cpp` drives a live scoreboard and running stats that way, and
   `test/correction_test.cpp` checks that they stay right through corrections.
@@ -105,10 +108,11 @@ Behind them:
   - it knocks down more pins than are standing (`GAME_ERR_INVALID_PINS`);
   - the game's rule counts it as more pins than were standing (`GAME_ERR_RULE_OUT_OF_RANGE`);
   - it is made from inside a listener (`GAME_ERR_ROLL_DURING_NOTIFICATION`). A listener may
-    read the game, but not roll it or correct it: that would tell listeners about frames out
-    of order.
+    read the game, but not roll it or edit it: that would tell listeners about frames out of
+    order.
 
-  A correction is also rejected for a roll that hasn't been made (`GAME_ERR_NO_SUCH_ROLL`).
+  An edit is also rejected for rolls that haven't been made (`GAME_ERR_NO_SUCH_ROLL`), and if it
+  would make more than 21 rolls (`GAME_ERR_GAME_OVER`).
 
 ## Why this is object-oriented
 
@@ -312,7 +316,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `KAY.md` | The log of the Kay-style OO experiment on the `kay-oo` branch |
 | `test/nine_pin_no_tap_test.cpp` | A client that plays nine-pin no-tap by supplying its own `PinCountRule`, plus checks on rules that misbehave |
 | `test/scoreboard_test.cpp` | Clients that subscribe to changed frames: a live scoreboard and running stats |
-| `test/correction_test.cpp` | A scorer correcting rolls: rescoring, the rule applied again on replay, rejected corrections, listeners kept right, and a property test against a fresh game |
+| `test/correction_test.cpp` | A scorer correcting and editing rolls: rescoring, the rule applied again on replay, rejected edits, listeners told only the final state, and property tests against a fresh game under both rules |
 | `test/test_support.h` | What the black-box tests share: `GameHandle`, `RollAll` and the client-side no-tap rule |
 | `test/roll_list_test.cpp` | Tests of `RollList`, including its bounds checks in debug and release builds |
 | `test/slot_pool_test.cpp` | Tests of `SlotPool` |

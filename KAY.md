@@ -12,6 +12,34 @@ must be pulled in by a failing test for a real feature ("make the change easy, t
 easy change"), and each commit is tagged **make-easy**, **make-change** or **clean-up**. No
 machinery is added ahead of a test that needs it.
 
+## In short
+
+- **Late binding paid off only where a feature crossed a boundary between owners:** a
+  counting rule the caller owns (phase 1), listeners the caller owns (phase 3), and a game's
+  history, which the caller may revise (phase 5). Across every phase, only `game.h` and
+  `game.c` changed. The frame classes, the states and the context are exactly as `main` has
+  them.
+- **The costs landed at the same boundaries.** Every defect class the experiment found sits
+  at one of them, and the closed interior never had any:
+  - a buggy rule silently corrupting a game;
+  - a `void *` cast the compiler can't check;
+  - a call back into the game breaking the order of notifications;
+  - two edits showing listeners a game that never existed.
+- **Inside one owner's code, the closed design is simpler and fully checked.** Corrections
+  even argued *against* objects there: once every roll is kept, data plus one function would
+  do.
+- **Going further in C means rebuilding a runtime by hand.** The `(callback, void *)` closure
+  is the first piece. Message selectors, dispatch and `doesNotUnderstand` weren't built,
+  because nothing needed them.
+- **Tests settled what arguments couldn't.** Tests, probes and mutations overturned several
+  confident arguments, the author's and the reviewer's:
+  - the double-completion test didn't separate two designs;
+  - a "reported frame can't vanish" argument was wrong;
+  - the no-tap property had a hole of its own;
+  - a scratch-copy design would have left dangling pointers.
+
+The full conclusion is at the end.
+
 For each phase this log records:
 - which of Kay's three properties moved, and the evidence;
 - what it cost;
@@ -561,6 +589,99 @@ the object design, not for it.
 The review also asked for CI. GitHub Actions now runs the debug, release and UBSan builds on
 Ubuntu with its own GCC, and the first run passed all three. That's the same code, warning-free,
 on a second compiler and a second platform.
+
+---
+
+## Phase 5b: after a code review of phase 5
+
+The first review of the actual commits, not summaries, found three gaps and two small
+things. Each was settled by a test or a probe.
+
+### 1. A correction couldn't change how many rolls there were
+
+`Game_CorrectRoll` replaced one roll, but the most common scoring mistakes change the count:
+- **A tenth frame entered as 10, 0, 0 that was really 9, 0.** Correcting roll 19 to 9 was
+  rejected, because the third ball never happened but was still in the log.
+- **A strike that was really 9 then 1.** Correcting the 10 to a 9 made the 3 the frame's
+  second ball (9 + 3 > 10), so it was rejected.
+
+**One edit, or two calls? The test decided.** The requirement was the reviewer's: after the
+tenth-frame fix, the listeners hear only the final state. A probe gave the two-call design a
+real, temporary `Game_DeleteRoll`, and tried both orders:
+- **Correcting first** was rejected. The delete then left the tenth frame open, and the score at 0.
+- **Deleting first** reached the right score, but the listeners first heard `(10, 0, open)`: a
+  tenth frame waiting for a fill ball, a game that never existed.
+
+So the design is one call, `Game_EditRolls(game, first_roll, rolls_removed, new_pins,
+new_count)`, which replaces a range of rolls with new ones. Replacing, inserting and deleting
+are all that one edit, and `Game_CorrectRoll` became a one-line wrapper. Its edges came with
+tests:
+- **More than 21 rolls after the edit** is refused before anything is written. Without the
+  check, the debug build silently wrote a 22nd roll past the log, and the UBSan build caught it.
+- **A `NULL` list of new rolls** is refused.
+
+### 2. "Replay into a scratch copy" would have left dangling pointers
+
+The review suggested undoing a rejected edit by replaying into `Game scratch = *game` and
+copying it back only on success. A probe did exactly that: after the copy-back, **every
+frame's state pointer pointed outside the game**, 1 of 1 frames after a simple correction and
+10 of 10 in the longest game. Each `FrameContext` points at one of its *own* state slots, so a
+copied game's pointers still point into the copy, a stack frame that is about to be gone.
+
+**That is an object/value distinction the code had been making all along without saying so.**
+The frames are genuine objects: they have identity, and a copy isn't the same thing. The roll
+log is a value. So the rule became *copy the value, never the object*:
+- The log is now a `RollLog` value type: 21 pins and a count, 22 bytes.
+- A rejected edit copies the saved log back and replays it, one restore path for every kind
+  of edit. That was the user's choice over validating in a scratch copy, which would only have
+  moved the dependence on a pure rule to accepted edits, and added a replay.
+
+### 3. The property test only covered the standard rule, and was incomplete
+
+Running the correction property under no-tap was meant to cover the rule path. It showed that
+**the property itself had a gap.** The mutation that logs counted values didn't make the no-tap
+property fail. With such a log, some corrections that should be accepted are rejected. The
+property only checked that a rejected correction changes nothing, never that a correction is
+accepted when it should be.
+- **The fix:** the fresh game is now the judge of acceptance too. The edited game must accept
+  exactly when a fresh game accepts all the edited rolls.
+- **The result:** the mutation now fails the no-tap property. The standard property can't
+  catch it, because under the standard rule counted and fallen pins are the same.
+- **Random range edits** are now property-tested the same way, under both rules. That covers
+  replacing, inserting, deleting, appending, and deleting every roll.
+
+### 4. Two small things
+
+- **The chain loop.** Its guard, and the comment defending against "a future state", were
+  code for a situation no feature has. A kept roll now simply ends the loop. One branch of the
+  loop condition is still never taken, because only the latest frame keeps a roll. The README
+  records that as a bowling fact, not as a defense.
+- **A summary at the top of this log**, for teaching.
+
+### Kay's three properties
+
+| Property | Moved? | Evidence |
+|---|---|---|
+| **Messaging** | Yes | An edit is one message that describes a whole change, and listeners only ever hear its final state. The two-call probe shows what a message split in two costs: a moment in which the receivers see a game that never existed |
+| **Hiding of state-process** | Clarified | The probe showed the frames have identity: a `FrameContext` refers to itself, so it can't be copied. That is what makes them objects and not values. The design now keeps the two apart |
+| **Late binding** | No | Nothing new is bound at run time |
+
+### Costs
+
+- **Size:** 55 lines of library code added and 25 removed (`src/` 1,065 → 1,097, `include/`
+  103 → 124). The API is one function larger, but `Game_CorrectRoll` shrank to one line.
+- **Memory:** unchanged. `RollLog` is the same 22 bytes as the separate array and count it
+  replaced, and a `Game` is still 1,040 bytes (both compiler-checked).
+- **Stack:** an edit keeps two logs on the stack for a moment, the saved one and the edited one:
+  44 bytes. Validating in a scratch copy of the whole game would have needed about 1 KB.
+- **Still a trust boundary:** replay still depends on the rule being pure, now for any edit.
+  That contract is written on `PinCountRule` in `game.h`.
+
+### The strongest argument that this still isn't Kay OO
+
+The edit is a *function call with an array argument*, not a message object that could be
+stored, forwarded or sent to more than one receiver. "One edit is one message" is true at
+the level of *this* API's meaning, not in how C calls it.
 
 ---
 

@@ -24,7 +24,7 @@ Each layer talks only to the one below it. Only the top layer is visible to call
    caller (any C code)
         |
         |  Game_Create  Game_CreateWithRule  Game_Destroy
-        |  Game_OnFrameChanged  Game_Roll  Game_CorrectRoll  Game_Score
+        |  Game_OnFrameChanged  Game_Roll  Game_EditRolls  Game_CorrectRoll  Game_Score
         v
 +--------------------------------------------------------------+
 |  Game                                   include/game.h       |  public
@@ -195,8 +195,7 @@ s_games[2]                                          2,080 bytes
 |  | listeners[2]    : FrameChangedListener                |  |
 |  | listener_count  : uint8_t                             |  |
 |  | notifying       : bool              telling listeners |  |
-|  | rolls[21]       : Pins              the roll log      |  |
-|  | roll_count      : uint8_t                             |  |
+|  | log             : RollLog           21 pins + a count |  |
 |  +-------------------------------------------------------+  |
 | Game [1]                                                    |
 +-------------------------------------------------------------+
@@ -393,35 +392,49 @@ the game (`Game_Score` then sees the whole roll) but not roll or correct it: tha
 the listeners about frames out of order, so it is refused. KAY.md records why this won over
 frames telling the listeners themselves.
 
-**Correcting a roll.** The game keeps every accepted roll in a log, as the pins that fell, so a
+**Editing rolls.** The game keeps every accepted roll in a log, as the pins that fell, so a
 roll is a thing the game can go back to, not just a call that changed some state and was
-gone.
+gone. One operation, `Game_EditRolls`, replaces a range of rolls with new ones: replacing,
+inserting and deleting are all the same edit. `Game_CorrectRoll` is one roll out and one in.
 
 ```
-Game_CorrectRoll(game, roll_number, pins)
+Game_EditRolls(game, first_roll, rolls_removed, new_pins, new_count)
    |
-   |-- game == NULL?                      --yes--> GAME_ERR_NULL_GAME
-   |-- called from inside a listener?     --yes--> GAME_ERR_ROLL_DURING_NOTIFICATION
-   |-- no such roll?                      --yes--> GAME_ERR_NO_SUCH_ROLL
+   |-- game == NULL?                        --yes--> GAME_ERR_NULL_GAME
+   |-- called from inside a listener?       --yes--> GAME_ERR_ROLL_DURING_NOTIFICATION
+   |-- range not rolls the game has had?    --yes--> GAME_ERR_NO_SUCH_ROLL
+   |   (or new rolls promised, but NULL)
+   |-- more than 21 rolls after the edit?   --yes--> GAME_ERR_GAME_OVER
    v
-rolls[roll_number - 1] = pins                  (the log holds the pins that fell)
+build the edited log: the rolls before the range, the new rolls, the rolls after it
    |
-Game_Replay: empty the frames, then Game_Accept every roll in the log, in order
-   |   (each one counted again by the game's PinCountRule)
+Game_ApplyEditedLog
+   |   saved = game->log             (a copy of plain values: safe, unlike the frames)
+   |   game->log = edited
+   |   Game_Replay: empty the frames, then Game_Accept every roll, in order
+   |      (each one counted again by the game's PinCountRule)
    |
-   |-- a roll is now impossible?          --yes--> put the old roll back, replay that,
-   |                                               and return the impossible roll's status
+   |-- a roll is now impossible?   --yes--> game->log = saved, replay that,
+   |                                        and return the impossible roll's status
    v
-Game_ReportCorrection: tell each frame again, oldest first
+Game_ReportCorrection: tell each frame again, oldest first, the final state only
    |   a complete frame   --> (number, new score, complete = true)
    |   a reopened frame   --> (number, 0,         complete = false)
    v
 GAME_OK
 ```
 
-The log keeps the pins that fell, not what they were counted as, because replaying applies
-the rule again. Under nine-pin no-tap, a first-ball 9 counts as a strike. If a correction
-turns it into a second ball, it has to be counted again, from the 9, as a spare.
+Three design points from the tests:
+- **One edit, not a sequence of them.** A tenth frame entered as 10, 0, 0 that was really
+  9, 0 needs two changes. Done as two calls, one order is rejected and the other briefly shows
+  the listeners a tenth frame waiting for a fill ball, a game that never existed. As one edit
+  it is checked, and told, only in its final state.
+- **Copy the value, never the object.** Undoing a rejected edit copies the log back: 22 bytes
+  of plain values. Copying a `Game` would not work. Each `FrameContext` points at one of its
+  own state slots, so a copied game's pointers would still point into the original.
+- **The log keeps the pins that fell,** not what they were counted as, because replaying
+  applies the rule again. Under nine-pin no-tap a first-ball 9 counts as a strike. If an edit
+  turns it into a second ball, it has to be counted again, from the 9, as a spare.
 
 **Worked example: rolls 10, 3, 4.** `RollResult` is what each frame hands back.
 
@@ -481,12 +494,14 @@ completing two frames, the tenth frame's fill balls, a full set of listeners, an
 under no-tap. The black-box tests share `test/test_support.h`: `GameHandle`, `RollAll`, and
 the client-side no-tap rule.
 
-`test/correction_test.cpp` is black-box too: a scorer correcting rolls. It covers rescoring,
-the rule counted again on replay, a correction rejected for making a later roll impossible,
-listeners kept right through rescored and reopened frames, and the corrections the game
-refuses. Its last test is a property test: across 3,000 random games, each corrected at a
-random roll, the listeners must end up exactly where they would on a fresh game fed the
-corrected rolls.
+`test/correction_test.cpp` is black-box too: a scorer correcting and editing rolls. It covers
+rescoring, the rule counted again on replay, edits rejected for making a roll impossible or
+the game too long, listeners told only the final state (including rescored and reopened
+frames), and the edits the game refuses. Four property tests finish it. For single-roll
+corrections and for random range edits, each under both the standard and no-tap rules,
+3,000 random games are judged against a fresh game fed the edited rolls. The edit must be
+accepted exactly when the fresh game accepts; if accepted, the listeners must match the
+fresh game's; if rejected, nothing may change.
 
 `test/frame_test.cpp` is white-box too: a debug-build death test that `Frame_Roll` enforces the
 `roll()` contract (a context is never NULL).
