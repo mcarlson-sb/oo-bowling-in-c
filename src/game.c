@@ -71,9 +71,18 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
     return result;
 }
 
+static inline bool Game_AllFramesCompleteBefore(const Game *game, uint8_t index)
+{
+    for (uint8_t i = 0U; i < index; i++) {
+        if (!FrameContext_IsComplete(&game->frames[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* Tells the listeners about the frames from index `first` on, and about a frame they were told
- * was complete, and no longer is, as reopened. Complete frames always come first, so
- * frames_told_complete ends as the number complete. Inline, like the two below, because every
+ * was complete, and no longer is, as reopened. Inline, like the two below, because every
  * callback's stack sits on top of it. */
 static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t were_told_complete)
 {
@@ -83,6 +92,7 @@ static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t were_tol
     for (uint8_t i = first; i < frames; i++) {
         const FrameNumber frame_number = (FrameNumber)(i + 1U);
         if ((i < game->frame_count) && FrameContext_IsComplete(&game->frames[i])) {
+            assert(Game_AllFramesCompleteBefore(game, i));
             FrameListeners_Tell(&game->listeners, frame_number,
                                 FrameContext_Score(&game->frames[i]), true);
             game->frames_told_complete = frame_number;
