@@ -354,7 +354,8 @@ TEST(EditRollsTest, should_fix_a_tenth_frame_entered_with_a_roll_too_many_in_one
     ASSERT_TRUE(Game_OnFrameChanged(game, &Transcript_FrameChanged, &transcript));
 
     const Pins really[] = {9U, 0U};
-    EXPECT_EQ(GAME_OK, Game_EditRolls(game, 19U, 3U, really, 2U)); /* rolls 19 to 21 become 9, 0 */
+    const RollEdit edit = MakeEdit(19U, 3U, really, 2U); /* rolls 19 to 21 become 9, 0 */
+    EXPECT_EQ(GAME_OK, Game_EditRolls(game, &edit));
 
     EXPECT_EQ(9U, Game_Score(game));
     EXPECT_EQ((std::vector<Transcript::Message>{{10, 9, true}}), transcript.AboutFrame(10));
@@ -369,7 +370,8 @@ TEST(EditRollsTest, should_fix_a_strike_that_was_really_9_then_1)
     RollAll(game, {10U, 3U, 4U}); /* 17 + 7 = 24 */
 
     const Pins really[] = {9U, 1U};
-    EXPECT_EQ(GAME_OK, Game_EditRolls(game, 1U, 1U, really, 2U));
+    const RollEdit edit = MakeEdit(1U, 1U, really, 2U);
+    EXPECT_EQ(GAME_OK, Game_EditRolls(game, &edit));
     EXPECT_EQ(20U, Game_Score(game)); /* a spare, 9 + 1 + 3, then 3 + 4 */
 }
 
@@ -385,7 +387,8 @@ TEST(EditRollsTest, should_reject_an_edit_that_would_make_more_rolls_than_a_game
     RollAll(game, {5U, 5U, 5U});
 
     const Pins extra[] = {1U};
-    EXPECT_EQ(GAME_ERR_TOO_MANY_ROLLS, Game_EditRolls(game, 1U, 0U, extra, 1U));
+    const RollEdit edit = MakeEdit(1U, 0U, extra, 1U);
+    EXPECT_EQ(GAME_ERR_TOO_MANY_ROLLS, Game_EditRolls(game, &edit));
     EXPECT_EQ(33U, Game_Score(game));
 }
 
@@ -397,13 +400,15 @@ TEST(EditRollsTest, should_reject_an_edit_that_starts_past_the_last_roll)
     GameHandle empty_owner = MakeGame();
     Game *empty = empty_owner.get();
     const Pins new_pins[] = {3U, 4U};
-    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(empty, 1U, 0U, new_pins, 2U));
+    const RollEdit at_roll_1 = MakeEdit(1U, 0U, new_pins, 2U);
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(empty, &at_roll_1));
     EXPECT_EQ(0U, Game_Score(empty));
 
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     RollAll(game, {3U, 4U});
-    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, 3U, 0U, new_pins, 2U));
+    const RollEdit at_roll_3 = MakeEdit(3U, 0U, new_pins, 2U);
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, &at_roll_3));
     EXPECT_EQ(7U, Game_Score(game));
     RollAll(game, {3U, 4U}); /* the game is still where it was */
     EXPECT_EQ(14U, Game_Score(game));
@@ -415,7 +420,8 @@ TEST(EditRollsTest, should_refuse_new_rolls_given_as_a_null_pointer)
     Game *game = owner.get();
     RollAll(game, {3U, 4U});
 
-    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, 1U, 1U, nullptr, 1U));
+    const RollEdit edit = MakeEdit(1U, 1U, nullptr, 1U);
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, &edit));
     EXPECT_EQ(7U, Game_Score(game));
 }
 
@@ -470,9 +476,10 @@ void CheckEditsAgainstFreshGames(GameHandle (*make_game)(), unsigned seed)
 
         const std::map<int, int> scores_before = scoreboard.scores;
         const Score score_before = Game_Score(game);
-        const bool accepted =
-            Game_EditRolls(game, static_cast<uint8_t>(first + 1U), static_cast<uint8_t>(removed),
-                           new_pins.data(), static_cast<uint8_t>(new_pins.size())) == GAME_OK;
+        const RollEdit edit =
+            MakeEdit(static_cast<RollNumber>(first + 1U), static_cast<uint8_t>(removed),
+                     new_pins.data(), static_cast<uint8_t>(new_pins.size()));
+        const bool accepted = Game_EditRolls(game, &edit) == GAME_OK;
         const bool starts_at_a_roll = first < rolls.size();
         ASSERT_EQ(starts_at_a_roll && fresh_accepts_all, accepted) << "trial " << trial;
 

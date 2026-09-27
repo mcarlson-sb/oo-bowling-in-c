@@ -35,6 +35,14 @@ inline void RollAll(Game *game, std::initializer_list<Pins> rolls)
     }
 }
 
+/* An edit for Game_EditRolls, built positionally: C++17 has no designated initializers for a
+ * C struct, and naming the helper's parameters keeps every call site readable. */
+inline RollEdit MakeEdit(RollNumber first_roll, uint8_t rolls_removed, const Pins *new_pins,
+                         uint8_t new_count)
+{
+    return RollEdit{first_roll, rolls_removed, new_pins, new_count};
+}
+
 /* ---- Client-side subscribers ------------------------------------------------------------ */
 
 /* Running stats: how many frames are complete, and their average score. It keeps the latest

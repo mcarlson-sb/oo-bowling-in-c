@@ -261,11 +261,11 @@ static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
 
 GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins)
 {
-    return Game_EditRolls(game, roll_number, 1U, &pins, 1U); /* one roll out, one in */
+    const RollEdit edit = { roll_number, 1U, &pins, 1U }; /* one roll out, one in */
+    return Game_EditRolls(game, &edit);
 }
 
-GameStatus Game_EditRolls(Game *game, RollNumber first_roll, uint8_t rolls_removed,
-                          const Pins *new_pins, uint8_t new_count)
+GameStatus Game_EditRolls(Game *game, const RollEdit *edit)
 {
     if (game == NULL) {
         return GAME_ERR_NULL_GAME;
@@ -273,9 +273,8 @@ GameStatus Game_EditRolls(Game *game, RollNumber first_roll, uint8_t rolls_remov
     if (FrameListeners_AreBeingTold(&game->listeners)) {
         return GAME_ERR_DURING_NOTIFICATION;
     }
-    const RollEdit edit = { first_roll, rolls_removed, new_pins, new_count };
     RollLog edited;
-    const GameStatus status = RollLog_Edit(&game->log, &edit, &edited);
+    const GameStatus status = RollLog_Edit(&game->log, edit, &edited);
     if (status != GAME_OK) {
         return status;
     }

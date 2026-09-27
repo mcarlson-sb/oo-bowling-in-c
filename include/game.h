@@ -79,6 +79,17 @@ bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *contex
 
 GameStatus Game_Roll(Game *game, Pins pins);
 
+/* One edit of a game's rolls: replace `rolls_removed` rolls, starting at roll number
+ * `first_roll` (the first roll is 1), with the `new_count` rolls in `new_pins`. One edit covers
+ * every fix: replacing a roll (one out, one in), inserting (none out), and deleting (none in).
+ * Four values that always travel together, so they travel as one, by pointer. */
+typedef struct {
+    RollNumber first_roll;
+    uint8_t rolls_removed;
+    const Pins *new_pins; /* may be NULL only when new_count is 0 */
+    uint8_t new_count;
+} RollEdit;
+
 /* Corrects roll number `roll_number` (the first roll is 1) to `pins`, the pins that really
  * fell, and rescores the game by replaying every roll, each counted again by the game's
  * rule. The listeners are told the result (see FrameChangedCallback). Rejected, changing
@@ -87,9 +98,7 @@ GameStatus Game_Roll(Game *game, Pins pins);
  * from inside a callback (GAME_ERR_DURING_NOTIFICATION). */
 GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins);
 
-/* Replaces `rolls_removed` rolls, starting at roll number `first_roll` (the first roll is 1),
- * with the `new_count` rolls in `new_pins`, and rescores the game. One edit covers every fix:
- * replacing a roll (one out, one in), inserting (none out), and deleting (none in).
+/* Applies `edit` (see RollEdit) to the game's rolls, and rescores the game.
  *
  * The edit is checked, and told to the listeners, only in its final state: they never hear
  * about a game in between. Rejected, changing nothing, if the edited game has an impossible
@@ -98,8 +107,7 @@ GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins);
  * with rolls promised (GAME_ERR_NO_SUCH_ROLL), if it would make more than 21 rolls
  * (GAME_ERR_TOO_MANY_ROLLS), or if called from inside a callback
  * (GAME_ERR_DURING_NOTIFICATION). */
-GameStatus Game_EditRolls(Game *game, RollNumber first_roll, uint8_t rolls_removed,
-                          const Pins *new_pins, uint8_t new_count);
+GameStatus Game_EditRolls(Game *game, const RollEdit *edit);
 Score Game_Score(const Game *game);
 
 #ifdef __cplusplus

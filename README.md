@@ -92,7 +92,8 @@ Behind them:
   rule from the caller, so a variant of the game can be played without the library knowing
   it. `test/nine_pin_no_tap_test.cpp` plays nine-pin no-tap that way.
 - The game keeps a **log of every roll**, as the pins that fell, so the scorer can fix rolls
-  entered wrongly. `Game_EditRolls` replaces a range of rolls with new ones: one edit covers
+  entered wrongly. `Game_EditRolls` replaces a range of rolls with new ones, described by a
+  `RollEdit` (the first roll, how many go, and the new ones): one edit covers
   replacing a roll, inserting rolls and deleting them, so a fix that needs two changes (a
   tenth frame entered as 10, 0, 0 that was really 9, 0) is one edit. `Game_CorrectRoll`, one
   roll for one, is a wrapper around it. An edit replays the whole log, counting each roll
@@ -193,7 +194,7 @@ what code *using* the library needs.
 
 | Header | Why it's public |
 |---|---|
-| `include/game.h` | The API: `Game_Create`, `Game_CreateWithRule`, `Game_Roll`, `Game_EditRolls`, `Game_CorrectRoll`, `Game_OnFrameChanged`, `Game_Score`, `Game_Destroy`, `GameStatus`, `PinCountRule`, `FrameChangedCallback` and the opaque `Game` |
+| `include/game.h` | The API: `Game_Create`, `Game_CreateWithRule`, `Game_Roll`, `Game_EditRolls`, `Game_CorrectRoll`, `Game_OnFrameChanged`, `Game_Score`, `Game_Destroy`, `GameStatus`, `PinCountRule`, `FrameChangedCallback`, `RollEdit` and the opaque `Game` |
 | `include/pinsetter.h` | The pinsetter's two sides: `Pinsetter_Post` for the interrupt handler, and `Pinsetter_Drain`, `Pinsetter_DiscardOldest` and `Pinsetter_RollsLost` for the main loop, around the opaque `Pinsetter` |
 | `include/bowling_types.h` | `game.h`'s signatures use `Pins` and `Score`, and a public header must compile on its own |
 
@@ -347,7 +348,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `include/pinsetter.h`, `src/pinsetter.c` | The pinsetter: a lock-free ring of 21 rolls between the interrupt handler that posts them and the main loop that drains them into a game |
 | `src/game_limits.h` | `GAME_MAX_ROLLS`, shared by the game's roll log and the pinsetter's mailbox |
 | `src/frame_listeners.h/.c` | `FrameListeners`, the value type a game keeps its listeners in, with the flag that refuses changes from inside one |
-| `src/roll_log.h/.c` | `RollLog`, the value type a game keeps every roll in, and `RollEdit`: an edit's checks and splice |
+| `src/roll_log.h/.c` | `RollLog`, the value type a game keeps every roll in, with an edit's checks and splice |
 | `src/pinsetter_hooks.h` | The switch for the pinsetter's debug-only overlap check (`PINSETTER_CHECK_OVERLAP`), and the hook its white-box test uses |
 | `include/fault.h`, `src/fault.c` | `Fault_Stop`, the fail-stop for an error with no safe way on, such as more lanes than pinsetters. The host version writes the reason and calls `abort()`; a target build defines its own, and the linker then leaves this one out |
 | `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |

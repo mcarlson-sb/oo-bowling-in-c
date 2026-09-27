@@ -466,12 +466,12 @@ gone. One operation, `Game_EditRolls`, replaces a range of rolls with new ones: 
 inserting and deleting are all the same edit. `Game_CorrectRoll` is one roll out and one in.
 
 ```
-Game_EditRolls(game, first_roll, rolls_removed, new_pins, new_count)
+Game_EditRolls(game, &edit)     edit: a RollEdit {first_roll, rolls_removed, new_pins, new_count}
    |
    |-- game == NULL?                        --yes--> GAME_ERR_NULL_GAME
    |-- called from inside a listener?       --yes--> GAME_ERR_DURING_NOTIFICATION
    |
-   |  RollLog_Edit(&game->log, &edit, &edited), the edit's four values as one RollEdit:
+   |  RollLog_Edit(&game->log, edit, &edited):
    |-- range not rolls the log has?         --yes--> GAME_ERR_NO_SUCH_ROLL
    |   (starts after the last roll, or new rolls promised, but NULL)
    |-- more than 21 rolls after the edit?   --yes--> GAME_ERR_TOO_MANY_ROLLS
