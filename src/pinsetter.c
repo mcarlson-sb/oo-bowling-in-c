@@ -1,5 +1,6 @@
 #include "pinsetter.h"
 
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -12,12 +13,17 @@
 /* Pinsetters available at once. There is no heap, so they come from a fixed pool. */
 #define PINSETTER_POOL_SIZE 2U
 
-/* A ring buffer. `posted` counts the rolls ever posted, and `drained` the rolls ever
- * drained; the rolls waiting are the ones between them. */
+/* A ring buffer with one writer on each side, so it needs no lock:
+ *   - `posted` counts the rolls ever posted. Only the interrupt side writes it.
+ *   - `drained` counts the rolls ever drained. Only the main loop writes it.
+ * The rolls waiting are the ones between them. Each side publishes its own count with a
+ * release store, after touching the roll, and reads the other side's with an acquire load,
+ * before touching one. So a roll is always written before the main loop can see it, and read
+ * before the interrupt side can reuse its place. */
 struct Pinsetter {
     Pins rolls[PINSETTER_CAPACITY];
-    unsigned posted;
-    unsigned drained;
+    atomic_uint posted;
+    atomic_uint drained;
 };
 
 static Pinsetter s_pinsetters[PINSETTER_POOL_SIZE];
@@ -31,8 +37,8 @@ Pinsetter *Pinsetter_Create(void)
         return NULL;
     }
     Pinsetter *pinsetter = &s_pinsetters[slot];
-    pinsetter->posted = 0U;
-    pinsetter->drained = 0U;
+    atomic_store(&pinsetter->posted, 0U);
+    atomic_store(&pinsetter->drained, 0U);
     return pinsetter;
 }
 
@@ -47,18 +53,23 @@ void Pinsetter_Destroy(Pinsetter *pinsetter)
 
 bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
 {
-    if ((pinsetter->posted - pinsetter->drained) == PINSETTER_CAPACITY) {
+    const unsigned posted = atomic_load_explicit(&pinsetter->posted, memory_order_relaxed);
+    const unsigned drained = atomic_load_explicit(&pinsetter->drained, memory_order_acquire);
+    if ((posted - drained) == PINSETTER_CAPACITY) {
         return false; /* full: never overwrite a roll the main loop hasn't seen */
     }
-    pinsetter->rolls[pinsetter->posted % PINSETTER_CAPACITY] = pins;
-    pinsetter->posted++;
+    pinsetter->rolls[posted % PINSETTER_CAPACITY] = pins;
+    atomic_store_explicit(&pinsetter->posted, posted + 1U, memory_order_release);
     return true;
 }
 
 void Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 {
-    while (pinsetter->drained != pinsetter->posted) {
-        (void)Game_Roll(game, pinsetter->rolls[pinsetter->drained % PINSETTER_CAPACITY]);
-        pinsetter->drained++;
+    unsigned drained = atomic_load_explicit(&pinsetter->drained, memory_order_relaxed);
+    while (drained != atomic_load_explicit(&pinsetter->posted, memory_order_acquire)) {
+        const Pins pins = pinsetter->rolls[drained % PINSETTER_CAPACITY];
+        drained++;
+        atomic_store_explicit(&pinsetter->drained, drained, memory_order_release);
+        (void)Game_Roll(game, pins); /* on the main loop's thread, like every roll */
     }
 }

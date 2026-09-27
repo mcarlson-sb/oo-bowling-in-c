@@ -7,7 +7,11 @@
  *
  * So the pinsetter never touches a game. It only posts pins to its own mailbox, and the main
  * loop drains that mailbox into the game when it is ready. All of the game's logic, and every
- * listener, then runs on the main thread. */
+ * listener, then runs on the main thread.
+ *
+ * One thread posts and one drains: that is what lets the mailbox work without a lock. So only
+ * the interrupt side may call Pinsetter_Post, never the main loop, or a listener. A listener
+ * that wants to roll calls Game_Roll, and the game queues the roll in its own mailbox. */
 
 #include <stdbool.h>
 
