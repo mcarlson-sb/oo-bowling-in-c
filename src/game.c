@@ -87,8 +87,11 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
  *   - After a roll, nothing before the frames already reported can have changed, and nothing
  *     can have reopened, so the walk starts there: `first` and `was_reported` are both that
  *     count.
- *   - After an edit, any frame can have changed, so the walk starts at the first frame. */
-static void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_reported)
+ *   - After an edit, any frame can have changed, so the walk starts at the first frame.
+ *
+ * Inline: every listener callback runs on top of this, so its frame is paid under each one. As
+ * an ordinary call it added 112 bytes there (release, 64-bit host). */
+static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_reported)
 {
     game->frames_reported = first;
     const uint8_t frames = (was_reported > game->frame_count) ? was_reported : game->frame_count;
