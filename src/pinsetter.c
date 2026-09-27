@@ -77,6 +77,9 @@ static unsigned Pinsetter_Next(unsigned position)
 
 bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
 {
+    if (pinsetter == NULL) {
+        return false;
+    }
     const unsigned post_at = atomic_load_explicit(&pinsetter->post_at, memory_order_relaxed);
     const unsigned next = Pinsetter_Next(post_at);
     if (next == atomic_load_explicit(&pinsetter->drain_at, memory_order_acquire)) {
@@ -95,6 +98,9 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
 
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 {
+    if (pinsetter == NULL) {
+        return GAME_ERR_NULL_GAME;
+    }
     if (Game_IsNotifying(game)) {
         /* From inside a listener, each roll would go into the game's own mailbox, which drops
          * an impossible one: around the rule that a reported roll is never thrown away. */
@@ -118,6 +124,9 @@ GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 
 uint16_t Pinsetter_RollsLost(const Pinsetter *pinsetter)
 {
+    if (pinsetter == NULL) {
+        return 0U;
+    }
     /* Only read: never cleared, so the interrupt side stays its only writer, and any number of
      * readers can ask without changing what the others see. */
     return atomic_load_explicit(&pinsetter->rolls_lost, memory_order_relaxed);
@@ -125,6 +134,9 @@ uint16_t Pinsetter_RollsLost(const Pinsetter *pinsetter)
 
 bool Pinsetter_DiscardOldest(Pinsetter *pinsetter)
 {
+    if (pinsetter == NULL) {
+        return false;
+    }
     const unsigned drain_at = atomic_load_explicit(&pinsetter->drain_at, memory_order_relaxed);
     if (drain_at == atomic_load_explicit(&pinsetter->post_at, memory_order_acquire)) {
         return false; /* nothing waiting */

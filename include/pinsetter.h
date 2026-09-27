@@ -25,7 +25,9 @@ extern "C" {
 
 typedef struct Pinsetter Pinsetter;
 
-/* An empty pinsetter. NULL if none is free: they come from a fixed pool, like games. */
+/* An empty pinsetter. NULL if none is free: they come from a fixed pool, like games. Like
+ * the Game_* functions, every function below accepts NULL and does nothing: Post and
+ * DiscardOldest return false, RollsLost 0, and Drain GAME_ERR_NULL_GAME. */
 Pinsetter *Pinsetter_Create(void);
 
 void Pinsetter_Destroy(Pinsetter *pinsetter);

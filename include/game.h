@@ -21,7 +21,8 @@ typedef enum {
     GAME_ERR_GAME_OVER,
     /* More pins than are standing. The roll is rejected and the game is left unchanged. */
     GAME_ERR_INVALID_PINS,
-    /* The game handle is NULL, for example because Game_Create ran out of games. */
+    /* The game handle is NULL, for example because Game_Create ran out of games. Also
+     * returned by Pinsetter_Drain for a NULL pinsetter. */
     GAME_ERR_NULL_GAME,
     /* The game's PinCountRule counted the roll as more pins than were standing. The roll
      * is rejected and the game is left unchanged. */
