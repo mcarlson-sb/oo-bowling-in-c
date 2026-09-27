@@ -323,9 +323,8 @@ void DrainsFromInside_FrameChanged(void *context, uint8_t frame_number, Score fr
 
 TEST(PinsetterTest, should_refuse_a_drain_from_inside_a_listener)
 {
-    /* From inside a listener, a drained roll would go into the game's own mailbox, which drops
-     * an impossible roll: the glitch below would vanish, and the scorer never hear of it. So
-     * the drain is refused, like an edit, and the roll waits for the main loop. */
+    /* From inside a listener, the game refuses every roll, so the drain stops at the first
+     * one, and it waits for the main loop, glitch or not: the scorer still hears of it. */
     GameHandle game_owner = MakeGame();
     Game *game = game_owner.get();
     PinsetterHandle owner = MakePinsetter();

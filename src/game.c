@@ -5,7 +5,6 @@
 #include <stddef.h>
 
 #include "frame_context.h"
-#include "game_internal.h"
 #include "game_limits.h"
 #include "slot_pool.h"
 
@@ -217,11 +216,6 @@ GameStatus Game_Roll(Game *game, Pins pins)
         Game_ReportCompletedFrames(game);
     }
     return status;
-}
-
-bool Game_IsNotifying(const Game *game)
-{
-    return (game != NULL) && game->notifying;
 }
 
 Score Game_Score(const Game *game)

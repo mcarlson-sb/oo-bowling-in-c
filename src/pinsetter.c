@@ -5,7 +5,6 @@
 #include <stdint.h>
 
 #include "fault.h"
-#include "game_internal.h"
 #include "game_limits.h"
 #include "slot_pool.h"
 
@@ -99,11 +98,6 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
 
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 {
-    if (Game_IsNotifying(game)) {
-        /* From inside a listener, each roll would go into the game's own mailbox, which drops
-         * an impossible one: around the rule that a reported roll is never thrown away. */
-        return GAME_ERR_DURING_NOTIFICATION;
-    }
     /* Only the rolls waiting now: one read of the post position, so a drain applies at most a
      * mailbox's worth, however fast the interrupt side posts. Later rolls wait for the next. */
     const unsigned post_at = atomic_load_explicit(&pinsetter->post_at, memory_order_acquire);

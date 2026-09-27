@@ -59,8 +59,9 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins);
  * roll after it, waiting. The scorer resolves it, for instance by correcting the earlier roll
  * with Game_CorrectRoll, and the next drain carries on from it.
  *
- * Not from inside a frame-changed callback: there it drains nothing and returns
- * GAME_ERR_DURING_NOTIFICATION. */
+ * Not from inside a frame-changed callback: there the game refuses the first waiting roll
+ * with GAME_ERR_DURING_NOTIFICATION, like any roll from a callback, so the drain stops
+ * with it still waiting. (With nothing waiting, there is nothing to refuse: GAME_OK.) */
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game);
 
 /* Main-loop side. Throws away the oldest waiting roll: the one a drain stopped at, when the
