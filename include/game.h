@@ -56,9 +56,11 @@ typedef enum {
  *     (Fault_Stop, in every build).
  *
  * Stack: a rule runs on top of the library's own frames. The most under it is during a
- * correction's replay: 432 bytes at -O2, 368 at -O0 (208 and 128 during Game_Roll). Those are
- * 64-bit host numbers from GCC 16, to show the scale; a target has to measure its own (KAY.md,
- * "Worst-case stack depth", shows how). */
+ * correction's replay: 432 bytes at -O2, 368 at -O0 (208 and 128 during Game_Roll). More at -O2
+ * than at -O0 is not a typo: optimizing merges the edit into one large frame, while the replay
+ * that calls the rule stays two calls further down. Those are 64-bit host numbers from GCC 16,
+ * to show the scale; a target has to measure its own (KAY.md, "Worst-case stack depth", shows
+ * how). */
 typedef Pins (*PinCountRule)(Pins pins_standing, Pins pins_down);
 
 /* A standard game. */

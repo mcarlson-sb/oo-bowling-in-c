@@ -1446,6 +1446,17 @@ factory, the rule, and the listeners). GCC 16, 64-bit host, bytes:
 The two bases, where the caller's own code runs, are also in `game.h`, next to the callback's and
 the rule's contracts, where an integrator will look.
 
+**The rule's column runs the other way from every other, and it is right.** At `-O2`,
+`Game_EditRolls` inlines `Game_ApplyEditedLog` and the report walk into one 192-byte frame, so a
+listener is called from that frame, but the rule is still two out-of-line calls further down:
+`Game_Replay` (80) and `Game_Accept` (80). At `-O0` nothing is inlined, and the listener sits
+under three more frames (`Game_ReportAfterEdit`, `Game_ReportFrames`, `FrameListeners_Tell`),
+the rule under two. The review asked for a check, and a run-time probe gave one independent of
+the call-graph arithmetic: a rule and a listener each recorded the address of a local while
+`Game_Roll` and `Game_CorrectRoll` ran, at `-O0` and `-O2`. After a constant per build for the
+probe's own frames (120 bytes at `-O0`, 64 at `-O2`), all eight measured depths equal the table's
+figures exactly, the inversion included.
+
 The deepest chain is always the same one: a state change during a replay, `Frame_Roll` to
 `RegularFrame_Roll` to the context's factory to `SpareFrame_Init` to `Frame_InitSpare` to
 `RollList_Add`. At `-O2` most of its links are 8-byte forwarding frames; the big frames are
