@@ -10,25 +10,19 @@
 #include "roll_log.h"
 #include "slot_pool.h"
 
-/* Frames in a game of bowling. The last one keeps its own fill balls, so a game never needs
- * more. */
 #define GAME_FRAMES 10U
-
-/* Games available at once. There is no heap, so games come from a fixed pool. */
 #define GAME_POOL_SIZE 2U
 
 struct Game {
     FrameContext frames[GAME_FRAMES];
     uint8_t frame_count;
-    PinCountRule count_pins; /* how this game counts a roll: see Game_CreateWithRule */
-    uint8_t frames_reported; /* frames already told to the listeners */
-    FrameListeners listeners; /* who to tell when a frame changes: see Game_OnFrameChanged */
-    bool busy; /* true for the whole of a roll or an edit: see Game_Roll */
-    RollLog log; /* see Game_CorrectRoll */
+    PinCountRule count_pins;
+    uint8_t frames_reported; /* frames the listeners have been told are complete */
+    FrameListeners listeners;
+    bool busy; /* see Game_Roll */
+    RollLog log;
 };
 
-/* The games themselves, and the pool that tracks which are in use. The pool's bookkeeping
- * lives in slot_pool.c; this file only owns the storage. */
 static Game s_games[GAME_POOL_SIZE];
 static bool s_in_use[GAME_POOL_SIZE];
 static SlotPool s_pool = { s_in_use, GAME_POOL_SIZE };
@@ -44,8 +38,7 @@ static bool Game_HasNoFrames(const Game *game)
     return game->frame_count == 0U;
 }
 
-/* Only the latest frame can still be taking its own rolls, so only it can leave fewer than
- * ten pins standing. */
+/* Only the latest frame can still be taking its own rolls. */
 static Pins Game_PinsStanding(const Game *game)
 {
     if (Game_HasNoFrames(game)) {
@@ -63,13 +56,12 @@ static void Game_AddNewFrame(Game *game, Pins pins)
         FrameContext_Init(new_frame);
     }
     const RollResult result = FrameContext_Roll(new_frame, pins);
-    assert(result.consumed); /* a new frame always keeps its first roll */
-    (void)result;            /* used only by the assert, which NDEBUG removes */
+    assert(result.consumed);
+    (void)result;
     game->frame_count++;
 }
 
-/* Offers the roll to each frame, oldest first, until one keeps it (Chain of Responsibility).
- * A frame that passes it on hands it to the next; a frame that keeps it ends the chain. */
+/* Chain of Responsibility: oldest frame first, until one keeps the roll. */
 static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
 {
     RollResult result = RollResult_Passed(pins);
@@ -79,46 +71,37 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
     return result;
 }
 
-/* Tells the listeners about the frames from index `first` on, as they are now. A complete
- * frame is sent with its score. A frame they were told was complete, but no longer is, is sent
- * with complete = false. `was_reported` is how many frames they had been told were complete.
- * Complete frames always come first (a frame's bonus rolls are the next frames' own rolls), so
- * the count reported is simply how many are complete.
- *
- * Inline, like the two below: every listener callback runs on top of these, so their frames
- * are paid under each one. As an ordinary call it added 112 bytes there (release, 64-bit
- * host). Callers use the two below, which say which walk they want. */
+/* Tells the listeners about the frames from index `first` on, and about a frame they were told
+ * was complete, and no longer is, as reopened. Complete frames always come first, so
+ * frames_reported ends as the number complete. Inline, like the two below, because every
+ * callback's stack sits on top of it (as a call it cost 112 bytes more). */
 static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_reported)
 {
     game->frames_reported = first;
     const uint8_t frames = (was_reported > game->frame_count) ? was_reported : game->frame_count;
     for (uint8_t i = first; i < frames; i++) {
-        const FrameNumber frame_number = (FrameNumber)(i + 1U); /* frames count from 1 */
+        const FrameNumber frame_number = (FrameNumber)(i + 1U);
         if ((i < game->frame_count) && FrameContext_IsComplete(&game->frames[i])) {
             FrameListeners_Tell(&game->listeners, frame_number,
                                 FrameContext_Score(&game->frames[i]), true);
             game->frames_reported = frame_number;
         } else if (i < was_reported) {
-            FrameListeners_Tell(&game->listeners, frame_number, 0U, false); /* reopened */
+            FrameListeners_Tell(&game->listeners, frame_number, 0U, false);
         }
     }
 }
 
-/* After a roll: nothing before the frames already reported can have changed, and nothing can
- * have reopened, so the walk starts at the first frame not yet reported. */
+/* A roll can't change or reopen a frame already reported. */
 static inline void Game_ReportAfterRoll(Game *game)
 {
     Game_ReportFrames(game, game->frames_reported, game->frames_reported);
 }
 
-/* After an edit: any frame can have changed, or reopened, so the walk starts at the first
- * frame. `was_reported` is how many the listeners had been told were complete before it. */
 static inline void Game_ReportAfterEdit(Game *game, uint8_t was_reported)
 {
     Game_ReportFrames(game, 0U, was_reported);
 }
 
-/* Standard bowling: a roll counts as the pins it knocked down. */
 static Pins Game_CountPinsDown(Pins pins_standing, Pins pins_down)
 {
     (void)pins_standing;
@@ -149,8 +132,6 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     return game;
 }
 
-/* Finds which slot a game is in. Compares addresses for equality only, so a pointer that
- * isn't one of ours (including NULL) is simply not found. */
 static bool Game_FindSlot(const Game *game, uint8_t *slot)
 {
     for (uint8_t i = 0U; i < GAME_POOL_SIZE; i++) {
@@ -162,32 +143,25 @@ static bool Game_FindSlot(const Game *game, uint8_t *slot)
     return false;
 }
 
-/* A game destroyed while it is busy, from inside one of its own callbacks or its rule, would
- * have its slot freed under the call still running. Only a misuse gets here. Ignoring it would
- * be safe but silent: the slot would leak, and the failure would show up later, far away, as
- * Game_Create returning NULL. So the program stops at the misuse, in every build. */
+/* A busy destroy stops rather than being ignored: the leaked slot would surface later, far
+ * away, as Game_Create returning NULL. */
 void Game_Destroy(Game *game)
 {
     uint8_t slot = 0U;
     if (!Game_FindSlot(game, &slot)) {
-        return; /* NULL, or not one of ours */
+        return;
     }
     if (game->busy) {
         Fault_Stop("game: destroyed while busy, from inside its own callback or rule");
     }
     if (!SlotPool_Release(&s_pool, slot)) {
-        /* Its slot was already free: this game was destroyed before. */
         Fault_Stop("game: destroyed twice");
     }
 }
 
-/* Checks a roll and, if it can happen, applies it to the frames. Tells no one: a caller that
- * wants listeners told does that itself. */
+/* Tells no one. Every check comes before any frame sees the roll: frames can't undo one. */
 static GameStatus Game_Accept(Game *game, Pins pins)
 {
-    /* Every check runs before any frame sees the roll. Frames act on a roll as it passes
-     * through them, and that can't be undone, so this is what leaves a rejected roll with
-     * no effect. */
     if (Game_IsOver(game)) {
         return GAME_ERR_GAME_OVER;
     }
@@ -198,7 +172,7 @@ static GameStatus Game_Accept(Game *game, Pins pins)
 
     const Pins pins_counted = game->count_pins(pins_standing, pins);
     if (pins_counted > pins_standing) {
-        return GAME_ERR_RULE_OUT_OF_RANGE; /* the rule is caller code: check it, don't trust it */
+        return GAME_ERR_RULE_OUT_OF_RANGE;
     }
     const RollResult result = Game_ApplyPinsToFrames(game, pins_counted);
     if (!result.consumed) {
@@ -207,10 +181,8 @@ static GameStatus Game_Accept(Game *game, Pins pins)
     return GAME_OK;
 }
 
-/* The game is busy for the whole of a roll, and of an edit: the caller's code runs in the
- * middle of both, the rule while a roll is counted and the listeners while the frames are told.
- * A roll or an edit from there would change the game under the one in progress, and tell the
- * listeners about frames out of order, so it is refused. */
+/* Busy for the whole roll or edit, since the rule and the listeners run inside it: a change
+ * from there would land under the one in progress, and tell frames out of order. */
 GameStatus Game_Roll(Game *game, Pins pins)
 {
     if (game == NULL) {
@@ -242,10 +214,7 @@ Score Game_Score(const Game *game)
     return score;
 }
 
-/* Tells the newest listener, and only it, about every frame the others have already been told
- * is complete, oldest first. The game is busy meanwhile, as for any callback: the new listener
- * may read the game, not change it. The others hear nothing again, which they would take for
- * updates. */
+/* Only the newest: the others would take a repeat for an update. */
 static void Game_CatchUpNewestListener(Game *game)
 {
     game->busy = true;
@@ -259,7 +228,7 @@ static void Game_CatchUpNewestListener(Game *game)
 bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context)
 {
     if ((game == NULL) || game->busy) {
-        return false; /* busy: added mid-roll, it would join a telling already under way */
+        return false;
     }
     if (!FrameListeners_Add(&game->listeners, callback, context)) {
         return false;
@@ -268,8 +237,7 @@ bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *contex
     return true;
 }
 
-/* Empties the frames and replays the roll log from the start. Stops at, and returns the
- * status of, the first roll that can't happen. */
+/* Stops at the first roll that can't happen. */
 static GameStatus Game_Replay(Game *game)
 {
     game->frame_count = 0U;
@@ -282,16 +250,12 @@ static GameStatus Game_Replay(Game *game)
     return GAME_OK;
 }
 
-/* Makes `edited` the game's roll log and rescores by replaying it. If some roll in it is
- * impossible, the saved log is put back and replayed. Every roll in that one was accepted
- * before, so it can't fail as long as the rule is pure (see PinCountRule). If it does fail,
- * the rule has broken that contract, and no game is left that is known to be right: there is
- * no safe state to fall back to, so the program stops, in every build. Returns the status of
- * the first impossible roll, or GAME_OK. */
+/* A rejected edit puts the saved log back and replays it. That replay fails only if the rule
+ * isn't pure, and then no known-good game is left, so the program stops. */
 static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
 {
     const uint8_t was_reported = game->frames_reported;
-    const RollLog saved = game->log; /* plain values: safe to copy, unlike the frames */
+    const RollLog saved = game->log;
     game->log = *edited;
 
     const GameStatus status = Game_Replay(game);
@@ -309,7 +273,7 @@ static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
 
 GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins)
 {
-    const RollEdit edit = { roll_number, 1U, &pins, 1U }; /* one roll out, one in */
+    const RollEdit edit = { roll_number, 1U, &pins, 1U };
     return Game_EditRolls(game, &edit);
 }
 
@@ -324,7 +288,7 @@ GameStatus Game_EditRolls(Game *game, const RollEdit *edit)
     RollLog edited;
     GameStatus status = RollLog_Edit(&game->log, edit, &edited);
     if (status == GAME_OK) {
-        game->busy = true; /* see Game_Roll */
+        game->busy = true;
         status = Game_ApplyEditedLog(game, &edited);
         game->busy = false;
     }
