@@ -24,6 +24,7 @@ add_library(bowling STATIC
     src/frame.c
     src/frame_context.c
     src/game.c
+    src/pinsetter.c
     src/regular_frame.c
     src/roll_list.c
     src/slot_pool.c
@@ -54,6 +55,7 @@ add_executable(bowling_tests
     test/nine_pin_no_tap_test.cpp
     test/scoreboard_test.cpp
     test/correction_test.cpp
+    test/pinsetter_test.cpp
 )
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
 # frame_test.cpp, roll_list_test.cpp and slot_pool_test.cpp test private types directly, so
