@@ -1283,6 +1283,66 @@ target, with 4-byte pointers, it should be less, but that is argued, not measure
   but each states a whole concept once. They make the states' `Init`s tail calls, and stack went
   down, not up.
 
+### After the clean-up: a loud restore, and two gates in CI
+
+Three decisions from the user's review of the clean-up, each in its own commits.
+
+**A rejected edit that can't be undone stops the program, in every build** (`[make-change]`).
+Undoing a rejected edit replays the rolls the game had, and trusts the `PinCountRule` to count
+them as before. Only an impure rule can make that replay fail, and then no game is left that
+is known to be right. The `assert` there vanished in a release build, which carried on with a
+half-replayed game. It is now a check in every build that calls `Fault_Stop`, for the same
+reason as `Pinsetter_Create`: there is no safe state to fall back to. The `PinCountRule`
+contract in `game.h` says so. The test is a death test with a deliberately impure rule, whose
+answer depends on a static the test flips after the first rolls, and it dies in every build.
+Deleting the check fails it in all three local builds; turning it back into an assert fails it
+in release only.
+
+**Before the complexity gate, one violation of my own.** Adding the `NULL`-edit check had taken
+`RollLog_Edit` to a cyclomatic complexity of 11, over `ENG-3.1`'s 10, and lizard found it on its
+first local run. Its range check, three conditions or-ed together, was the constitution's
+Bewildering Boolean (`ENG-3.5`), and is now a named predicate, `RollLog_HasRange`: 11 down to 9.
+Fixed, not whitelisted. (The review expected `Game_EditRolls`'s five parameters to fail the
+gate; that was already settled by making `RollEdit` public.)
+
+**The complexity gate.** A fifth CI job runs lizard 1.24.0 on `src/` and `include/` with
+`ENG-3.1`'s limits (`-C 10 -L 50 -a 4`), and fails on any warning (`-w`). It went green on its
+first run, with nothing whitelisted. **lizard doesn't measure cognitive complexity, so
+`ENG-3.1`'s limit of 7 on it stays unchecked.**
+
+**The stack gate.** `-Wstack-usage` on the library, with `-Werror`, fails the build on any
+function whose frame is over its limit, in all four builds. The limits:
+
+| Files | Largest frame today, across all four builds | Limit |
+|---|---|---|
+| `src/pinsetter.c`, the interrupt path | 128 bytes: `Pinsetter_Enqueue` at `-O0` (`Pinsetter_Post`: 8 in release, 64 at `-O0`, 96 under ThreadSanitizer) | 160 |
+| everything else | 224 bytes: `Game_CorrectRoll` in release, `Game_EditRolls` under ThreadSanitizer | 320 |
+
+**These are host numbers, from a 64-bit host's compilers: a tripwire for regressions, not a
+target budget.** A 32-bit MCU's frames will differ, and its budget has to be measured there
+(`ENG-1.3`). Two limits of the tripwire itself:
+- **It is per file, not per function.** The tight limit covers all of `pinsetter.c`, so it has
+  to allow the largest frame in the file at `-O0` (128), even though `Pinsetter_Post` is 8 bytes
+  in release. A GCC diagnostic pragma can set a tighter limit around one function, but a probe
+  showed `pop` doesn't restore the old limit afterwards, so it isn't safe to rely on.
+- **CI's compiler is GCC 13; these were measured with GCC 16.** The general limit has extra
+  headroom for that. All four CI builds went green on the first run.
+
+**Proof that each gate fails when it should.** Each probe ran alone, in its own commit and CI
+run, on a throwaway branch since deleted:
+
+| Probe | CI run | Result |
+|---|---|---|
+| P1: a library function with five parameters | [36295260461](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36295260461) | `complexity` red, the four builds green. lizard: `SlotPool_ProbeFiveParameters has 4 NLOC, 1 CCN, 30 token, 5 PARAM` |
+| P2: a 200-byte local array in `Pinsetter_Post` (over the file's 160, under the general 320) | [36295384087](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36295384087) | All four builds red, `complexity` green: `src/pinsetter.c:119:6: error: stack usage is 256 bytes [-Werror=stack-usage=]` (224 in release, 288 under ThreadSanitizer). So the per-file limit, not the general one, is the one enforced |
+| P3: a 400-byte local array in `Game_Score` (over the general 320) | [36295415216](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36295415216) | All four builds red, `complexity` green: `src/game.c:206:7: error: stack usage is 464 bytes [-Werror=stack-usage=]` |
+
+One run is discarded, and recorded here because it was mine to get wrong:
+[36295315391](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36295315391) carried
+P1 as well as a first P2, because my script's revert command was invalid, and one build failed
+on the probe's array being set but never read, not on stack. The P2 above was rerun alone,
+with the array read back.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on

@@ -60,6 +60,11 @@ lizard -C 10 -L 50 -a 4 -w src include
 Any function with a cyclomatic complexity over 10, more than 50 lines or more than 4
 parameters fails it. lizard doesn't measure cognitive complexity, so that limit is unchecked.
 
+Every build also fails on any library function whose stack frame is over a limit
+(`-Wstack-usage`, in `CMakeLists.txt`): 160 bytes in `src/pinsetter.c`, the interrupt path,
+and 320 everywhere else. They are host numbers, a tripwire for regressions rather than a
+target's budget.
+
 ### Coverage
 
 `OO_C_COVERAGE=ON` instruments the library, but not GoogleTest, for `gcov`. Its `coverage`
