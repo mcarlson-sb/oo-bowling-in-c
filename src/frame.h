@@ -95,6 +95,10 @@ void Frame_AddRoll(Frame *self, Pins pins);
 void Frame_AddBonusRoll(Frame *self, Pins pins);
 void Frame_Complete(Frame *self);
 
+/* Builds a strike state, in either family: a strike is born with one roll, of all the pins.
+ * Returns the frame, for the state's Init. */
+Frame *Frame_InitStrike(Frame *self, const FrameVtable *vtable);
+
 /* Builds a spare state, in either family: a spare is born with the rolls of the frame it
  * replaces, plus the roll that completed it. Returns the frame, for the state's Init. */
 Frame *Frame_InitSpare(Frame *self, const FrameVtable *vtable, const Frame *replaced,

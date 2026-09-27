@@ -37,9 +37,7 @@ static const FrameVtable s_strike_vtable = {
 
 Frame *TenthStrikeFrame_Init(TenthStrikeFrame *self)
 {
-    Frame_Init(&self->base, &s_strike_vtable);
-    Frame_AddRoll(&self->base, FRAME_ALL_PINS);
-    return &self->base;
+    return Frame_InitStrike(&self->base, &s_strike_vtable);
 }
 
 static RollResult TenthSpareFrame_Roll(Frame *self, struct FrameContext *context, Pins pins)

@@ -55,6 +55,13 @@ static void Frame_CopyRolls(Frame *self, const Frame *from)
     }
 }
 
+Frame *Frame_InitStrike(Frame *self, const FrameVtable *vtable)
+{
+    Frame_Init(self, vtable);
+    Frame_AddRoll(self, FRAME_ALL_PINS);
+    return self;
+}
+
 Frame *Frame_InitSpare(Frame *self, const FrameVtable *vtable, const Frame *replaced,
                        Pins completing_pins)
 {

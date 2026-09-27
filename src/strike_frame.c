@@ -17,7 +17,5 @@ static const FrameVtable s_vtable = {
 
 Frame *StrikeFrame_Init(StrikeFrame *self)
 {
-    Frame_Init(&self->base, &s_vtable);
-    Frame_AddRoll(&self->base, FRAME_ALL_PINS);
-    return &self->base;
+    return Frame_InitStrike(&self->base, &s_vtable);
 }
