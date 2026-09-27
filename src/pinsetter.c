@@ -36,8 +36,13 @@ Pinsetter *Pinsetter_Create(void)
 void Pinsetter_Destroy(Pinsetter *pinsetter)
 {
     for (uint8_t i = 0U; i < PINSETTER_POOL_SIZE; i++) {
-        if ((&s_pinsetters[i] == pinsetter) && !SlotPool_Release(&s_pool, i)) {
-            Fault_Stop("pinsetter: destroyed twice");
+        if (&s_pinsetters[i] == pinsetter) {
+            if (pinsetter->draining) {
+                Fault_Stop("pinsetter: destroyed while draining");
+            }
+            if (!SlotPool_Release(&s_pool, i)) {
+                Fault_Stop("pinsetter: destroyed twice");
+            }
         }
     }
 }

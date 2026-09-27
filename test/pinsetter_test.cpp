@@ -283,6 +283,33 @@ TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_is_destroyed_t
 
 namespace {
 
+void DestroysItsPinsetter_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                       bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    Pinsetter_Destroy(static_cast<Pinsetter *>(context));
+}
+
+} // namespace
+
+TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_is_destroyed_while_draining)
+{
+    EXPECT_DEATH(
+        {
+            Pinsetter *pinsetter = Pinsetter_Create();
+            Game *game = Game_Create();
+            (void)Game_OnFrameChanged(game, &DestroysItsPinsetter_FrameChanged, pinsetter);
+            (void)Pinsetter_Post(pinsetter, 3U);
+            (void)Pinsetter_Post(pinsetter, 4U);
+            (void)Pinsetter_Drain(pinsetter, game);
+        },
+        "destroyed while draining");
+}
+
+namespace {
+
 struct DrainsFromInside {
     Game *game = nullptr;
     Pinsetter *pinsetter = nullptr;

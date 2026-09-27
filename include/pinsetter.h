@@ -22,8 +22,8 @@ typedef struct Pinsetter Pinsetter;
 Pinsetter *Pinsetter_Create(void);
 
 /* Detach the interrupt handler first: a later post would land in the next pinsetter created.
- * NULL, or a pointer that isn't a pinsetter, is ignored; destroying one twice stops the
- * program (Fault_Stop). */
+ * NULL, or a pointer that isn't a pinsetter, is ignored; destroying one twice, or while it is
+ * draining, stops the program (Fault_Stop). */
 void Pinsetter_Destroy(Pinsetter *pinsetter);
 
 /* Interrupt side, from exactly one handler. Overlapping posts could lose a roll; a debug
