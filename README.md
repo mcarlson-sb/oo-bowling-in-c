@@ -38,7 +38,8 @@ cmake --build build-release
 ctest --test-dir build-release --output-on-failure
 ```
 
-Warnings are errors in the library and the tests alike.
+Warnings are errors in the library and the tests alike. GitHub Actions runs all three builds
+(`.github/workflows/ci.yml`) on every push and pull request.
 
 ### Coverage
 

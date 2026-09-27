@@ -1,0 +1,33 @@
+# The same three builds the README describes, on every push and pull request: debug,
+# release (NDEBUG) and undefined-behavior checks. Warnings are errors in all of them.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debug
+            flags: ""
+          - name: release
+            flags: "-DCMAKE_BUILD_TYPE=Release"
+          - name: ubsan
+            flags: "-DOO_C_SANITIZE=ON"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ${{ matrix.flags }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
