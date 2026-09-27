@@ -11,6 +11,9 @@
  * more. */
 #define GAME_FRAMES 10U
 
+/* The most rolls a game can take: two in each of frames 1 to 9, and three in the tenth. */
+#define GAME_MAX_ROLLS 21U
+
 /* Games available at once. There is no heap, so games come from a fixed pool. */
 #define GAME_POOL_SIZE 2U
 
@@ -30,6 +33,8 @@ struct Game {
     FrameCompletedListener listeners[GAME_MAX_LISTENERS];
     uint8_t listener_count;
     bool notifying; /* true while the listeners are being told: see Game_Roll */
+    Pins rolls[GAME_MAX_ROLLS]; /* each accepted roll, as the pins that fell: Game_CorrectRoll */
+    uint8_t roll_count;
 };
 
 /* The games themselves, and the pool that tracks which are in use. The pool's bookkeeping
@@ -145,6 +150,7 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     game->frames_reported = 0U;
     game->listener_count = 0U;
     game->notifying = false;
+    game->roll_count = 0U;
     return game;
 }
 
@@ -205,6 +211,8 @@ GameStatus Game_Roll(Game *game, Pins pins)
     }
     const GameStatus status = Game_Accept(game, pins);
     if (status == GAME_OK) {
+        game->rolls[game->roll_count] = pins;
+        game->roll_count++;
         Game_ReportCompletedFrames(game);
     }
     return status;
@@ -233,4 +241,16 @@ bool Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *co
     listener->context = context;
     game->listener_count++;
     return true;
+}
+
+GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
+{
+    game->rolls[roll_number - 1U] = pins;
+
+    /* Replay every roll, the corrected one included, from an empty game. */
+    game->frame_count = 0U;
+    for (uint8_t i = 0U; i < game->roll_count; i++) {
+        (void)Game_Accept(game, game->rolls[i]);
+    }
+    return GAME_OK;
 }

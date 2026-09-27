@@ -59,6 +59,10 @@ typedef void (*FrameCompletedCallback)(void *context, uint8_t frame_number, Scor
 bool Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context);
 
 GameStatus Game_Roll(Game *game, Pins pins);
+
+/* Replaces roll number `roll_number` (the first roll is 1) with `pins`, the pins that really
+ * fell, and rescores the game from there. */
+GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins);
 Score Game_Score(const Game *game);
 
 #ifdef __cplusplus
