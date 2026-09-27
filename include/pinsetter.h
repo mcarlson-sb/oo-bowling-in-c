@@ -30,11 +30,20 @@ typedef struct Pinsetter Pinsetter;
  * DiscardOldest return false, RollsLost 0, and Drain GAME_ERR_NULL_GAME. */
 Pinsetter *Pinsetter_Create(void);
 
+/* Detach the interrupt handler before calling this: a post to a pinsetter already given back
+ * to the pool would land in whichever pinsetter is created next. The pool can't check that,
+ * so it is the caller's to keep. */
 void Pinsetter_Destroy(Pinsetter *pinsetter);
 
 /* Interrupt side. Posts the pins that fell in one roll. Returns false, posting nothing, if
  * the mailbox is full: 21 rolls, a whole game's, are waiting that the main loop hasn't
- * drained. */
+ * drained.
+ *
+ * The 21 are enough for every roll of one game while a drain is stopped, but only if every
+ * waiting roll is a roll of that game. A glitch waiting to be discarded takes a slot too, and
+ * so does a roll of the game before that is still waiting for the scorer: then the game's
+ * last roll can be refused. That is accepted, not sized for: Pinsetter_RollsLost counts it,
+ * so it is never silent. */
 bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins);
 
 /* Main-loop side. Rolls every roll waiting when it starts into `game`, oldest first, with
