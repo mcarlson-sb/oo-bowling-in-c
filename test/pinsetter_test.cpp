@@ -151,6 +151,27 @@ TEST(PinsetterTest, should_hold_a_whole_game_of_rolls_while_a_drain_is_stopped)
     EXPECT_EQ(190U, Game_Score(next)); /* ten spares, each with a 9 as its bonus */    EXPECT_TRUE(Pinsetter_Post(pinsetter, 0U)); /* drained, there is room again */
 }
 
+TEST(PinsetterTest, should_count_the_rolls_lost_while_the_mailbox_was_full)
+{
+    /* A full mailbox refuses the interrupt handler's roll, and the handler has no one to tell.
+     * So the pinsetter counts them, and the main loop asks how many were lost since it last
+     * asked. */
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+    EXPECT_EQ(0U, Pinsetter_RollsLost(pinsetter));
+
+    for (int i = 0; i < 21; i++) {
+        EXPECT_TRUE(Pinsetter_Post(pinsetter, 0U));
+    }
+    EXPECT_FALSE(Pinsetter_Post(pinsetter, 1U));
+    EXPECT_FALSE(Pinsetter_Post(pinsetter, 2U));
+    EXPECT_EQ(2U, Pinsetter_RollsLost(pinsetter));
+    EXPECT_EQ(0U, Pinsetter_RollsLost(pinsetter)); /* none since it last asked */
+
+    EXPECT_FALSE(Pinsetter_Post(pinsetter, 3U));
+    EXPECT_EQ(1U, Pinsetter_RollsLost(pinsetter));
+}
+
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
 {
     /* A real thread plays the interrupt handler: it only posts, retrying while the mailbox

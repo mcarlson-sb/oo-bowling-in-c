@@ -14,6 +14,7 @@
  * that wants to roll calls Game_Roll, and the game queues the roll in its own mailbox. */
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "bowling_types.h"
 #include "game.h"
@@ -47,6 +48,15 @@ GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game);
 /* Main-loop side. Throws away the oldest waiting roll: the one a drain stopped at, when the
  * scorer decides the machine got it wrong. Returns false if no roll is waiting. */
 bool Pinsetter_DiscardOldest(Pinsetter *pinsetter);
+
+/* Main-loop side. How many rolls Pinsetter_Post refused, because the mailbox was full, since
+ * the last time this was asked.
+ *
+ * The mailbox holds a whole game's rolls, so in normal play this is always 0. Anything else
+ * is a real anomaly: the main loop stopped draining for a whole game or more, or the machine
+ * reported rolls that no game has. Either way, rolls the bowler made are missing, and the
+ * scorer needs to know. Counts past 65,535 between two asks wrap around, and read as fewer. */
+uint16_t Pinsetter_RollsLost(Pinsetter *pinsetter);
 
 #ifdef __cplusplus
 }

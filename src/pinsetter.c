@@ -34,6 +34,8 @@ struct Pinsetter {
     Pins rolls[PINSETTER_SLOTS];
     atomic_uint post_at;
     atomic_uint drain_at;
+    _Atomic uint16_t rolls_lost; /* posts ever refused. Only the interrupt side writes it */
+    uint16_t lost_seen;          /* rolls_lost when the main loop last asked; only it uses this */
 };
 
 static Pinsetter s_pinsetters[PINSETTER_POOL_SIZE];
@@ -49,6 +51,8 @@ Pinsetter *Pinsetter_Create(void)
     Pinsetter *pinsetter = &s_pinsetters[slot];
     atomic_store(&pinsetter->post_at, 0U);
     atomic_store(&pinsetter->drain_at, 0U);
+    atomic_store(&pinsetter->rolls_lost, 0U);
+    pinsetter->lost_seen = 0U;
     return pinsetter;
 }
 
@@ -72,7 +76,13 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
     const unsigned post_at = atomic_load_explicit(&pinsetter->post_at, memory_order_relaxed);
     const unsigned next = Pinsetter_Next(post_at);
     if (next == atomic_load_explicit(&pinsetter->drain_at, memory_order_acquire)) {
-        return false; /* full: never overwrite a roll the main loop hasn't seen */
+        /* Full: never overwrite a roll the main loop hasn't seen. Count the lost roll instead.
+         * This side is the only writer, so a load and a store will do: no read-modify-write,
+         * which some interrupt-driven targets can't do without a lock. */
+        const uint16_t lost = atomic_load_explicit(&pinsetter->rolls_lost, memory_order_relaxed);
+        atomic_store_explicit(&pinsetter->rolls_lost, (uint16_t)(lost + 1U),
+                              memory_order_relaxed);
+        return false;
     }
     pinsetter->rolls[post_at] = pins;
     atomic_store_explicit(&pinsetter->post_at, next, memory_order_release);
@@ -92,6 +102,16 @@ GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
         atomic_store_explicit(&pinsetter->drain_at, drain_at, memory_order_release);
     }
     return GAME_OK;
+}
+
+uint16_t Pinsetter_RollsLost(Pinsetter *pinsetter)
+{
+    /* Never cleared, so the interrupt side stays its only writer. The difference from the
+     * last value seen is right across wrap-around, because it is taken in uint16_t. */
+    const uint16_t lost = atomic_load_explicit(&pinsetter->rolls_lost, memory_order_relaxed);
+    const uint16_t since = (uint16_t)(lost - pinsetter->lost_seen);
+    pinsetter->lost_seen = lost;
+    return since;
 }
 
 bool Pinsetter_DiscardOldest(Pinsetter *pinsetter)
