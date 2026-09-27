@@ -89,8 +89,9 @@ typedef void (*FrameChangedCallback)(void *context, FrameNumber frame_number, Sc
                                      bool frame_complete);
 
 /* Adds a callback this game tells about changed frames; `context` is passed back to it
- * unchanged. A game has room for two. Returns false, adding nothing, if both are taken, or
- * if `game` or `callback` is NULL. */
+ * unchanged. A game has room for two. Returns false, adding nothing, if both are taken, if
+ * `game` or `callback` is NULL, or if the game is busy: called from inside a callback or the
+ * game's PinCountRule, a new listener would join a telling already under way. */
 bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context);
 
 GameStatus Game_Roll(Game *game, Pins pins);

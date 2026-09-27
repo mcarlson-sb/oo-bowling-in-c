@@ -233,8 +233,8 @@ Score Game_Score(const Game *game)
 
 bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context)
 {
-    if (game == NULL) {
-        return false;
+    if ((game == NULL) || game->busy) {
+        return false; /* busy: added mid-roll, it would join a telling already under way */
     }
     return FrameListeners_Add(&game->listeners, callback, context);
 }

@@ -228,3 +228,68 @@ TEST(ListenerReentryTest, should_refuse_a_roll_made_from_inside_a_listener)
     RollAll(game, {4U}); /* the same roll, made normally, is fine */
     EXPECT_EQ((Frames{{1, 13}, {2, 7}}), other.frames);
 }
+
+namespace {
+
+/* A listener that, the first time it hears anything, tries to add another listener. */
+struct SubscribesFromInside {
+    Game *game = nullptr;
+    bool tried = false;
+    bool added = true;
+    Scoreboard late;
+};
+
+void SubscribesFromInside_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                       bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    auto *listener = static_cast<SubscribesFromInside *>(context);
+    if (!listener->tried) {
+        listener->tried = true;
+        listener->added = Game_OnFrameChanged(listener->game, &Scoreboard_FrameChanged,
+                                              &listener->late);
+    }
+}
+
+/* A rule that, the first time it is asked, tries to add a listener to its own game. */
+Game *s_subscribing_rule_game = nullptr;
+bool s_subscribing_rule_tried = false;
+bool s_subscribing_rule_added = true;
+Scoreboard s_subscribing_rule_late;
+
+Pins SubscribesFromTheRule(Pins pins_standing, Pins pins_down)
+{
+    (void)pins_standing;
+    if (!s_subscribing_rule_tried) {
+        s_subscribing_rule_tried = true;
+        s_subscribing_rule_added = Game_OnFrameChanged(
+            s_subscribing_rule_game, &Scoreboard_FrameChanged, &s_subscribing_rule_late);
+    }
+    return pins_down;
+}
+
+} // namespace
+
+TEST(ListenerReentryTest, should_refuse_a_listener_added_from_inside_a_listener_or_the_rule)
+{
+    /* Added in the middle of a roll, a listener would join the telling already under way, and
+     * hear a frame without the ones before it. So, like a roll or an edit, it is refused while
+     * the game is busy, and the game goes on with the listeners it had. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    SubscribesFromInside listener;
+    listener.game = game;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &SubscribesFromInside_FrameChanged, &listener));
+    RollAll(game, {3U, 4U, 2U, 5U});
+    EXPECT_FALSE(listener.added);
+    EXPECT_EQ((Frames{}), listener.late.frames);
+
+    GameHandle ruled_owner = MakeGameWithRule(&SubscribesFromTheRule);
+    s_subscribing_rule_game = ruled_owner.get();
+    s_subscribing_rule_tried = false;
+    RollAll(s_subscribing_rule_game, {3U, 4U});
+    EXPECT_FALSE(s_subscribing_rule_added);
+    EXPECT_EQ((Frames{}), s_subscribing_rule_late.frames);
+}
