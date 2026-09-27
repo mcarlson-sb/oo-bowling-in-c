@@ -95,8 +95,10 @@ void Frame_AddRoll(Frame *self, Pins pins);
 void Frame_AddBonusRoll(Frame *self, Pins pins);
 void Frame_Complete(Frame *self);
 
-/* Copies another frame's rolls into this one, for a state built from the one it replaces. */
-void Frame_CopyRolls(Frame *self, const Frame *from);
+/* Builds a spare state, in either family: a spare is born with the rolls of the frame it
+ * replaces, plus the roll that completed it. Returns the frame, for the state's Init. */
+Frame *Frame_InitSpare(Frame *self, const FrameVtable *vtable, const Frame *replaced,
+                       Pins completing_pins);
 
 /* Whether the frame has all it will ever take: its rolls and any bonus rolls. */
 bool Frame_IsComplete(const Frame *self);

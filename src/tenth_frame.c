@@ -57,8 +57,5 @@ static const FrameVtable s_spare_vtable = {
 
 Frame *TenthSpareFrame_Init(TenthSpareFrame *self, const Frame *replaced, Pins completing_pins)
 {
-    Frame_Init(&self->base, &s_spare_vtable);
-    Frame_CopyRolls(&self->base, replaced);
-    Frame_AddRoll(&self->base, completing_pins);
-    return &self->base;
+    return Frame_InitSpare(&self->base, &s_spare_vtable, replaced, completing_pins);
 }

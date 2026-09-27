@@ -48,11 +48,20 @@ void Frame_Complete(Frame *self)
     self->complete = true;
 }
 
-void Frame_CopyRolls(Frame *self, const Frame *from)
+static void Frame_CopyRolls(Frame *self, const Frame *from)
 {
     for (uint8_t i = 0U; i < RollList_Count(&from->rolls); i++) {
         Frame_AddRoll(self, RollList_At(&from->rolls, i));
     }
+}
+
+Frame *Frame_InitSpare(Frame *self, const FrameVtable *vtable, const Frame *replaced,
+                       Pins completing_pins)
+{
+    Frame_Init(self, vtable);
+    Frame_CopyRolls(self, replaced);
+    Frame_AddRoll(self, completing_pins);
+    return self;
 }
 
 Pins Frame_PinsKnockedDown(const Frame *self)
