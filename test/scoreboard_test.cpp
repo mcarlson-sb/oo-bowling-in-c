@@ -167,3 +167,11 @@ TEST(RunningStatsNoTapTest, should_average_the_counted_scores_under_no_tap)
     EXPECT_EQ(2, stats.frames);
     EXPECT_DOUBLE_EQ((17.0 + 7.0) / 2.0, stats.Average());
 }
+
+TEST_F(ScoreboardTest, should_refuse_a_null_callback_without_using_up_a_slot)
+{
+    EXPECT_FALSE(Game_OnFrameCompleted(game, nullptr, nullptr));
+
+    RunningStats stats; /* the fixture's scoreboard has one slot; this takes the other */
+    EXPECT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
+}

@@ -49,8 +49,8 @@ void Game_Destroy(Game *game);
 typedef void (*FrameCompletedCallback)(void *context, uint8_t frame_number, Score frame_score);
 
 /* Adds a callback this game tells about completed frames; `context` is passed back to it
- * unchanged. A game has room for two. Returns false, adding nothing, if both are taken or
- * `game` is NULL. */
+ * unchanged. A game has room for two. Returns false, adding nothing, if both are taken, or
+ * if `game` or `callback` is NULL. */
 bool Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context);
 
 GameStatus Game_Roll(Game *game, Pins pins);

@@ -95,9 +95,7 @@ static void Game_TellListeners(const Game *game, uint8_t frame_number, Score fra
 {
     for (uint8_t i = 0U; i < game->listener_count; i++) {
         const FrameCompletedListener *listener = &game->listeners[i];
-        if (listener->callback != NULL) {
-            listener->callback(listener->context, frame_number, frame_score);
-        }
+        listener->callback(listener->context, frame_number, frame_score);
     }
 }
 
@@ -210,7 +208,7 @@ Score Game_Score(const Game *game)
 
 bool Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context)
 {
-    if ((game == NULL) || (game->listener_count == GAME_MAX_LISTENERS)) {
+    if ((game == NULL) || (callback == NULL) || (game->listener_count == GAME_MAX_LISTENERS)) {
         return false;
     }
     FrameCompletedListener *listener = &game->listeners[game->listener_count];
