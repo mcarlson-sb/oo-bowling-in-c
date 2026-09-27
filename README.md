@@ -144,8 +144,8 @@ Behind them:
   and a debug build stops the program if it catches two posts overlapping. Each drain takes
   only the rolls waiting when
   it starts, so the main loop's work per pass is bounded, and a drain from inside a listener
-  is refused, as is a discard while a drain is running. Destroying a pinsetter twice stops the
-  program. A post the full mailbox refuses is counted: `Pinsetter_RollsLost` returns the
+  is refused, as is a discard while a drain is running. Destroying a pinsetter twice, or while it
+  is draining, stops the program. A post the full mailbox refuses is counted: `Pinsetter_RollsLost` returns the
   total, and each reader takes its own difference. `test/pinsetter_test.cpp` covers both
   sides, with a real second thread and with a fake interrupt handler fired in the middle of a
   drain.
