@@ -79,9 +79,8 @@ bool Frame_IsComplete(const Frame *self);
 /* Its own rolls, without bonus rolls. */
 Pins Frame_PinsKnockedDown(const Frame *self);
 
-/* Which roll comes next: the frame's first, or its second bonus roll. */
-bool Frame_IsFirstRoll(const Frame *self);
-bool Frame_IsSecondBonusRoll(const Frame *self);
+bool Frame_NextIsFirstRoll(const Frame *self);
+bool Frame_NextIsSecondBonusRoll(const Frame *self);
 
 /* Only once there is one. */
 Pins Frame_FirstBonusRoll(const Frame *self);

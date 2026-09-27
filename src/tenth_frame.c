@@ -16,7 +16,7 @@ static RollResult TenthStrikeFrame_Roll(Frame *self, struct FrameContext *contex
 
 static Pins TenthStrikeFrame_PinsStanding(const Frame *self)
 {
-    if (!Frame_IsSecondBonusRoll(self)) {
+    if (!Frame_NextIsSecondBonusRoll(self)) {
         return FRAME_ALL_PINS;
     }
     const Pins first_fill = Frame_FirstBonusRoll(self);

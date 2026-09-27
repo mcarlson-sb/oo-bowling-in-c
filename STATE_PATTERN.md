@@ -241,7 +241,7 @@ The guards are small named predicates, each a pure function of the frame and the
 ```c
 static bool RegularFrame_IsStrike(const Frame *self, Pins pins)
 {
-    return Frame_IsFirstRoll(self) && (pins == FRAME_ALL_PINS);
+    return Frame_NextIsFirstRoll(self) && (pins == FRAME_ALL_PINS);
 }
 
 static bool RegularFrame_IsSpare(const Frame *self, Pins pins)

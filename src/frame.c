@@ -75,12 +75,12 @@ Pins Frame_PinsKnockedDown(const Frame *self)
     return RollList_Sum(&self->rolls);
 }
 
-bool Frame_IsFirstRoll(const Frame *self)
+bool Frame_NextIsFirstRoll(const Frame *self)
 {
     return RollList_Count(&self->rolls) == 0U;
 }
 
-bool Frame_IsSecondBonusRoll(const Frame *self)
+bool Frame_NextIsSecondBonusRoll(const Frame *self)
 {
     return RollList_Count(&self->bonus_rolls) == 1U;
 }
