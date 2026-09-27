@@ -103,20 +103,30 @@ static void Game_TellListeners(const Game *game, uint8_t frame_number, Score fra
     }
 }
 
-/* Tells the listeners about every frame that has completed since the last roll.
+/* Tells the listeners about the frames from index `first` on, as they are now. A complete
+ * frame is sent with its score. A frame they were told was complete, but no longer is, is sent
+ * with complete = false. `was_reported` is how many frames they had been told were complete.
  *
  * A frame never completes before the one before it: its bonus rolls, if any, are the next
- * frames' own rolls. So the frames already reported are always the first few, and one roll
- * can only complete frames just past them, in order. Keeping a count of frames reported is
- * enough; no before-and-after copy of every frame's flag is needed. */
-static void Game_ReportCompletedFrames(Game *game)
+ * frames' own rolls. So complete frames always come first, and the count of frames reported is
+ * simply how many are complete: no before-and-after copy of every frame's flag is needed.
+ *   - After a roll, nothing before the frames already reported can have changed, and nothing
+ *     can have reopened, so the walk starts there: `first` and `was_reported` are both that
+ *     count.
+ *   - After an edit, any frame can have changed, so the walk starts at the first frame. */
+static void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_reported)
 {
     game->notifying = true;
-    while ((game->frames_reported < game->frame_count) &&
-           FrameContext_IsComplete(&game->frames[game->frames_reported])) {
-        const FrameContext *frame = &game->frames[game->frames_reported];
-        game->frames_reported++;
-        Game_TellListeners(game, game->frames_reported, FrameContext_Score(frame), true);
+    game->frames_reported = first;
+    const uint8_t frames = (was_reported > game->frame_count) ? was_reported : game->frame_count;
+    for (uint8_t i = first; i < frames; i++) {
+        const uint8_t frame_number = (uint8_t)(i + 1U);
+        if ((i < game->frame_count) && FrameContext_IsComplete(&game->frames[i])) {
+            Game_TellListeners(game, frame_number, FrameContext_Score(&game->frames[i]), true);
+            game->frames_reported = frame_number;
+        } else if (i < was_reported) {
+            Game_TellListeners(game, frame_number, 0U, false); /* reopened */
+        }
     }
     game->notifying = false;
 }
@@ -213,7 +223,7 @@ GameStatus Game_Roll(Game *game, Pins pins)
     if (status == GAME_OK) {
         game->log.pins[game->log.count] = pins;
         game->log.count++;
-        Game_ReportCompletedFrames(game);
+        Game_ReportFrames(game, game->frames_reported, game->frames_reported);
     }
     return status;
 }
@@ -257,28 +267,6 @@ static GameStatus Game_Replay(Game *game)
     return GAME_OK;
 }
 
-/* After a correction: tells the listeners about each frame again. A complete frame is sent
- * with its new score. A frame they were told was complete, but no longer is, is sent with
- * complete = false. `was_reported` is how many frames they had been told were complete.
- * Complete frames always come first, so the new count of frames reported is simply how
- * many are complete. */
-static void Game_ReportCorrection(Game *game, uint8_t was_reported)
-{
-    game->notifying = true;
-    game->frames_reported = 0U;
-    const uint8_t frames = (was_reported > game->frame_count) ? was_reported : game->frame_count;
-    for (uint8_t i = 0U; i < frames; i++) {
-        const uint8_t frame_number = (uint8_t)(i + 1U);
-        if ((i < game->frame_count) && FrameContext_IsComplete(&game->frames[i])) {
-            Game_TellListeners(game, frame_number, FrameContext_Score(&game->frames[i]), true);
-            game->frames_reported = frame_number;
-        } else if (i < was_reported) {
-            Game_TellListeners(game, frame_number, 0U, false); /* reopened */
-        }
-    }
-    game->notifying = false;
-}
-
 /* Makes `edited` the game's roll log and rescores by replaying it. If some roll in it is
  * impossible, the saved log is put back and replayed. Every roll in that one was accepted
  * before, so it can't fail as long as the rule is pure (see PinCountRule). Returns the
@@ -291,7 +279,7 @@ static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
 
     const GameStatus status = Game_Replay(game);
     if (status == GAME_OK) {
-        Game_ReportCorrection(game, was_reported);
+        Game_ReportFrames(game, 0U, was_reported);
     } else {
         game->log = saved;
         const GameStatus restored = Game_Replay(game);
