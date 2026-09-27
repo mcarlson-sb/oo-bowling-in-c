@@ -61,6 +61,28 @@ TEST_F(NinePinNoTapTest, should_not_count_5_then_4_as_a_spare_under_a_first_ball
     EXPECT_EQ(9U, Game_Score(game)); /* an open 5 + 4; the 3 starts frame 2 */
 }
 
+namespace {
+
+/* The stricter form many no-tap leagues use: any ball that leaves exactly one pin standing
+ * clears the rack, on a first ball (a strike) or a second (a spare). */
+Pins OnePinLeftClearsTheRack(Pins pins_standing, Pins pins_down)
+{
+    const bool one_pin_left = (pins_standing >= 1U) && ((pins_down + 1U) == pins_standing);
+    return one_pin_left ? pins_standing : pins_down;
+}
+
+} // namespace
+
+TEST(OnePinLeftRuleTest, should_count_5_then_4_as_a_spare_under_a_one_pin_left_rule)
+{
+    GameHandle owner{Game_CreateWithRule(&OnePinLeftClearsTheRack), &Game_Destroy};
+    Game *game = owner.get();
+    for (const Pins pins : {Pins{5U}, Pins{4U}, Pins{3U}}) {
+        EXPECT_EQ(GAME_OK, Game_Roll(game, pins)) << "setup roll of " << +pins;
+    }
+    EXPECT_EQ(13U, Game_Score(game)); /* a spare, 5 + 5, plus its bonus 3 */
+}
+
 /* ---- A rule is caller code, so the library can't take it on trust ----------------------- */
 
 namespace {
