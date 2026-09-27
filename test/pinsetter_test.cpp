@@ -298,6 +298,19 @@ TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_cant_be_create
         "pinsetter");
 }
 
+TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_is_destroyed_twice)
+{
+    /* A second destroy is a bug in the caller, caught while the slot is still free, in every
+     * build. It all happens in the death test's child process. */
+    EXPECT_DEATH(
+        {
+            Pinsetter *pinsetter = Pinsetter_Create();
+            Pinsetter_Destroy(pinsetter);
+            Pinsetter_Destroy(pinsetter);
+        },
+        "twice");
+}
+
 namespace {
 
 /* A listener that drains the pinsetter the first time it hears anything. */

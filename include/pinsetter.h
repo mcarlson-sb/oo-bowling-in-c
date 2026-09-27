@@ -33,9 +33,11 @@ typedef struct Pinsetter Pinsetter;
  * NULL: that is a precondition, not a case they handle. */
 Pinsetter *Pinsetter_Create(void);
 
-/* Detach the interrupt handler before calling this: a post to a pinsetter already given back
- * to the pool would land in whichever pinsetter is created next. The pool can't check that,
- * so it is the caller's to keep. */
+/* Gives the pinsetter back to the pool. Detach the interrupt handler before calling this: a
+ * post to a pinsetter already given back would land in whichever pinsetter is created next.
+ * The pool can't check that, so it is the caller's to keep. Destroying a pinsetter twice stops
+ * the program (Fault_Stop, in every build), caught while its slot is still free; a pointer
+ * that isn't a pinsetter, NULL included, is ignored. */
 void Pinsetter_Destroy(Pinsetter *pinsetter);
 
 /* Interrupt side. Posts the pins that fell in one roll.

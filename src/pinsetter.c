@@ -38,11 +38,13 @@ Pinsetter *Pinsetter_Create(void)
     return pinsetter;
 }
 
+/* A pointer that isn't one of ours, NULL included, is ignored. One whose slot is already free
+ * was destroyed before: a bug in the caller, so the program stops, in every build. */
 void Pinsetter_Destroy(Pinsetter *pinsetter)
 {
     for (uint8_t i = 0U; i < PINSETTER_POOL_SIZE; i++) {
-        if (&s_pinsetters[i] == pinsetter) {
-            SlotPool_Release(&s_pool, i);
+        if ((&s_pinsetters[i] == pinsetter) && !SlotPool_Release(&s_pool, i)) {
+            Fault_Stop("pinsetter: destroyed twice");
         }
     }
 }
