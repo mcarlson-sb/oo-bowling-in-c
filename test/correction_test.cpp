@@ -132,3 +132,42 @@ TEST(CorrectionTest, should_reject_correcting_a_null_game)
 {
     EXPECT_EQ(GAME_ERR_NULL_GAME, Game_CorrectRoll(nullptr, 1U, 5U));
 }
+
+namespace {
+
+/* A listener that tries to correct a roll from inside its own notification, once. */
+struct CorrectsFromInside {
+    Game *game = nullptr;
+    bool tried = false;
+    GameStatus status = GAME_OK;
+};
+
+void CorrectsFromInside_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                     bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    auto *listener = static_cast<CorrectsFromInside *>(context);
+    if (!listener->tried) {
+        listener->tried = true;
+        listener->status = Game_CorrectRoll(listener->game, 1U, 5U);
+    }
+}
+
+} // namespace
+
+TEST(CorrectionTest, should_refuse_a_correction_made_from_inside_a_listener)
+{
+    /* The same hazard as a roll from inside a listener: a replay mid-notification would
+     * tell listeners about frames out of order, or twice. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    CorrectsFromInside listener;
+    listener.game = game;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &CorrectsFromInside_FrameChanged, &listener));
+
+    RollAll(game, {3U, 4U});
+    EXPECT_EQ(GAME_ERR_ROLL_DURING_NOTIFICATION, listener.status);
+    EXPECT_EQ(7U, Game_Score(game)); /* the refused correction changed nothing */
+}

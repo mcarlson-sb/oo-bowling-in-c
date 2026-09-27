@@ -26,9 +26,9 @@ typedef enum {
     /* The game's PinCountRule counted the roll as more pins than were standing. The roll
      * is rejected and the game is left unchanged. */
     GAME_ERR_RULE_OUT_OF_RANGE,
-    /* Game_Roll was called from inside a frame-changed callback. Allowing it would tell
-     * listeners about frames out of order, so the roll is rejected and the game is left
-     * unchanged. Roll again once the callback has returned. */
+    /* Game_Roll or Game_CorrectRoll was called from inside a frame-changed callback.
+     * Allowing it would tell listeners about frames out of order, so it is rejected and the
+     * game is left unchanged. Call again once the callback has returned. */
     GAME_ERR_ROLL_DURING_NOTIFICATION,
     /* Game_CorrectRoll was given a roll number the game hasn't had (rolls start at 1). Nothing
      * is changed. */
