@@ -93,7 +93,7 @@ static void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_reported)
     game->frames_reported = first;
     const uint8_t frames = (was_reported > game->frame_count) ? was_reported : game->frame_count;
     for (uint8_t i = first; i < frames; i++) {
-        const uint8_t frame_number = (uint8_t)(i + 1U);
+        const FrameNumber frame_number = (FrameNumber)(i + 1U); /* frames count from 1 */
         if ((i < game->frame_count) && FrameContext_IsComplete(&game->frames[i])) {
             FrameListeners_Tell(&game->listeners, frame_number,
                                 FrameContext_Score(&game->frames[i]), true);
@@ -256,12 +256,12 @@ static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
     return status;
 }
 
-GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
+GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins)
 {
     return Game_EditRolls(game, roll_number, 1U, &pins, 1U); /* one roll out, one in */
 }
 
-GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
+GameStatus Game_EditRolls(Game *game, RollNumber first_roll, uint8_t rolls_removed,
                           const Pins *new_pins, uint8_t new_count)
 {
     if (game == NULL) {

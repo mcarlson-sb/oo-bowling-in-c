@@ -23,7 +23,7 @@ typedef struct {
  * first roll is 1), with the `new_count` rolls in `new_pins`. Passed by pointer: it is four
  * values that always travel together. */
 typedef struct {
-    uint8_t first_roll;
+    RollNumber first_roll;
     uint8_t rolls_removed;
     const Pins *new_pins;
     uint8_t new_count;

@@ -17,4 +17,11 @@ typedef uint8_t Pins;
 /* Points: a frame scores at most 30, and a game at most 300. */
 typedef uint16_t Score;
 
+/* A roll's number in its game, counting from 1, the way a scorer counts: not an array index,
+ * which counts from 0. */
+typedef uint8_t RollNumber;
+
+/* A frame's number in its game, 1 to 10. */
+typedef uint8_t FrameNumber;
+
 #endif /* BOWLING_TYPES_H */

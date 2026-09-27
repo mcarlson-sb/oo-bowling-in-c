@@ -38,7 +38,7 @@ bool FrameListeners_Add(FrameListeners *self, FrameChangedCallback callback, voi
  * Inline, like FrameListeners_AreBeingTold: as a call into another file it added its own
  * frame, 80 bytes on a 64-bit host, under every listener callback, and made the caller's
  * frame bigger too. Inlined, the stack is what it was before the listeners had a module. */
-static inline void FrameListeners_Tell(FrameListeners *self, uint8_t frame_number,
+static inline void FrameListeners_Tell(FrameListeners *self, FrameNumber frame_number,
                                        Score frame_score, bool frame_complete)
 {
     self->telling = true;

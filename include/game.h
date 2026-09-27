@@ -69,7 +69,7 @@ void Game_Destroy(Game *game);
  *     with its new score: a frame number it has heard before is an update.
  * A callback may read the game (Game_Score sees the whole roll), but not change it: a roll,
  * an edit or a drain from inside a callback returns GAME_ERR_DURING_NOTIFICATION. */
-typedef void (*FrameChangedCallback)(void *context, uint8_t frame_number, Score frame_score,
+typedef void (*FrameChangedCallback)(void *context, FrameNumber frame_number, Score frame_score,
                                      bool frame_complete);
 
 /* Adds a callback this game tells about changed frames; `context` is passed back to it
@@ -85,7 +85,7 @@ GameStatus Game_Roll(Game *game, Pins pins);
  * nothing, if it would make any roll impossible (the status of that roll, such as
  * GAME_ERR_INVALID_PINS), if the roll hasn't been made (GAME_ERR_NO_SUCH_ROLL), or if called
  * from inside a callback (GAME_ERR_DURING_NOTIFICATION). */
-GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins);
+GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins);
 
 /* Replaces `rolls_removed` rolls, starting at roll number `first_roll` (the first roll is 1),
  * with the `new_count` rolls in `new_pins`, and rescores the game. One edit covers every fix:
@@ -98,7 +98,7 @@ GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins);
  * with rolls promised (GAME_ERR_NO_SUCH_ROLL), if it would make more than 21 rolls
  * (GAME_ERR_TOO_MANY_ROLLS), or if called from inside a callback
  * (GAME_ERR_DURING_NOTIFICATION). */
-GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
+GameStatus Game_EditRolls(Game *game, RollNumber first_roll, uint8_t rolls_removed,
                           const Pins *new_pins, uint8_t new_count);
 Score Game_Score(const Game *game);
 
