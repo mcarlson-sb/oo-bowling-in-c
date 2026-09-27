@@ -3,8 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/* The host's fail-stop. Alone in this file, so a target build that defines its own Fault_Stop
- * never links this one (see fault.h). */
+/* Alone in its file, so a target's own Fault_Stop keeps this one out of the link. */
 _Noreturn void Fault_Stop(const char *reason)
 {
     (void)fputs(reason, stderr);
