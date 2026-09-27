@@ -1506,6 +1506,32 @@ before each, and TSan in CI on the pinsetter commit. One commit message is wrong
 names a helper `DestroyingListener`; it is `DestroysItsGame_FrameChanged`. The commit is
 pushed, so the correction is recorded here rather than by rewriting it.
 
+**The review's notes, and four more commits.** The user's notes on the clean-up asked for
+what it had mostly done, and four things it hadn't:
+- the byte measurements behind two "why inline" comments went to the commit messages that
+  made them (`6eb9bbc`, `b44c77a`);
+- "complete frames always come first" became a debug assert through a named predicate,
+  `Game_AllFramesCompleteBefore`. A mutant inverting the predicate failed 45 of the debug
+  build's 107 tests, so the assert is live;
+- `FrameNumber_FromIndex` and `RollNumber_ToIndex` replace the bare `+ 1` and `- 1`.
+
+The stack figures in `game.h` stay for now. The notes put them with the history, but an
+earlier review asked for them in the header, so that is the user's call.
+
+**Measured again**, as comment-only lines against lines with code (the notes' measure), from
+`a16b859` to now:
+
+| | Before | After |
+|---|---|---|
+| Library (`include/`, `src/`) | 465 comment, 1,138 code: 29% | 144 comment, 1,157 code: 11% |
+| Tests | 237 comment, 1,707 code: 12% | 78 comment, 1,707 code: 4% |
+| `game.h` | 89 comment, 39 code | 30 comment, 39 code |
+| `pinsetter.h` | 69 comment, 20 code | 19 comment, 20 code |
+| `game.c` | 51 comment, 250 code | 15 comment, 265 code |
+
+`game.c`'s code grew by the assert's predicate and `FrameNumber_FromIndex`. The tests' code
+didn't change.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on
