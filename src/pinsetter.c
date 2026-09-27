@@ -30,6 +30,11 @@ _Static_assert(PINSETTER_CAPACITY >= GAME_MAX_ROLLS,
  * touching the roll, and reads the other side's with an acquire load, before touching one.
  * So a roll is always written before the main loop can see it, and read before the interrupt
  * side can reuse its place. */
+/* C11 lets a compiler build an atomic out of a lock. An interrupt handler that took a lock the
+ * main loop was holding would wait forever, so refuse to build where either count needs one. */
+_Static_assert(ATOMIC_INT_LOCK_FREE == 2, "the positions must be atomic without a lock");
+_Static_assert(ATOMIC_SHORT_LOCK_FREE == 2, "the lost-roll count must be atomic without a lock");
+
 struct Pinsetter {
     Pins rolls[PINSETTER_SLOTS];
     atomic_uint post_at;
