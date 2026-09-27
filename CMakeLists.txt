@@ -35,6 +35,7 @@ add_library(bowling STATIC
     src/frame_listeners.c
     src/game.c
     src/pinsetter.c
+    src/pinsetter_isr.c
     src/regular_frame.c
     src/roll_list.c
     src/roll_log.c
@@ -47,16 +48,27 @@ target_include_directories(bowling PUBLIC include PRIVATE src)
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
 
 # Stack tripwires (ENG-1.3): -Wstack-usage warns, and -Werror fails the build, on any function
-# whose frame is over the limit. Host numbers, from this host's compilers: a tripwire for
-# regressions, not a target budget. The limits have headroom over the largest frames today,
-# measured across all four builds (-O0 debug and UBSan, -O3 release, -O1 ThreadSanitizer):
-#   - the interrupt path's file, pinsetter.c: 160 bytes, over Pinsetter_Enqueue's 128 at -O0.
-#     The limit covers the whole file; GCC can't hold one function to a tighter one.
-#   - everything else: 320 bytes, over Game_CorrectRoll's and Game_EditRolls's 224.
+# whose frame is over the limit. Host numbers: a tripwire for regressions, not a target budget.
+# The limits have headroom over the largest frames today, on CI's GCC 13 (the gate) and on
+# GCC 16, which builds here too:
+#   - everything but the interrupt side: 320 bytes, over Game_CorrectRoll's and
+#     Game_EditRolls's 224.
+#   - the interrupt side's own file, pinsetter_isr.c: a limit per build type, because GCC's
+#     limit is per file and its frames differ so much between builds. Pinsetter_Post is 8 bytes
+#     in release (both compilers); 80 (GCC 13) or 96 (GCC 16) under ThreadSanitizer; at -O0,
+#     where Pinsetter_Enqueue isn't inlined, Enqueue is 96 or 128. Coverage builds are -O0.
 set(OO_C_STACK_LIMIT 320)
-set(OO_C_INTERRUPT_STACK_LIMIT 160)
+if(OO_C_TSAN)
+    set(OO_C_INTERRUPT_STACK_LIMIT 128)
+elseif(OO_C_COVERAGE)
+    set(OO_C_INTERRUPT_STACK_LIMIT 160)
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(OO_C_INTERRUPT_STACK_LIMIT 32)
+else()
+    set(OO_C_INTERRUPT_STACK_LIMIT 160)
+endif()
 target_compile_options(bowling PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
-set_source_files_properties(src/pinsetter.c PROPERTIES
+set_source_files_properties(src/pinsetter_isr.c PROPERTIES
     COMPILE_OPTIONS -Wstack-usage=${OO_C_INTERRUPT_STACK_LIMIT})
 
 # ---- Host unit tests (GoogleTest) -----------------------------------------
