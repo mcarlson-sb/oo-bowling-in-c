@@ -154,8 +154,8 @@ TEST(PinsetterTest, should_hold_a_whole_game_of_rolls_while_a_drain_is_stopped)
 TEST(PinsetterTest, should_count_the_rolls_lost_while_the_mailbox_was_full)
 {
     /* A full mailbox refuses the interrupt handler's roll, and the handler has no one to tell.
-     * So the pinsetter counts them, and the main loop asks how many were lost since it last
-     * asked. */
+     * So the pinsetter counts them, and the main loop can read the count. Reading it changes
+     * nothing. */
     PinsetterHandle owner = MakePinsetter();
     Pinsetter *pinsetter = owner.get();
     EXPECT_EQ(0U, Pinsetter_RollsLost(pinsetter));
@@ -166,16 +166,40 @@ TEST(PinsetterTest, should_count_the_rolls_lost_while_the_mailbox_was_full)
     EXPECT_FALSE(Pinsetter_Post(pinsetter, 1U));
     EXPECT_FALSE(Pinsetter_Post(pinsetter, 2U));
     EXPECT_EQ(2U, Pinsetter_RollsLost(pinsetter));
-    EXPECT_EQ(0U, Pinsetter_RollsLost(pinsetter)); /* none since it last asked */
+    EXPECT_EQ(2U, Pinsetter_RollsLost(pinsetter)); /* asking again changes nothing */
 
     EXPECT_FALSE(Pinsetter_Post(pinsetter, 3U));
-    EXPECT_EQ(1U, Pinsetter_RollsLost(pinsetter));
+    EXPECT_EQ(3U, Pinsetter_RollsLost(pinsetter));
+}
+
+TEST(PinsetterTest, should_let_two_readers_each_hear_about_every_lost_roll)
+{
+    /* A scoreboard and a logger both watch for lost rolls. Asking must not change the answer
+     * the other one gets: each keeps its own last value, and takes its own difference. */
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+    for (int i = 0; i < 21; i++) {
+        EXPECT_TRUE(Pinsetter_Post(pinsetter, 0U));
+    }
+    uint16_t scoreboard_seen = 0U;
+    uint16_t logger_seen = 0U;
+
+    EXPECT_FALSE(Pinsetter_Post(pinsetter, 1U));
+    EXPECT_FALSE(Pinsetter_Post(pinsetter, 2U));
+    EXPECT_EQ(2U, static_cast<uint16_t>(Pinsetter_RollsLost(pinsetter) - scoreboard_seen));
+    scoreboard_seen = Pinsetter_RollsLost(pinsetter);
+    EXPECT_EQ(2U, static_cast<uint16_t>(Pinsetter_RollsLost(pinsetter) - logger_seen));
+    logger_seen = Pinsetter_RollsLost(pinsetter);
+
+    EXPECT_FALSE(Pinsetter_Post(pinsetter, 3U));
+    EXPECT_EQ(1U, static_cast<uint16_t>(Pinsetter_RollsLost(pinsetter) - scoreboard_seen));
+    EXPECT_EQ(1U, static_cast<uint16_t>(Pinsetter_RollsLost(pinsetter) - logger_seen));
 }
 
 TEST(PinsetterTest, should_count_lost_rolls_right_across_the_count_wrapping_around)
 {
-    /* The count is 16 bits and never cleared, so it wraps. The main loop's answer is a
-     * difference, and must stay right when the count passes 65,535 between two asks. */
+    /* The count is 16 bits and never cleared, so it wraps: it must go on counting from 0,
+     * never stick at 65,535. A reader's difference then stays right across the wrap. */
     PinsetterHandle owner = MakePinsetter();
     Pinsetter *pinsetter = owner.get();
     for (int i = 0; i < 21; i++) {
@@ -185,12 +209,14 @@ TEST(PinsetterTest, should_count_lost_rolls_right_across_the_count_wrapping_arou
     for (int i = 0; i < 65530; i++) {
         (void)Pinsetter_Post(pinsetter, 0U);
     }
-    EXPECT_EQ(65530U, Pinsetter_RollsLost(pinsetter));
+    const uint16_t seen = Pinsetter_RollsLost(pinsetter);
+    EXPECT_EQ(65530U, seen);
 
     for (int i = 0; i < 10; i++) { /* the count goes 65,535, then 0, and ends at 4 */
         (void)Pinsetter_Post(pinsetter, 0U);
     }
-    EXPECT_EQ(10U, Pinsetter_RollsLost(pinsetter));
+    EXPECT_EQ(4U, Pinsetter_RollsLost(pinsetter));
+    EXPECT_EQ(10U, static_cast<uint16_t>(Pinsetter_RollsLost(pinsetter) - seen));
 }
 
 namespace {
@@ -279,14 +305,14 @@ TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game
 
         GameHandle game_owner = MakeGame();
         int games_over = 0;
-        int lost = 0;
+        uint16_t lost = 0U;
         const auto drain = [&] {
             while (Pinsetter_Drain(pinsetter, game_owner.get()) == GAME_ERR_GAME_OVER) {
                 EXPECT_EQ(190U, Game_Score(game_owner.get())) << "run " << run;
                 games_over++;
                 game_owner = MakeGame(); /* the next bowler's rolls are waiting for it */
             }
-            lost += Pinsetter_RollsLost(pinsetter);
+            lost = Pinsetter_RollsLost(pinsetter); /* read while the other thread writes it */
         };
         while (!interrupts_done) {
             drain();
@@ -297,6 +323,6 @@ TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game
 
         ASSERT_EQ(kGames - 1, games_over) << "run " << run; /* no roll refuses the last game */
         ASSERT_EQ(190U, Game_Score(game_owner.get())) << "run " << run;
-        ASSERT_EQ(refusals, lost) << "run " << run;
+        ASSERT_EQ(static_cast<uint16_t>(refusals), lost) << "run " << run;
     }
 }

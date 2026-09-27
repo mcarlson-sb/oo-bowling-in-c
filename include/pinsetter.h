@@ -49,14 +49,18 @@ GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game);
  * scorer decides the machine got it wrong. Returns false if no roll is waiting. */
 bool Pinsetter_DiscardOldest(Pinsetter *pinsetter);
 
-/* Main-loop side. How many rolls Pinsetter_Post refused, because the mailbox was full, since
- * the last time this was asked.
+/* Main-loop side. How many rolls Pinsetter_Post has ever refused because the mailbox was
+ * full. A query: asking changes nothing, so any number of readers can watch it. Each keeps
+ * the last value it read and takes the difference in uint16_t,
+ *     lost_since = (uint16_t)(Pinsetter_RollsLost(pinsetter) - last_seen);
+ * which stays right when the count wraps from 65,535 to 0, as long as fewer than 65,536 are
+ * lost between two reads.
  *
- * The mailbox holds a whole game's rolls, so in normal play this is always 0. Anything else
+ * The mailbox holds a whole game's rolls, so in normal play this never moves. Any increase
  * is a real anomaly: the main loop stopped draining for a whole game or more, or the machine
  * reported rolls that no game has. Either way, rolls the bowler made are missing, and the
- * scorer needs to know. Counts past 65,535 between two asks wrap around, and read as fewer. */
-uint16_t Pinsetter_RollsLost(Pinsetter *pinsetter);
+ * scorer needs to know. */
+uint16_t Pinsetter_RollsLost(const Pinsetter *pinsetter);
 
 #ifdef __cplusplus
 }
