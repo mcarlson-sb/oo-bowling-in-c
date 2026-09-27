@@ -34,27 +34,20 @@ TEST(CorrectionTest, should_reject_a_correction_that_makes_a_later_roll_impossib
 
 TEST(CorrectionTest, should_recount_every_replayed_roll_from_the_pins_that_fell)
 {
-    /* Predicted in phase 1, two phases before a feature needed it: replaying means applying
-     * the caller's rule again, so the game must keep the pins that fell, not what they were
-     * counted as. */
     GameHandle owner = MakeGameWithRule(&NinePinNoTap);
     Game *game = owner.get();
     RollAll(game, {10U, 9U, 3U}); /* a strike, then a no-tap 9 counted as a strike, then 3 */
 
-    /* The first roll was really a 1. Now the 9 is a second ball, at 9 pins standing: a
-     * spare, not a strike. It must be counted again from the 9 that fell. */
+    /* Now the 9 is a second ball, at 9 standing: a spare, not a no-tap strike. */
     EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 1U));
     EXPECT_EQ(13U, Game_Score(game)); /* spare 1 + 9, plus its bonus 3 */
 }
 
-/* ---- Telling the listeners about a correction ------------------------------------------- *
- * A correction is told with the same frame-completed message, and a listener treats a frame
- * number it has heard before as an update. */
+/* ---- Telling the listeners about a correction ------------------------------------------- */
 
 
 namespace {
 
-/* A scoreboard that keeps the latest score it has heard for each frame. */
 struct KeyedScoreboard {
     std::map<int, int> scores; /* frame number -> score */
 };
@@ -108,7 +101,7 @@ TEST(CorrectionListenerTest, should_tell_the_listeners_when_a_correction_reopens
     ASSERT_TRUE(Game_OnFrameChanged(game, &RunningStats_FrameChanged, &stats));
     RollAll(game, {3U, 4U}); /* frame 1 complete: 7 */
 
-    /* The first ball was really a strike: frame 1 now waits for a second bonus roll. */
+    /* Frame 1, now a strike, waits for a second bonus roll. */
     EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 10U));
     EXPECT_EQ(0U, Game_Score(game));
     EXPECT_TRUE(scoreboard.scores.empty());
@@ -122,9 +115,7 @@ TEST(CorrectionListenerTest, should_tell_the_listeners_when_a_correction_reopens
 
 namespace {
 
-/* A rule that breaks the PinCountRule contract on purpose: it counts the pins that fell until
- * the test flips `s_impure_rule_broken`, and from then on counts one more pin than were
- * standing. Every replay after the flip fails at its first roll. */
+/* Breaks the PinCountRule contract once `s_impure_rule_broken` is set. */
 bool s_impure_rule_broken = false;
 
 Pins ImpureRule(Pins pins_standing, Pins pins_down)
@@ -136,10 +127,6 @@ Pins ImpureRule(Pins pins_standing, Pins pins_down)
 
 TEST(CorrectionDeathTest, should_stop_the_program_when_a_rejected_edit_cannot_be_undone)
 {
-    /* Undoing a rejected edit replays the saved rolls, and trusts the rule to count them as it
-     * did before. An impure rule breaks that trust: the replay fails too, and there is no game
-     * left that is known to be right. So the program stops, in every build, release included.
-     * It all happens in the death test's child process. */
     EXPECT_DEATH(
         {
             s_impure_rule_broken = false;
@@ -170,7 +157,6 @@ TEST(CorrectionTest, should_reject_correcting_a_null_game)
 
 namespace {
 
-/* A listener that tries to correct a roll from inside its own notification, once. */
 struct CorrectsFromInside {
     Game *game = nullptr;
     bool tried = false;
@@ -194,8 +180,6 @@ void CorrectsFromInside_FrameChanged(void *context, uint8_t frame_number, Score 
 
 TEST(CorrectionTest, should_refuse_a_correction_made_from_inside_a_listener)
 {
-    /* A replay mid-notification would tell listeners about frames out of order, or twice. So
-     * it is refused, like a roll from inside a listener. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     CorrectsFromInside listener;
@@ -212,16 +196,10 @@ TEST(CorrectionTest, should_refuse_a_correction_made_from_inside_a_listener)
 
 namespace {
 
-/* The property, for games made by `make_game`: the standard rule, or a caller's. */
 void CheckCorrectionsAgainstFreshGames(GameHandle (*make_game)(), unsigned seed)
 {
-    /* Random games (fixed seed, so it repeats), each corrected at a random roll. A fresh game,
-     * fed the corrected rolls from the start, is the judge:
-     *   - The correction must be accepted exactly when the fresh game accepts every corrected
-     *     roll. (Without this, a correction wrongly rejected would pass.)
-     *   - When it is accepted, the listener must end up exactly where the fresh game's does:
-     *     the same frames, the same scores, with any reopened frame dropped.
-     *   - When it is rejected, nothing may change. */
+    /* A fresh game fed the corrected rolls is the judge: the correction is accepted exactly
+     * when it accepts them all, and then the listeners must agree; rejected, nothing changes. */
     std::mt19937 random(seed);
     int corrections_accepted = 0;
     int corrections_rejected = 0;
@@ -245,7 +223,6 @@ void CheckCorrectionsAgainstFreshGames(GameHandle (*make_game)(), unsigned seed)
         std::vector<Pins> corrected_rolls = rolls;
         corrected_rolls[roll_number - 1U] = corrected;
 
-        /* The judge: does a fresh game accept every corrected roll? */
         GameHandle fresh_owner = make_game();
         Game *fresh = fresh_owner.get();
         KeyedScoreboard fresh_scoreboard;
@@ -283,18 +260,14 @@ TEST(CorrectionPropertyTest, should_leave_listeners_as_a_fresh_game_of_the_corre
 
 TEST(CorrectionPropertyTest, should_hold_under_the_no_tap_rule_too)
 {
-    /* Every replay counts every roll again through the caller's rule. Under no-tap, a 9 on
-     * a full rack is a strike and a 9 anywhere else isn't, so a correction that moves a
-     * rack's boundary changes how later rolls count. The fresh game must agree anyway. */
+    /* Under no-tap, a correction that moves a rack's boundary changes how later 9s count. */
     CheckCorrectionsAgainstFreshGames([] { return MakeGameWithRule(&NinePinNoTap); }, 20260927U);
 }
 
-/* ---- After review ----------------------------------------------------------------------- */
 
 TEST(CorrectionListenerTest, should_tell_the_listeners_nothing_when_a_correction_is_rejected)
 {
-    /* A rejected correction replays the corrected log, fails partway, then replays the
-     * original. Its net effect is nothing, so the listeners must hear nothing at all. */
+    /* It replays twice, failing partway and then undoing, but its net effect is nothing. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     RollAll(game, {7U, 3U, 5U, 2U}); /* frames of 15 and 7 */
@@ -316,8 +289,7 @@ TEST(CorrectionListenerTest, should_tell_the_listeners_nothing_when_a_correction
 
 TEST(CorrectionTest, should_correct_the_first_and_last_rolls_of_the_longest_game)
 {
-    /* The longest game there is: nine open frames, then a spare and its fill ball in the
-     * tenth, 21 rolls. Correcting roll 1 and roll 21 covers both ends of the log. */
+    /* Nine open frames, then a spare and its fill ball: 21 rolls. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     for (int frame = 1; frame <= 9; frame++) {
@@ -338,7 +310,6 @@ TEST(CorrectionTest, should_correct_the_first_and_last_rolls_of_the_longest_game
 
 namespace {
 
-/* Every message a listener hears, in order. */
 struct Transcript {
     struct Message {
         int frame;
@@ -374,10 +345,8 @@ void Transcript_FrameChanged(void *context, uint8_t frame_number, Score frame_sc
 
 TEST(EditRollsTest, should_fix_a_tenth_frame_entered_with_a_roll_too_many_in_one_edit)
 {
-    /* Entered as 10, 0, 0 in the tenth (a strike and two fill balls), but it was really 9, 0.
-     * The fix changes one roll and removes another. Done as one edit, it is checked, and told
-     * to the listeners, only in its final state: they never hear about a tenth frame waiting
-     * for a fill ball, a game that never existed. */
+    /* Entered as 10, 0, 0 in the tenth; really 9, 0. As one edit, the listeners never hear of
+     * a tenth frame waiting for a fill ball. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     for (int i = 0; i < 18; i++) {
@@ -401,8 +370,7 @@ TEST(EditRollsTest, should_fix_a_tenth_frame_entered_with_a_roll_too_many_in_one
 
 TEST(EditRollsTest, should_fix_a_strike_that_was_really_9_then_1)
 {
-    /* The scorer's most likely mistake: a 10 entered for 9 then 1. Replacing one roll can't
-     * fix it (9 then the 3 would be too many pins); replacing it with two rolls can. */
+    /* Replacing the 10 with one roll can't fix it: 9 then the 3 is too many pins. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     RollAll(game, {10U, 3U, 4U}); /* 17 + 7 = 24 */
@@ -415,8 +383,6 @@ TEST(EditRollsTest, should_fix_a_strike_that_was_really_9_then_1)
 
 TEST(EditRollsTest, should_reject_an_edit_that_would_make_more_rolls_than_a_game_can_have)
 {
-    /* The longest game, 21 rolls. Inserting one more can't be a real game, and the edited log
-     * has room for 21: it must be refused before anything is written. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     for (int frame = 1; frame <= 9; frame++) {
@@ -432,9 +398,7 @@ TEST(EditRollsTest, should_reject_an_edit_that_would_make_more_rolls_than_a_game
 
 TEST(EditRollsTest, should_reject_an_edit_that_starts_past_the_last_roll)
 {
-    /* An edit changes rolls the game has had. Inserting just past the last one would be a
-     * second way to roll, reported to the listeners as a correction. A forgotten last roll is
-     * a Game_Roll. */
+    /* That would be a second way to roll: a forgotten last roll is a Game_Roll. */
     GameHandle empty_owner = MakeGame();
     Game *empty = empty_owner.get();
     const Pins new_pins[] = {3U, 4U};
@@ -465,8 +429,6 @@ TEST(EditRollsTest, should_refuse_new_rolls_given_as_a_null_pointer)
 
 TEST(EditRollsTest, should_refuse_an_edit_given_as_a_null_pointer)
 {
-    /* No edit at all is refused the same way as new rolls promised but not given, and changes
-     * nothing. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     RollAll(game, {3U, 4U});
@@ -479,11 +441,8 @@ TEST(EditRollsTest, should_refuse_an_edit_given_as_a_null_pointer)
 
 namespace {
 
-/* The same property for any edit: a random range of rolls (possibly none) replaced by up to
- * two random rolls (possibly none), so replacing, inserting and deleting are all covered,
- * including deleting every roll. A fresh game, fed the edited rolls, is the judge, as for
- * corrections, with one rule of its own: an edit starting past the last roll is rejected
- * even when the fresh game would accept it, because adding a roll is Game_Roll's job. */
+/* As for corrections, over random replacements, insertions and deletions; except that an
+ * edit starting past the last roll is rejected even when the fresh game would accept it. */
 void CheckEditsAgainstFreshGames(GameHandle (*make_game)(), unsigned seed)
 {
     std::mt19937 random(seed);

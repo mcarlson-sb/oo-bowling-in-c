@@ -1,6 +1,3 @@
-/* The pinsetter: the one part of the system that runs on another thread (in firmware, an
- * interrupt handler). All it may do is post the pins that fell. The game only ever hears
- * about them on the main thread, when the main loop drains the pinsetter. */
 
 #include "pinsetter.h"
 
@@ -39,10 +36,8 @@ TEST(PinsetterTest, should_roll_the_posted_pins_into_the_game_in_order_when_drai
 
 TEST(PinsetterTest, should_apply_rolls_still_waiting_after_a_correction_made_meanwhile)
 {
-    /* Only rolls wait in a mailbox. An edit applies at once, to the rolls the game has had,
-     * so a roll still waiting lands after the edited history. Had the correction waited
-     * behind it instead, the 8 would have been judged against the uncorrected 5 pins down,
-     * rejected, and lost. */
+    /* The correction applies at once, so the waiting 8 is judged against the corrected
+     * history, not the 5. */
     GameHandle game_owner = MakeGame();
     Game *game = game_owner.get();
     PinsetterHandle owner = MakePinsetter();
@@ -62,9 +57,7 @@ TEST(PinsetterTest, should_apply_rolls_still_waiting_after_a_correction_made_mea
 
 TEST(PinsetterTest, should_stop_at_an_impossible_roll_and_keep_it_until_the_scorer_resolves_it)
 {
-    /* The pinsetter counted 5 when 2 fell, so its true 8 looks impossible. The 8 is the roll
-     * that's right. Draining stops there and says why, the 8 and the 3 behind it wait, and
-     * once the scorer corrects the first roll, the next drain applies them. */
+    /* The pinsetter counted 5 when 2 fell, so its true 8 looks impossible. */
     GameHandle game_owner = MakeGame();
     Game *game = game_owner.get();
     PinsetterHandle owner = MakePinsetter();
@@ -84,9 +77,7 @@ TEST(PinsetterTest, should_stop_at_an_impossible_roll_and_keep_it_until_the_scor
 
 TEST(PinsetterTest, should_let_the_scorer_discard_a_roll_that_really_was_a_glitch)
 {
-    /* 11 pins can't fall: this time the machine is wrong, not an earlier roll. The scorer
-     * throws the roll away, and the rolls behind it go in. With nothing waiting, there is
-     * nothing to discard. */
+    /* 11 pins can't fall: this time the machine is wrong, not an earlier roll. */
     GameHandle game_owner = MakeGame();
     Game *game = game_owner.get();
     PinsetterHandle owner = MakePinsetter();
@@ -105,8 +96,6 @@ TEST(PinsetterTest, should_let_the_scorer_discard_a_roll_that_really_was_a_glitc
 
 TEST(PinsetterTest, should_keep_rolls_made_after_the_game_is_over_for_the_next_game)
 {
-    /* The next bowler starts before the main loop has moved on to the next game. Their rolls
-     * are refused by the finished game, and wait, rather than being lost. */
     GameHandle first_owner = MakeGame();
     Game *first = first_owner.get();
     for (int i = 0; i < 20; i++) {
@@ -127,9 +116,8 @@ TEST(PinsetterTest, should_keep_rolls_made_after_the_game_is_over_for_the_next_g
 
 TEST(PinsetterTest, should_hold_a_whole_game_of_rolls_while_a_drain_is_stopped)
 {
-    /* The worst case for a stopped drain: the game is over, the main loop hasn't moved on,
-     * and the next bowler bowls a whole game, 21 rolls. None may be lost. The mailbox holds
-     * exactly that many: a 22nd roll is refused. */
+    /* The worst case: the game is over, the main loop hasn't moved on, and the next bowler
+     * bowls all 21 rolls. */
     GameHandle first_owner = MakeGame();
     Game *first = first_owner.get();
     for (int i = 0; i < 20; i++) {
@@ -155,9 +143,6 @@ TEST(PinsetterTest, should_hold_a_whole_game_of_rolls_while_a_drain_is_stopped)
 
 TEST(PinsetterTest, should_count_the_rolls_lost_while_the_mailbox_was_full)
 {
-    /* A full mailbox refuses the interrupt handler's roll, and the handler has no one to tell.
-     * So the pinsetter counts them, and the main loop can read the count. Reading it changes
-     * nothing. */
     PinsetterHandle owner = MakePinsetter();
     Pinsetter *pinsetter = owner.get();
     EXPECT_EQ(0U, Pinsetter_RollsLost(pinsetter));
@@ -176,8 +161,7 @@ TEST(PinsetterTest, should_count_the_rolls_lost_while_the_mailbox_was_full)
 
 TEST(PinsetterTest, should_let_two_readers_each_hear_about_every_lost_roll)
 {
-    /* A scoreboard and a logger both watch for lost rolls. Asking must not change the answer
-     * the other one gets: each keeps its own last value, and takes its own difference. */
+    /* A scoreboard and a logger, each keeping its own last reading. */
     PinsetterHandle owner = MakePinsetter();
     Pinsetter *pinsetter = owner.get();
     for (int i = 0; i < 21; i++) {
@@ -200,8 +184,6 @@ TEST(PinsetterTest, should_let_two_readers_each_hear_about_every_lost_roll)
 
 TEST(PinsetterTest, should_count_lost_rolls_right_across_the_count_wrapping_around)
 {
-    /* The count is 16 bits and never cleared, so it wraps: it must go on counting from 0,
-     * never stick at 65,535. A reader's difference then stays right across the wrap. */
     PinsetterHandle owner = MakePinsetter();
     Pinsetter *pinsetter = owner.get();
     for (int i = 0; i < 21; i++) {
@@ -223,9 +205,8 @@ TEST(PinsetterTest, should_count_lost_rolls_right_across_the_count_wrapping_arou
 
 namespace {
 
-/* A fake interrupt handler, fired at a chosen moment: from inside a listener, so while the
- * main loop is in the middle of draining a roll into the game. It posts one roll, and notes
- * what the game's score was just after, to show the post itself never reached the game. */
+/* A fake interrupt, fired mid-drain from a listener. It notes the score just after posting,
+ * to show the post itself never reached the game. */
 struct InterruptDuringDrain {
     Game *game = nullptr;
     Pinsetter *pinsetter = nullptr;
@@ -255,10 +236,7 @@ void InterruptDuringDrain_FrameChanged(void *context, uint8_t frame_number, Scor
 
 TEST(PinsetterTest, should_leave_a_roll_posted_in_the_middle_of_a_drain_for_the_next_drain)
 {
-    /* The interrupt fires as frame 1 completes, mid-drain, with the 6 still waiting. Posting
-     * does nothing to the game. A drain takes only the rolls waiting when it started, so the
-     * main loop's work per pass has a bound however fast the interrupts come: the 3 waits
-     * behind the 6, and the next drain puts it in. */
+    /* The interrupt fires as frame 1 completes, with the 6 still waiting. */
     GameHandle game_owner = MakeGame();
     Game *game = game_owner.get();
     PinsetterHandle owner = MakePinsetter();
@@ -284,11 +262,6 @@ TEST(PinsetterTest, should_leave_a_roll_posted_in_the_middle_of_a_drain_for_the_
 
 TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_cant_be_created)
 {
-    /* A lane's pinsetter is fixed when the system is built, so running out of them is a
-     * configuration error, found the first time the system starts, and there is no safe
-     * pinsetter to hand back instead. Creation stops the program, in every build: this test
-     * runs in release too. It all happens in the child process the death test starts, so the
-     * pool this process uses is left as it was. */
     EXPECT_DEATH(
         {
             (void)Pinsetter_Create();
@@ -300,8 +273,6 @@ TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_cant_be_create
 
 TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_is_destroyed_twice)
 {
-    /* A second destroy is a bug in the caller, caught while the slot is still free, in every
-     * build. It all happens in the death test's child process. */
     EXPECT_DEATH(
         {
             Pinsetter *pinsetter = Pinsetter_Create();
@@ -313,7 +284,6 @@ TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_is_destroyed_t
 
 namespace {
 
-/* A listener that drains the pinsetter the first time it hears anything. */
 struct DrainsFromInside {
     Game *game = nullptr;
     Pinsetter *pinsetter = nullptr;
@@ -338,8 +308,7 @@ void DrainsFromInside_FrameChanged(void *context, uint8_t frame_number, Score fr
 
 TEST(PinsetterTest, should_refuse_a_drain_from_inside_a_listener)
 {
-    /* From inside a listener, the game refuses every roll, so the drain stops at the first
-     * one, and it waits for the main loop, glitch or not: the scorer still hears of it. */
+    /* The game refuses the roll, so it waits for the main loop, glitch or not. */
     GameHandle game_owner = MakeGame();
     Game *game = game_owner.get();
     PinsetterHandle owner = MakePinsetter();
@@ -358,8 +327,6 @@ TEST(PinsetterTest, should_refuse_a_drain_from_inside_a_listener)
 
 namespace {
 
-/* A listener that tries to discard two waiting rolls each time a frame completes: during a
- * drain, that is from inside the drain. */
 struct DiscardsFromInside {
     Pinsetter *pinsetter = nullptr;
     std::vector<bool> discarded;
@@ -380,10 +347,7 @@ void DiscardsFromInside_FrameChanged(void *context, uint8_t frame_number, Score 
 
 TEST(PinsetterTest, should_refuse_a_discard_made_while_a_drain_is_running)
 {
-    /* The drain keeps its own place in the ring while the game runs the listeners, and writes
-     * it back after each roll. A discard from in there would move the shared place, report
-     * success, and be written over. So it is refused, and every roll goes in. Outside a drain,
-     * a discard still works. */
+    /* Accepted, the discard would be written over by the drain's own copy of its place. */
     GameHandle game_owner = MakeGame();
     Game *game = game_owner.get();
     PinsetterHandle owner = MakePinsetter();
@@ -408,7 +372,6 @@ TEST(PinsetterTest, should_refuse_a_discard_made_while_a_drain_is_running)
 
 namespace {
 
-/* A listener that, each time a frame completes, tries a nested drain and then a discard. */
 struct DrainsThenDiscards {
     Game *game = nullptr;
     Pinsetter *pinsetter = nullptr;
@@ -431,9 +394,7 @@ void DrainsThenDiscards_FrameChanged(void *context, uint8_t frame_number, Score 
 
 TEST(PinsetterTest, should_keep_refusing_a_discard_after_a_nested_drain_is_refused)
 {
-    /* A drain from inside a drain is refused at once, and must leave the outer drain's state
-     * alone: if it cleared it on the way out, the discard after it would be accepted, and then
-     * written over by the outer drain. */
+    /* Had the nested drain cleared the outer one's flag, the discard would get through. */
     GameHandle game_owner = MakeGame();
     Game *game = game_owner.get();
     PinsetterHandle owner = MakePinsetter();
@@ -455,13 +416,9 @@ TEST(PinsetterTest, should_keep_refusing_a_discard_after_a_nested_drain_is_refus
 
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
 {
-    /* A real thread plays the interrupt handler: it only posts, retrying when the mailbox is
-     * full, and counts each refusal. The main loop drains, and starts the next game each time a
-     * drain stops at a finished one. Five games of 9 then 1, 21 rolls each, go through one
-     * pinsetter: a lost, repeated or reordered roll changes a score. 105 rolls through 22 slots
-     * wrap the ring four times, and fill it whenever the main loop falls behind. The main loop
-     * reads the lost-roll count while the other thread is still writing it. CI runs this under
-     * ThreadSanitizer. */
+    /* Five games of 9 then 1: a lost, repeated or reordered roll changes a score. 105 rolls
+     * wrap the 22 slots four times, and fill them whenever the main loop falls behind. CI runs
+     * this under ThreadSanitizer. */
     constexpr int kRuns = 20;
     constexpr int kGames = 5;
     for (int run = 0; run < kRuns; run++) {
