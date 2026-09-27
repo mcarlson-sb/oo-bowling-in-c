@@ -53,7 +53,12 @@ typedef enum {
  *     it is the caller's to keep. One consequence is caught: when an edit is rejected, the
  *     game undoes it by replaying the rolls it had, and if an impure rule makes that replay
  *     fail too, there is no game left that is known to be right, so the program stops
- *     (Fault_Stop, in every build). */
+ *     (Fault_Stop, in every build).
+ *
+ * Stack: a rule runs on top of the library's own frames. The most under it is during a
+ * correction's replay: 432 bytes at -O2, 368 at -O0 (208 and 128 during Game_Roll). Those are
+ * 64-bit host numbers from GCC 16, to show the scale; a target has to measure its own (KAY.md,
+ * "Worst-case stack depth", shows how). */
 typedef Pins (*PinCountRule)(Pins pins_standing, Pins pins_down);
 
 /* A standard game. */
@@ -71,7 +76,12 @@ void Game_Destroy(Game *game);
  *   - After a correction (Game_CorrectRoll), it is told again about every complete frame,
  *     with its new score: a frame number it has heard before is an update.
  * A callback may read the game (Game_Score sees the whole roll), but not change it: a roll,
- * an edit or a drain from inside a callback returns GAME_ERR_DURING_NOTIFICATION. */
+ * an edit or a drain from inside a callback returns GAME_ERR_DURING_NOTIFICATION.
+ *
+ * Stack: a callback runs on top of the library's own frames. The most under it is after a
+ * correction: 272 bytes at -O2, 416 at -O0 (128 and 240 after Game_Roll). Those are 64-bit host
+ * numbers from GCC 16, to show the scale; a target has to measure its own (KAY.md, "Worst-case
+ * stack depth", shows how). */
 typedef void (*FrameChangedCallback)(void *context, FrameNumber frame_number, Score frame_score,
                                      bool frame_complete);
 

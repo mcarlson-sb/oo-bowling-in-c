@@ -1435,12 +1435,15 @@ along every call chain, from GCC's `-fstack-usage` and `-fcallgraph-info`, with 
 pointer mapped to what it can reach (the frame states' `roll` and `pins_standing`, the context's
 factory, the rule, and the listeners). GCC 16, 64-bit host, bytes:
 
-| Entry point | Deepest chain, `-O0` | Deepest chain, `-O2` | Base under a listener callback, `-O0` / `-O2` |
-|---|---|---|---|
-| `Game_CorrectRoll` | 944 | 736 | 416 / 272 |
-| `Game_EditRolls`, through `ApplyEditedLog`, `Replay` and `Accept` to the frame states | 864 | 656 | 336 / 192 |
-| `Pinsetter_Drain`, through `Game_Roll` | 816 | 592 | 352 / 208 |
-| `Game_Roll` | 704 | 512 | 240 / 128 |
+| Entry point | Deepest chain, `-O0` | Deepest chain, `-O2` | Base under a listener callback, `-O0` / `-O2` | Base under the `PinCountRule`, `-O0` / `-O2` |
+|---|---|---|---|---|
+| `Game_CorrectRoll` | 944 | 736 | 416 / 272 | 368 / 432 |
+| `Game_EditRolls`, through `ApplyEditedLog`, `Replay` and `Accept` to the frame states | 864 | 656 | 336 / 192 | 288 / 352 |
+| `Pinsetter_Drain`, through `Game_Roll` | 816 | 592 | 352 / 208 | 240 / 288 |
+| `Game_Roll` | 704 | 512 | 240 / 128 | 128 / 208 |
+
+The two bases, where the caller's own code runs, are also in `game.h`, next to the callback's and
+the rule's contracts, where an integrator will look.
 
 The deepest chain is always the same one: a state change during a replay, `Frame_Roll` to
 `RegularFrame_Roll` to the context's factory to `SpareFrame_Init` to `Frame_InitSpare` to
