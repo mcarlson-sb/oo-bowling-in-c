@@ -14,13 +14,21 @@
 /* Games available at once. There is no heap, so games come from a fixed pool. */
 #define GAME_POOL_SIZE 2U
 
+/* Who to tell when a frame completes. */
+#define GAME_MAX_LISTENERS 1U
+
+typedef struct {
+    FrameCompletedCallback callback;
+    void *context;
+} FrameCompletedListener;
+
 struct Game {
     FrameContext frames[GAME_FRAMES];
     uint8_t frame_count;
     PinCountRule count_pins; /* how this game counts a roll: see Game_CreateWithRule */
-    uint8_t frames_reported; /* frames already told to on_frame_completed */
-    FrameCompletedCallback on_frame_completed;
-    void *on_frame_completed_context;
+    uint8_t frames_reported; /* frames already told to the listeners */
+    FrameCompletedListener listeners[GAME_MAX_LISTENERS];
+    uint8_t listener_count;
 };
 
 /* The games themselves, and the pool that tracks which are in use. The pool's bookkeeping
@@ -83,7 +91,17 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
     return result;
 }
 
-/* Tells the game's callback about every frame that has completed since the last roll.
+static void Game_TellListeners(const Game *game, uint8_t frame_number, Score frame_score)
+{
+    for (uint8_t i = 0U; i < game->listener_count; i++) {
+        const FrameCompletedListener *listener = &game->listeners[i];
+        if (listener->callback != NULL) {
+            listener->callback(listener->context, frame_number, frame_score);
+        }
+    }
+}
+
+/* Tells the listeners about every frame that has completed since the last roll.
  *
  * A frame never completes before the one before it: its bonus rolls, if any, are the next
  * frames' own rolls. So the frames already reported are always the first few, and one roll
@@ -95,10 +113,7 @@ static void Game_ReportCompletedFrames(Game *game)
            FrameContext_IsComplete(&game->frames[game->frames_reported])) {
         const FrameContext *frame = &game->frames[game->frames_reported];
         game->frames_reported++;
-        if (game->on_frame_completed != NULL) {
-            game->on_frame_completed(game->on_frame_completed_context, game->frames_reported,
-                                     FrameContext_Score(frame));
-        }
+        Game_TellListeners(game, game->frames_reported, FrameContext_Score(frame));
     }
 }
 
@@ -127,8 +142,7 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     game->frame_count = 0U;
     game->count_pins = count_pins;
     game->frames_reported = 0U;
-    game->on_frame_completed = NULL;
-    game->on_frame_completed_context = NULL;
+    game->listener_count = 0U;
     return game;
 }
 
@@ -199,6 +213,7 @@ void Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *co
     if (game == NULL) {
         return;
     }
-    game->on_frame_completed = callback;
-    game->on_frame_completed_context = context;
+    game->listeners[0].callback = callback;
+    game->listeners[0].context = context;
+    game->listener_count = 1U;
 }
