@@ -71,3 +71,17 @@ TEST_F(ScoreboardTest, should_tell_the_scoreboard_about_two_frames_one_roll_comp
     RollAll({4U}); /* the 4 is frame 8's second bonus and frame 9's second roll */
     EXPECT_EQ((Frames{{8, 17}, {9, 7}}), scoreboard.frames);
 }
+
+TEST_F(ScoreboardTest, should_tell_the_scoreboard_the_tenth_frame_completes_only_after_its_fill_balls)
+{
+    for (int i = 0; i < 18; i++) {
+        EXPECT_EQ(GAME_OK, Game_Roll(game, 0U)); /* frames 1 to 9: gutter balls */
+    }
+    scoreboard.frames.clear();
+
+    RollAll({10U, 3U}); /* a strike and one fill ball: not complete */
+    EXPECT_EQ((Frames{}), scoreboard.frames);
+
+    RollAll({4U}); /* the second fill ball */
+    EXPECT_EQ((Frames{{10, 17}}), scoreboard.frames);
+}
