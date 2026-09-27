@@ -15,7 +15,7 @@
 #define GAME_POOL_SIZE 2U
 
 /* Who to tell when a frame completes. */
-#define GAME_MAX_LISTENERS 1U
+#define GAME_MAX_LISTENERS 2U
 
 typedef struct {
     FrameCompletedCallback callback;
@@ -213,7 +213,8 @@ void Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *co
     if (game == NULL) {
         return;
     }
-    game->listeners[0].callback = callback;
-    game->listeners[0].context = context;
-    game->listener_count = 1U;
+    FrameCompletedListener *listener = &game->listeners[game->listener_count];
+    listener->callback = callback;
+    listener->context = context;
+    game->listener_count++;
 }
