@@ -1,5 +1,6 @@
 /* A scorer fixing a roll entered wrongly: the game rescores everything after it. */
 #include <map>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -170,4 +171,52 @@ TEST(CorrectionTest, should_refuse_a_correction_made_from_inside_a_listener)
     RollAll(game, {3U, 4U});
     EXPECT_EQ(GAME_ERR_ROLL_DURING_NOTIFICATION, listener.status);
     EXPECT_EQ(7U, Game_Score(game)); /* the refused correction changed nothing */
+}
+
+/* ---- A property: a corrected game tells its listeners what a fresh game would ----------- */
+
+
+TEST(CorrectionPropertyTest, should_leave_listeners_as_a_fresh_game_of_the_corrected_rolls_would)
+{
+    /* Random games (fixed seed, so it repeats), each corrected at a random roll. Whenever the
+     * game accepts the correction, its listener must end up exactly where a listener on a
+     * fresh game fed the corrected rolls from the start would be: the same frames, the same
+     * scores, with any reopened frame dropped. */
+    std::mt19937 random(20260926U);
+    int corrections_accepted = 0;
+    for (int trial = 0; trial < 3000; trial++) {
+        GameHandle owner = MakeGame();
+        Game *game = owner.get();
+        KeyedScoreboard scoreboard;
+        ASSERT_TRUE(Game_OnFrameChanged(game, &KeyedScoreboard_FrameChanged, &scoreboard));
+
+        std::vector<Pins> rolls;
+        const int length = 1 + static_cast<int>(random() % 21U);
+        for (int tries = 0; (static_cast<int>(rolls.size()) < length) && (tries < 200); tries++) {
+            const Pins pins = static_cast<Pins>(random() % 11U);
+            if (Game_Roll(game, pins) == GAME_OK) {
+                rolls.push_back(pins);
+            }
+        }
+
+        const auto roll_number = static_cast<uint8_t>(1U + random() % rolls.size());
+        const Pins corrected = static_cast<Pins>(random() % 11U);
+        if (Game_CorrectRoll(game, roll_number, corrected) != GAME_OK) {
+            continue;
+        }
+        corrections_accepted++;
+        rolls[roll_number - 1U] = corrected;
+
+        GameHandle fresh_owner = MakeGame();
+        Game *fresh = fresh_owner.get();
+        KeyedScoreboard fresh_scoreboard;
+        ASSERT_TRUE(Game_OnFrameChanged(fresh, &KeyedScoreboard_FrameChanged, &fresh_scoreboard));
+        for (const Pins pins : rolls) {
+            ASSERT_EQ(GAME_OK, Game_Roll(fresh, pins));
+        }
+
+        ASSERT_EQ(fresh_scoreboard.scores, scoreboard.scores) << "trial " << trial;
+        ASSERT_EQ(Game_Score(fresh), Game_Score(game)) << "trial " << trial;
+    }
+    EXPECT_GT(corrections_accepted, 500); /* the property was really exercised */
 }

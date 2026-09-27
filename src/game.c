@@ -297,16 +297,15 @@ GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
     game->rolls[index] = pins;
 
     const GameStatus status = Game_Replay(game);
-    if (status != GAME_OK) {
+    if (status == GAME_OK) {
+        Game_ReportCorrection(game, was_reported);
+    } else {
         /* The correction makes some roll impossible: put the log back as it was, and
          * replay that. Every roll in it was accepted before, so this can't fail. */
         game->rolls[index] = was;
         const GameStatus restored = Game_Replay(game);
         assert(restored == GAME_OK);
         (void)restored; /* used only by the assert, which NDEBUG removes */
-    }
-    if (status == GAME_OK) {
-        Game_ReportCorrection(game, was_reported);
     }
     return status;
 }

@@ -67,8 +67,12 @@ bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *contex
 
 GameStatus Game_Roll(Game *game, Pins pins);
 
-/* Replaces roll number `roll_number` (the first roll is 1) with `pins`, the pins that really
- * fell, and rescores the game from there. */
+/* Corrects roll number `roll_number` (the first roll is 1) to `pins`, the pins that really
+ * fell, and rescores the game by replaying every roll, each counted again by the game's
+ * rule. The listeners are told the result (see FrameChangedCallback). Rejected, changing
+ * nothing, if it would make any roll impossible (the status of that roll, such as
+ * GAME_ERR_INVALID_PINS), if the roll hasn't been made (GAME_ERR_NO_SUCH_ROLL), or if called
+ * from inside a callback (GAME_ERR_ROLL_DURING_NOTIFICATION). */
 GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins);
 Score Game_Score(const Game *game);
 
