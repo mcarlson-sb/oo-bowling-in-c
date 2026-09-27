@@ -94,8 +94,11 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
 
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 {
+    /* Only the rolls waiting now: one read of the post position, so a drain applies at most a
+     * mailbox's worth, however fast the interrupt side posts. Later rolls wait for the next. */
+    const unsigned post_at = atomic_load_explicit(&pinsetter->post_at, memory_order_acquire);
     unsigned drain_at = atomic_load_explicit(&pinsetter->drain_at, memory_order_relaxed);
-    while (drain_at != atomic_load_explicit(&pinsetter->post_at, memory_order_acquire)) {
+    while (drain_at != post_at) {
         const Pins pins = pinsetter->rolls[drain_at];
         const GameStatus status = Game_Roll(game, pins); /* on the main loop's thread */
         if ((status != GAME_OK) && (status != GAME_QUEUED)) {

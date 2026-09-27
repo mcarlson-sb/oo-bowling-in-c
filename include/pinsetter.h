@@ -35,8 +35,9 @@ void Pinsetter_Destroy(Pinsetter *pinsetter);
  * drained. */
 bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins);
 
-/* Main-loop side. Rolls every posted roll into `game`, oldest first, with Game_Roll, and
- * returns GAME_OK once they have all gone in.
+/* Main-loop side. Rolls every roll waiting when it starts into `game`, oldest first, with
+ * Game_Roll, and returns GAME_OK once they have all gone in. A roll posted while it runs
+ * waits for the next drain, so one drain does at most a mailbox's worth of work.
  *
  * A roll the game rejects is never thrown away: the machine reported it, and it is often the
  * right one, made to look impossible by an earlier roll that was miscounted. So draining stops
