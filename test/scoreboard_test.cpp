@@ -57,3 +57,17 @@ TEST_F(ScoreboardTest, should_tell_the_scoreboard_nothing_for_a_roll_that_comple
     RollAll({2U});        /* the strike has one of its two bonus rolls */
     EXPECT_EQ((Frames{{1, 7}}), scoreboard.frames);
 }
+
+TEST_F(ScoreboardTest, should_tell_the_scoreboard_about_two_frames_one_roll_completes_oldest_first)
+{
+    for (int i = 0; i < 14; i++) {
+        EXPECT_EQ(GAME_OK, Game_Roll(game, 0U)); /* frames 1 to 7: gutter balls */
+    }
+    scoreboard.frames.clear();
+
+    RollAll({10U, 3U}); /* frame 8: a strike; frame 9: a 3. Nothing is complete yet */
+    EXPECT_EQ((Frames{}), scoreboard.frames);
+
+    RollAll({4U}); /* the 4 is frame 8's second bonus and frame 9's second roll */
+    EXPECT_EQ((Frames{{8, 17}, {9, 7}}), scoreboard.frames);
+}
