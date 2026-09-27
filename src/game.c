@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "fault.h"
 #include "frame_context.h"
 #include "frame_listeners.h"
 #include "roll_log.h"
@@ -239,8 +240,10 @@ static GameStatus Game_Replay(Game *game)
 
 /* Makes `edited` the game's roll log and rescores by replaying it. If some roll in it is
  * impossible, the saved log is put back and replayed. Every roll in that one was accepted
- * before, so it can't fail as long as the rule is pure (see PinCountRule). Returns the
- * status of the first impossible roll, or GAME_OK. */
+ * before, so it can't fail as long as the rule is pure (see PinCountRule). If it does fail,
+ * the rule has broken that contract, and no game is left that is known to be right: there is
+ * no safe state to fall back to, so the program stops, in every build. Returns the status of
+ * the first impossible roll, or GAME_OK. */
 static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
 {
     const uint8_t was_reported = game->frames_reported;
@@ -252,9 +255,10 @@ static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
         Game_ReportFrames(game, 0U, was_reported);
     } else {
         game->log = saved;
-        const GameStatus restored = Game_Replay(game);
-        assert(restored == GAME_OK);
-        (void)restored; /* used only by the assert, which NDEBUG removes */
+        if (Game_Replay(game) != GAME_OK) {
+            Fault_Stop("game: the replay that undoes a rejected edit failed; the PinCountRule "
+                       "is not pure");
+        }
     }
     return status;
 }

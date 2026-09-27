@@ -50,7 +50,10 @@ typedef enum {
  *     always give the same count, with nothing read from anywhere else. Every correction
  *     (Game_CorrectRoll) replays every roll of the game through the rule, so a rule that
  *     depends on anything else can silently rewrite the game's history. Nothing checks this;
- *     it is the caller's to keep. */
+ *     it is the caller's to keep. One consequence is caught: when an edit is rejected, the
+ *     game undoes it by replaying the rolls it had, and if an impure rule makes that replay
+ *     fail too, there is no game left that is known to be right, so the program stops
+ *     (Fault_Stop, in every build). */
 typedef Pins (*PinCountRule)(Pins pins_standing, Pins pins_down);
 
 /* A standard game. */

@@ -120,6 +120,38 @@ TEST(CorrectionListenerTest, should_tell_the_listeners_when_a_correction_reopens
 
 /* ---- A correction the game can't make -------------------------------------------------- */
 
+namespace {
+
+/* A rule that breaks the PinCountRule contract on purpose: it counts the pins that fell until
+ * the test flips `s_impure_rule_broken`, and from then on counts one more pin than were
+ * standing. Every replay after the flip fails at its first roll. */
+bool s_impure_rule_broken = false;
+
+Pins ImpureRule(Pins pins_standing, Pins pins_down)
+{
+    return s_impure_rule_broken ? static_cast<Pins>(pins_standing + 1U) : pins_down;
+}
+
+} // namespace
+
+TEST(CorrectionDeathTest, should_stop_the_program_when_a_rejected_edit_cannot_be_undone)
+{
+    /* Undoing a rejected edit replays the saved rolls, and trusts the rule to count them as it
+     * did before. An impure rule breaks that trust: the replay fails too, and there is no game
+     * left that is known to be right. So the program stops, in every build, release included.
+     * It all happens in the death test's child process. */
+    EXPECT_DEATH(
+        {
+            s_impure_rule_broken = false;
+            Game *game = Game_CreateWithRule(&ImpureRule);
+            (void)Game_Roll(game, 3U);
+            (void)Game_Roll(game, 4U);
+            s_impure_rule_broken = true;
+            (void)Game_CorrectRoll(game, 1U, 2U); /* rejected, and the restore fails */
+        },
+        "replay");
+}
+
 TEST(CorrectionTest, should_reject_correcting_a_roll_that_has_not_been_made)
 {
     GameHandle owner = MakeGame();
