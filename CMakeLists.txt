@@ -64,6 +64,7 @@ add_executable(bowling_tests
     test/scoreboard_test.cpp
     test/correction_test.cpp
     test/pinsetter_test.cpp
+    test/remote_scoreboard_test.cpp
 )
 find_package(Threads REQUIRED) # the pinsetter test runs a second thread
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main Threads::Threads)
