@@ -549,6 +549,19 @@ The State pattern still earns its place in validating rolls as they arrive and i
 listeners *as* frames complete. But corrections are the first feature that argues *against*
 the object design, not for it.
 
+### After review: four checks
+
+| Check | Result |
+|---|---|
+| **Does a rejected correction tell the listeners anything?** | No. Both replays go through `Game_Accept`, which tells no one. A test pins that down, and a mutation that reports the failed replay made it, and only it, fail. The property test now also checks the 500+ rejected corrections it generates: listeners and score must be unchanged |
+| **Is purity only needed for restoring a rejected correction?** | No. *Every* correction replays every roll through the caller's rule, so an impure rule can rewrite history on any correction. The contract is now written on `PinCountRule` in `game.h`, where a caller writing a rule will see it |
+| **Do the memory numbers add up?** | Yes, checked with `offsetof` and `sizeof` (see Costs above): 6 of the log's 22 bytes went into padding that already existed |
+| **The longest game, 21 rolls: correct roll 21 and roll 1** | Both work, roll 22 is refused, and the game stays over. An off-by-one mutation of the bounds check made this test, and only this test, fail. **The upper edge had no test guarding it before** |
+
+The review also asked for CI. GitHub Actions now runs the debug, release and UBSan builds on
+Ubuntu with its own GCC, and the first run passed all three. That's the same code, warning-free,
+on a second compiler and a second platform.
+
 ---
 
 ## Conclusion: late binding pays at the boundaries between owners
