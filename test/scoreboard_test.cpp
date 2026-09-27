@@ -1,5 +1,3 @@
-/* A client that keeps a live scoreboard: it is told each time a frame completes, with the
- * frame's number and score. */
 #include <utility>
 #include <vector>
 
@@ -7,7 +5,6 @@
 
 namespace {
 
-/* The scoreboard: every completed frame it has been told about, in the order it heard. */
 struct Scoreboard {
     std::vector<std::pair<int, int>> frames; /* (frame number, frame score) */
 };
@@ -87,8 +84,6 @@ TEST(ScoreboardNullTest, should_ignore_setting_a_callback_on_a_null_game)
 
 /* ---- A second, independent subscriber --------------------------------------------------- */
 
-/* RunningStats, the second subscriber, is in test_support.h, shared with the correction tests. */
-
 TEST_F(ScoreboardTest, should_tell_a_second_independent_subscriber_too)
 {
     RunningStats stats;
@@ -117,8 +112,7 @@ TEST_F(ScoreboardTest, should_refuse_a_subscriber_once_every_slot_is_taken)
 
 TEST(RunningStatsNoTapTest, should_average_the_counted_scores_under_no_tap)
 {
-    /* A league average is built from scores, and under no-tap a first-ball 9 scores as a
-     * strike. So counted values, the ones the notification carries, are what stats needs. */
+    /* Under no-tap, a first-ball 9 scores as a strike: stats need the counted values. */
     GameHandle owner = MakeGameWithRule(&NinePinNoTap);
     Game *game = owner.get();
     RunningStats stats;
@@ -144,7 +138,6 @@ TEST_F(ScoreboardTest, should_refuse_a_null_callback_without_using_up_a_slot)
 
 namespace {
 
-/* A scoreboard that also shows the game's running score each time it hears about a frame. */
 struct LiveTotal {
     Game *game = nullptr;
     std::vector<int> totals_seen;
@@ -184,7 +177,6 @@ TEST(ListenerReentryTest, should_let_a_listener_read_the_score_of_the_whole_roll
 
 namespace {
 
-/* A listener that tries to roll from inside its own notification, once. */
 struct RollsFromInside {
     Game *game = nullptr;
     bool tried = false;
@@ -208,9 +200,7 @@ void RollsFromInside_FrameChanged(void *context, uint8_t frame_number, Score fra
 
 TEST(ListenerReentryTest, should_refuse_a_roll_made_from_inside_a_listener)
 {
-    /* Allowed, a roll from inside a notification completed frame 2 and told the other
-     * listener about it before frame 1: out of order. Refusing it keeps the promise, the same
-     * way an edit or a drain from inside a listener is refused. */
+    /* Allowed, it would complete frame 2 and tell the other listener before frame 1. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     RollsFromInside rolls_from_inside;
@@ -231,7 +221,6 @@ TEST(ListenerReentryTest, should_refuse_a_roll_made_from_inside_a_listener)
 
 namespace {
 
-/* A listener that, the first time it hears anything, tries to add another listener. */
 struct SubscribesFromInside {
     Game *game = nullptr;
     bool tried = false;
@@ -253,7 +242,6 @@ void SubscribesFromInside_FrameChanged(void *context, uint8_t frame_number, Scor
     }
 }
 
-/* A rule that, the first time it is asked, tries to add a listener to its own game. */
 Game *s_subscribing_rule_game = nullptr;
 bool s_subscribing_rule_tried = false;
 bool s_subscribing_rule_added = true;
@@ -274,9 +262,7 @@ Pins SubscribesFromTheRule(Pins pins_standing, Pins pins_down)
 
 TEST(ListenerReentryTest, should_refuse_a_listener_added_from_inside_a_listener_or_the_rule)
 {
-    /* Added in the middle of a roll, a listener would join the telling already under way, and
-     * hear a frame without the ones before it. So, like a roll or an edit, it is refused while
-     * the game is busy, and the game goes on with the listeners it had. */
+    /* Added mid-roll, it would hear a frame without the ones before it. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     SubscribesFromInside listener;
@@ -296,7 +282,6 @@ TEST(ListenerReentryTest, should_refuse_a_listener_added_from_inside_a_listener_
 
 namespace {
 
-/* Every message a listener hears, with whether it said the frame is complete. */
 struct Heard {
     struct Message {
         int frame;
@@ -322,8 +307,7 @@ using Messages = std::vector<Heard::Message>;
 
 TEST(LateListenerTest, should_tell_a_listener_added_mid_game_every_frame_already_complete)
 {
-    /* A scoreboard restarted mid-game catches up at once, and only it: the listener that was
-     * there from the start hears nothing again, which it would take for updates. */
+    /* The listener there from the start would take a repeat for an update. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     Heard original;
@@ -342,8 +326,6 @@ TEST(LateListenerTest, should_tell_a_listener_added_mid_game_every_frame_already
 
 TEST(LateListenerTest, should_hear_a_correction_after_catching_up_as_an_original_listener_does)
 {
-    /* After the catch-up, a late listener hears exactly what one there from the start hears,
-     * including a frame that a correction reopens. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     Heard original;
@@ -374,7 +356,6 @@ TEST(LateListenerTest, should_tell_nothing_to_a_listener_added_before_any_frame_
 
 namespace {
 
-/* A late listener that tries to roll while it is being caught up. */
 struct RollsWhileCatchingUp {
     Game *game = nullptr;
     std::vector<GameStatus> statuses;
@@ -408,7 +389,6 @@ TEST(LateListenerTest, should_let_a_listener_being_caught_up_read_the_game_but_n
 
 namespace {
 
-/* A listener that destroys its own game. */
 void DestroysItsGame_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
                                   bool frame_complete)
 {
@@ -422,11 +402,6 @@ void DestroysItsGame_FrameChanged(void *context, uint8_t frame_number, Score fra
 
 TEST(ListenerReentryDeathTest, should_stop_the_program_when_a_listener_destroys_its_game)
 {
-    /* Destroying a game from inside its own call frees its slot under the call still running,
-     * and only a misuse gets there. Ignoring it would be safe but silent: the slot would leak,
-     * and the failure would show up later, far away, as Game_Create returning NULL. So the
-     * program stops, in every build, at the misuse. It all happens in the death test's child
-     * process. */
     EXPECT_DEATH(
         {
             Game *game = Game_Create();

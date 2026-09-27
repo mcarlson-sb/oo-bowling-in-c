@@ -1,6 +1,4 @@
-/* White-box tests of the Frame base class's contract checks. These can't be reached through
- * the Game API, which always keeps the contract; they make sure a caller that breaks it is
- * stopped in a debug build. */
+/* White-box: the Game API always keeps Frame's contract, so these break it directly. */
 #include <gtest/gtest.h>
 
 extern "C" {

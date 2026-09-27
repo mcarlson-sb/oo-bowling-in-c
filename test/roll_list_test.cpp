@@ -1,4 +1,3 @@
-/* RollList: a frame's rolls, or its bonus rolls. A value type with a fixed capacity. */
 #include <gtest/gtest.h>
 
 extern "C" {
@@ -37,8 +36,7 @@ TEST_F(RollListTest, should_be_full_at_capacity)
     EXPECT_TRUE(RollList_IsFull(&list));
 }
 
-/* A roll past capacity is a bug in whatever sent it. With asserts on, it stops loudly;
- * with NDEBUG, it is refused. Either way it is never written past the array. */
+/* Debug builds stop; release refuses it. */
 #ifndef NDEBUG
 
 using RollListDeathTest = RollListTest;

@@ -1,5 +1,5 @@
-/* Host tests for the Game API, one behavior per test. A frame scores 0 until it is
- * complete, so a strike or spare adds nothing until its bonus rolls are in. */
+/* A frame scores 0 until it is complete, so a strike or spare adds nothing until its bonus
+ * rolls are in. */
 #include "test_support.h"
 
 static void RollMany(Game *game, int count, Pins pins)
@@ -9,7 +9,6 @@ static void RollMany(Game *game, int count, Pins pins)
     }
 }
 
-/* Nine frames of gutter balls: the next roll starts the tenth frame. */
 static void RollToTenthFrame(Game *game)
 {
     RollMany(game, 18, 0U);
@@ -95,7 +94,6 @@ TEST_F(GameTest, should_score_correctly_with_a_gutter_ball)
 
 TEST_F(GameTest, should_score_a_full_game_correctly)
 {
-    /* The running total after every roll, one row per roll. */
     const struct {
         Pins pins;
         Score expected_score;
@@ -111,9 +109,7 @@ TEST_F(GameTest, should_score_a_full_game_correctly)
     }
 }
 
-/* ---- End of game ------------------------------------------------------------------------
- * A game holds exactly ten frames, with no heap. A roll after the game is over is
- * reported, not written out of bounds, and leaves the game unchanged. */
+/* ---- End of game ------------------------------------------------------------------------ */
 
 TEST_F(GameTest, should_score_a_perfect_game_and_reject_a_13th_roll)
 {
@@ -124,8 +120,7 @@ TEST_F(GameTest, should_score_a_perfect_game_and_reject_a_13th_roll)
     EXPECT_EQ(300U, Game_Score(game));
 }
 
-/* ---- Game storage -----------------------------------------------------------------------
- * Games come from a fixed pool, so Game_Create can run out. */
+/* ---- Game storage ----------------------------------------------------------------------- */
 
 TEST_F(GameTest, should_keep_two_games_independent)
 {
@@ -152,9 +147,7 @@ TEST_F(GameTest, should_return_null_when_no_game_is_free_and_reuse_a_destroyed_o
     EXPECT_EQ(0U, Game_Score(reused.get()));
 }
 
-/* ---- Tenth frame ------------------------------------------------------------------------
- * Fill balls belong to the tenth frame and are scored once. They must not spill into a
- * frame after it. */
+/* ---- Tenth frame ------------------------------------------------------------------------ */
 
 TEST_F(GameTest, should_score_a_tenth_frame_strike_whose_fill_balls_leave_pins_standing)
 {
@@ -178,8 +171,7 @@ TEST_F(GameTest, should_give_a_tenth_frame_spare_exactly_one_fill_ball)
     EXPECT_EQ(GAME_ERR_GAME_OVER, Game_Roll(game, 5U));
 }
 
-/* ---- Input validation -------------------------------------------------------------------
- * A roll of more pins than are standing is rejected and leaves the game unchanged. */
+/* ---- Input validation ------------------------------------------------------------------- */
 
 TEST_F(GameTest, should_reject_a_roll_of_more_than_ten_pins)
 {
@@ -214,8 +206,7 @@ TEST_F(GameTest, should_reject_tenth_frame_strike_fill_balls_totalling_more_than
     EXPECT_EQ(20U, Game_Score(game));
 }
 
-/* ---- NULL handles -----------------------------------------------------------------------
- * Game_Create returns NULL when the pool is empty, so every function accepts NULL. */
+/* ---- NULL handles ----------------------------------------------------------------------- */
 
 TEST_F(GameTest, should_reject_a_roll_on_a_null_game)
 {
@@ -240,10 +231,7 @@ TEST_F(GameTest, should_ignore_destroying_a_null_game)
 
 TEST(GameDeathTest, should_stop_the_program_when_a_game_is_destroyed_twice)
 {
-    /* A second destroy of the same game is a bug in the caller. Caught while its slot is still
-     * free, it stops the program, in every build; once the slot is reused by another game, the
-     * stale handle can't be told from that game's (see KAY.md's known limits). It all happens in
-     * the death test's child process. */
+    /* Caught only while its slot is still free: see KAY.md's known limits. */
     EXPECT_DEATH(
         {
             Game *game = Game_Create();

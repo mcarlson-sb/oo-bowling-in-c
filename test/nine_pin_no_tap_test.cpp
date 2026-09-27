@@ -1,12 +1,8 @@
-/* A client of the library that plays nine-pin no-tap: knocking down 9 on a first ball
- * counts as a strike. The rule is client code, in test_support.h. The library contains no
- * trace of it; it only lets a caller say how a roll is counted. */
+/* Nine-pin no-tap, as client code: the library only lets a caller say how a roll counts. */
 #include "test_support.h"
 
 namespace {
 
-/* NinePinNoTap, the client's rule, is in test_support.h, shared with the scoreboard
- * tests. */
 class NinePinNoTapTest : public ::testing::Test {
 protected:
     GameHandle owner = MakeGameWithRule(&NinePinNoTap);
@@ -44,8 +40,7 @@ TEST_F(NinePinNoTapTest, should_not_count_5_then_4_as_a_spare_under_a_first_ball
 
 namespace {
 
-/* The stricter form many no-tap leagues use: any ball that leaves exactly one pin standing
- * clears the rack, on a first ball (a strike) or a second (a spare). */
+/* The stricter form: any ball that leaves one pin standing clears the rack. */
 Pins OnePinLeftClearsTheRack(Pins pins_standing, Pins pins_down)
 {
     const bool one_pin_left = (pins_standing >= 1U) && ((pins_down + 1U) == pins_standing);
@@ -68,7 +63,6 @@ TEST(OnePinLeftRuleTest, should_count_5_then_4_as_a_spare_under_a_one_pin_left_r
 
 namespace {
 
-/* A buggy rule: counts a strike as more pins than there are. */
 Pins CountsTooMany(Pins pins_standing, Pins pins_down)
 {
     return (pins_down == pins_standing) ? static_cast<Pins>(pins_standing + 1U) : pins_down;
@@ -95,8 +89,7 @@ TEST(BrokenRuleTest, should_refuse_to_create_a_game_without_a_rule)
 
 namespace {
 
-/* A rule that breaks the contract a different way: it reaches back into its own game, through
- * a global, the first time it is asked, and tries to roll and to correct a roll. */
+/* Reaches back into its own game, through a global. */
 Game *s_rule_game = nullptr;
 bool s_rule_reached_back = false;
 GameStatus s_roll_from_rule = GAME_OK;
@@ -117,9 +110,6 @@ Pins ReachesBackIntoTheGame(Pins pins_standing, Pins pins_down)
 
 TEST(BrokenRuleTest, should_refuse_a_roll_or_an_edit_made_from_inside_the_rule)
 {
-    /* The rule runs in the middle of a roll, with the frames half updated. A roll or an edit
-     * from there would change the game under the roll being counted, so both are refused,
-     * like a change from inside a listener, and the game ends with only the real rolls. */
     GameHandle owner = MakeGameWithRule(&ReachesBackIntoTheGame);
     s_rule_game = owner.get();
     s_rule_reached_back = false;

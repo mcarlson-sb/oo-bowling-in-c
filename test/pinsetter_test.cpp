@@ -1,4 +1,3 @@
-
 #include "pinsetter.h"
 
 #include <atomic>

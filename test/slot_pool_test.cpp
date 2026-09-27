@@ -1,5 +1,3 @@
-/* SlotPool: which of a fixed number of slots are in use. The caller owns the storage the
- * slots stand for; the pool only tracks which slots are taken. */
 #include <gtest/gtest.h>
 
 extern "C" {
@@ -62,8 +60,6 @@ TEST_F(SlotPoolTest, should_ignore_releasing_a_slot_it_does_not_have)
 
 TEST_F(SlotPoolTest, should_report_whether_a_released_slot_was_in_use)
 {
-    /* So that the owner of the objects can tell a double release, a bug in its caller, from a
-     * real one, and act on it: the pool itself stays a generic helper. */
     ASSERT_TRUE(SlotPool_Acquire(&pool, &slot));
 
     EXPECT_TRUE(SlotPool_Release(&pool, slot));

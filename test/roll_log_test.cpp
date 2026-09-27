@@ -1,5 +1,3 @@
-/* RollLog: every accepted roll of a game. A value type with a fixed capacity, a whole game's
- * rolls. */
 #include <gtest/gtest.h>
 
 extern "C" {
@@ -30,9 +28,7 @@ TEST_F(RollLogTest, should_keep_rolls_in_order)
     EXPECT_EQ(5U, RollLog_At(&log, 1U));
 }
 
-/* A roll past a whole game's, or a read past the last roll, is a bug in the caller: the game
- * never accepts more rolls than a game has. With asserts on, it stops loudly; with NDEBUG, it
- * is refused, or read as 0. Either way the log is never written, or read, past its rolls. */
+/* Debug builds stop; release refuses the write, or reads 0. */
 #ifndef NDEBUG
 
 using RollLogDeathTest = RollLogTest;

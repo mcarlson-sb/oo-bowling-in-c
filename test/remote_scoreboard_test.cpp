@@ -1,10 +1,5 @@
-/* A remote scoreboard: the far side of a wire. On the near side, a listener writes each
- * frame-changed message into a byte buffer, as a serial link or a socket would carry it. On
- * the far side, a decoder that has only those bytes rebuilds the scoreboard.
- *
- * With the pinsetter, this is one boundary crossed in both directions: rolls come in from a
- * machine the game doesn't own, and scores go out to a display it doesn't own. Neither side
- * holds a pointer into the game. */
+/* A remote scoreboard: a listener encodes each message into bytes, as a serial link would
+ * carry them, and a decoder with only those bytes rebuilds the scoreboard. */
 
 #include "pinsetter.h"
 
@@ -18,8 +13,7 @@ namespace {
 
 using Bytes = std::vector<uint8_t>;
 
-/* Near side. One message is 4 bytes: the frame number, the score (low byte, then high), and
- * whether the frame is complete. */
+/* 4 bytes: frame number, score (low byte, then high), complete. */
 void WireWriter_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
                              bool frame_complete)
 {
@@ -30,7 +24,7 @@ void WireWriter_FrameChanged(void *context, uint8_t frame_number, Score frame_sc
     wire->push_back(frame_complete ? 1U : 0U);
 }
 
-/* Far side. Knows the wire format and nothing else: not the game, not its headers' types. */
+/* Knows the wire format and nothing else, not even the game's types. */
 struct RemoteScoreboard {
     std::map<int, int> frames; /* complete frames: frame number -> score */
     size_t read = 0U;          /* bytes of the wire already decoded */
@@ -71,7 +65,7 @@ TEST(RemoteScoreboardTest, should_rebuild_the_scoreboard_from_the_bytes_alone)
     remote.Decode(wire);
     EXPECT_EQ((std::map<int, int>{{1, 7}}), remote.frames);
 
-    /* The first ball was really a strike: frame 1 reopens, waiting for its second bonus. */
+    /* Frame 1, now a strike, reopens. */
     EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 10U));
     remote.Decode(wire);
     EXPECT_EQ((std::map<int, int>{}), remote.frames);

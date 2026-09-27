@@ -45,7 +45,6 @@ TEST(CorrectionTest, should_recount_every_replayed_roll_from_the_pins_that_fell)
 
 /* ---- Telling the listeners about a correction ------------------------------------------- */
 
-
 namespace {
 
 struct KeyedScoreboard {
@@ -193,7 +192,6 @@ TEST(CorrectionTest, should_refuse_a_correction_made_from_inside_a_listener)
 
 /* ---- A property: a corrected game tells its listeners what a fresh game would ----------- */
 
-
 namespace {
 
 void CheckCorrectionsAgainstFreshGames(GameHandle (*make_game)(), unsigned seed)
@@ -263,7 +261,6 @@ TEST(CorrectionPropertyTest, should_hold_under_the_no_tap_rule_too)
     /* Under no-tap, a correction that moves a rack's boundary changes how later 9s count. */
     CheckCorrectionsAgainstFreshGames([] { return MakeGameWithRule(&NinePinNoTap); }, 20260927U);
 }
-
 
 TEST(CorrectionListenerTest, should_tell_the_listeners_nothing_when_a_correction_is_rejected)
 {

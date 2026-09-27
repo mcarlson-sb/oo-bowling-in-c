@@ -1,9 +1,7 @@
 #ifndef TEST_SUPPORT_H
 #define TEST_SUPPORT_H
 
-/* What the black-box tests share: a handle that always destroys its game, a way to make the
- * setup rolls, and the client-side rules that more than one test plays with. Everything here
- * uses only the public API, like any caller would. */
+/* Shared by the black-box tests; public API only. */
 
 #include <gtest/gtest.h>
 
@@ -13,8 +11,7 @@
 
 #include "game.h"
 
-/* Games come from a fixed pool that outlives each test. Holding every game in a handle that
- * destroys it means a test can't leak a pool slot into later tests, however it ends. */
+/* So no test, however it ends, leaks a pool slot into the next. */
 using GameHandle = std::unique_ptr<Game, decltype(&Game_Destroy)>;
 
 inline GameHandle MakeGame()
@@ -27,7 +24,7 @@ inline GameHandle MakeGameWithRule(PinCountRule count_pins)
     return GameHandle(Game_CreateWithRule(count_pins), &Game_Destroy);
 }
 
-/* Setup rolls: each must be accepted, or the test is not testing what it says it is. */
+/* Setup rolls: each must be accepted, or the test isn't testing what it says. */
 inline void RollAll(Game *game, std::initializer_list<Pins> rolls)
 {
     for (const Pins pins : rolls) {
@@ -35,8 +32,7 @@ inline void RollAll(Game *game, std::initializer_list<Pins> rolls)
     }
 }
 
-/* An edit for Game_EditRolls, built positionally: C++17 has no designated initializers for a
- * C struct, and naming the helper's parameters keeps every call site readable. */
+/* C++17 has no designated initializers. */
 inline RollEdit MakeEdit(RollNumber first_roll, uint8_t rolls_removed, const Pins *new_pins,
                          uint8_t new_count)
 {
@@ -45,9 +41,7 @@ inline RollEdit MakeEdit(RollNumber first_roll, uint8_t rolls_removed, const Pin
 
 /* ---- Client-side subscribers ------------------------------------------------------------ */
 
-/* Running stats: how many frames are complete, and their average score. It keeps the latest
- * score heard for each frame, so a frame told again after a correction is an update, not a
- * new frame. */
+/* Keyed by frame, so a frame told again after a correction is an update. */
 struct RunningStats {
     std::map<int, int> frame_scores; /* frame number -> latest score */
 
@@ -73,11 +67,9 @@ inline void RunningStats_FrameChanged(void *context, uint8_t frame_number, Score
     }
 }
 
-/* ---- Client-side rules ------------------------------------------------------------------ *
- * The library contains none of these. Tests supply them, as a caller would. */
+/* ---- Client-side rules ------------------------------------------------------------------ */
 
-/* Nine-pin no-tap: a first ball, on a full rack, that leaves one pin standing counts as a
- * strike. Every other roll counts as the pins it knocked down. */
+/* A first ball that leaves one pin standing counts as a strike. */
 inline Pins NinePinNoTap(Pins pins_standing, Pins pins_down)
 {
     const bool nine_on_a_full_rack = (pins_standing == 10U) && (pins_down == 9U);
