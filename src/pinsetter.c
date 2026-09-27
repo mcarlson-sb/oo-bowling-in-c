@@ -6,24 +6,29 @@
 
 #include "slot_pool.h"
 
-/* Rolls the mailbox holds before the main loop must drain it. A power of two, so the
- * positions below can simply count up and wrap. */
+/* Rolls the mailbox holds before the main loop must drain it. */
 #define PINSETTER_CAPACITY 8U
+
+/* One slot more than it holds, so that a full mailbox (the next post would land on the oldest
+ * waiting roll) and an empty one (nothing between the two positions) look different. */
+#define PINSETTER_SLOTS (PINSETTER_CAPACITY + 1U)
 
 /* Pinsetters available at once. There is no heap, so they come from a fixed pool. */
 #define PINSETTER_POOL_SIZE 2U
 
 /* A ring buffer with one writer on each side, so it needs no lock:
- *   - `posted` counts the rolls ever posted. Only the interrupt side writes it.
- *   - `drained` counts the rolls ever drained. Only the main loop writes it.
- * The rolls waiting are the ones between them. Each side publishes its own count with a
- * release store, after touching the roll, and reads the other side's with an acquire load,
- * before touching one. So a roll is always written before the main loop can see it, and read
- * before the interrupt side can reuse its place. */
+ *   - `post_at` is where the next roll goes. Only the interrupt side writes it.
+ *   - `drain_at` is the oldest waiting roll. Only the main loop writes it.
+ * The rolls waiting are the ones from `drain_at` up to `post_at`. Both positions stay below
+ * PINSETTER_SLOTS and wrap to 0, so the capacity can be any size: no counter ever runs off
+ * the end of its type. Each side publishes its own position with a release store, after
+ * touching the roll, and reads the other side's with an acquire load, before touching one.
+ * So a roll is always written before the main loop can see it, and read before the interrupt
+ * side can reuse its place. */
 struct Pinsetter {
-    Pins rolls[PINSETTER_CAPACITY];
-    atomic_uint posted;
-    atomic_uint drained;
+    Pins rolls[PINSETTER_SLOTS];
+    atomic_uint post_at;
+    atomic_uint drain_at;
 };
 
 static Pinsetter s_pinsetters[PINSETTER_POOL_SIZE];
@@ -37,8 +42,8 @@ Pinsetter *Pinsetter_Create(void)
         return NULL;
     }
     Pinsetter *pinsetter = &s_pinsetters[slot];
-    atomic_store(&pinsetter->posted, 0U);
-    atomic_store(&pinsetter->drained, 0U);
+    atomic_store(&pinsetter->post_at, 0U);
+    atomic_store(&pinsetter->drain_at, 0U);
     return pinsetter;
 }
 
@@ -51,39 +56,45 @@ void Pinsetter_Destroy(Pinsetter *pinsetter)
     }
 }
 
+/* The position after `position`, wrapping to the first slot. */
+static unsigned Pinsetter_Next(unsigned position)
+{
+    return ((position + 1U) == PINSETTER_SLOTS) ? 0U : (position + 1U);
+}
+
 bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
 {
-    const unsigned posted = atomic_load_explicit(&pinsetter->posted, memory_order_relaxed);
-    const unsigned drained = atomic_load_explicit(&pinsetter->drained, memory_order_acquire);
-    if ((posted - drained) == PINSETTER_CAPACITY) {
+    const unsigned post_at = atomic_load_explicit(&pinsetter->post_at, memory_order_relaxed);
+    const unsigned next = Pinsetter_Next(post_at);
+    if (next == atomic_load_explicit(&pinsetter->drain_at, memory_order_acquire)) {
         return false; /* full: never overwrite a roll the main loop hasn't seen */
     }
-    pinsetter->rolls[posted % PINSETTER_CAPACITY] = pins;
-    atomic_store_explicit(&pinsetter->posted, posted + 1U, memory_order_release);
+    pinsetter->rolls[post_at] = pins;
+    atomic_store_explicit(&pinsetter->post_at, next, memory_order_release);
     return true;
 }
 
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 {
-    unsigned drained = atomic_load_explicit(&pinsetter->drained, memory_order_relaxed);
-    while (drained != atomic_load_explicit(&pinsetter->posted, memory_order_acquire)) {
-        const Pins pins = pinsetter->rolls[drained % PINSETTER_CAPACITY];
+    unsigned drain_at = atomic_load_explicit(&pinsetter->drain_at, memory_order_relaxed);
+    while (drain_at != atomic_load_explicit(&pinsetter->post_at, memory_order_acquire)) {
+        const Pins pins = pinsetter->rolls[drain_at];
         const GameStatus status = Game_Roll(game, pins); /* on the main loop's thread */
         if ((status != GAME_OK) && (status != GAME_QUEUED)) {
             return status; /* the machine reported it: keep it, and let the scorer decide */
         }
-        drained++;
-        atomic_store_explicit(&pinsetter->drained, drained, memory_order_release);
+        drain_at = Pinsetter_Next(drain_at);
+        atomic_store_explicit(&pinsetter->drain_at, drain_at, memory_order_release);
     }
     return GAME_OK;
 }
 
 bool Pinsetter_DiscardOldest(Pinsetter *pinsetter)
 {
-    const unsigned drained = atomic_load_explicit(&pinsetter->drained, memory_order_relaxed);
-    if (drained == atomic_load_explicit(&pinsetter->posted, memory_order_acquire)) {
+    const unsigned drain_at = atomic_load_explicit(&pinsetter->drain_at, memory_order_relaxed);
+    if (drain_at == atomic_load_explicit(&pinsetter->post_at, memory_order_acquire)) {
         return false; /* nothing waiting */
     }
-    atomic_store_explicit(&pinsetter->drained, drained + 1U, memory_order_release);
+    atomic_store_explicit(&pinsetter->drain_at, Pinsetter_Next(drain_at), memory_order_release);
     return true;
 }
