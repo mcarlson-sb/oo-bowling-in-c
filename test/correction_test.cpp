@@ -251,3 +251,23 @@ TEST(CorrectionListenerTest, should_tell_the_listeners_nothing_when_a_correction
     EXPECT_TRUE(heard.empty());
     EXPECT_EQ(22U, Game_Score(game));
 }
+
+TEST(CorrectionTest, should_correct_the_first_and_last_rolls_of_the_longest_game)
+{
+    /* The longest game there is: nine open frames, then a spare and its fill ball in the
+     * tenth, 21 rolls. Correcting roll 1 and roll 21 covers both ends of the log. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    for (int frame = 1; frame <= 9; frame++) {
+        RollAll(game, {1U, 1U});
+    }
+    RollAll(game, {5U, 5U, 5U}); /* 18 + 15 = 33 */
+    ASSERT_EQ(33U, Game_Score(game));
+
+    EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 21U, 7U)); /* the fill ball was a 7 */
+    EXPECT_EQ(35U, Game_Score(game));
+    EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 3U)); /* the very first ball was a 3 */
+    EXPECT_EQ(37U, Game_Score(game));
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_CorrectRoll(game, 22U, 1U)); /* no 22nd roll */
+    EXPECT_EQ(GAME_ERR_GAME_OVER, Game_Roll(game, 1U)); /* still over after correcting */
+}
