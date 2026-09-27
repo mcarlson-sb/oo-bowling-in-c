@@ -23,7 +23,7 @@ struct Game {
     PinCountRule count_pins; /* how this game counts a roll: see Game_CreateWithRule */
     uint8_t frames_reported; /* frames already told to the listeners */
     FrameListeners listeners; /* who to tell when a frame changes: see Game_OnFrameChanged */
-    bool busy; /* true while the listeners are being told: see Game_Roll */
+    bool busy; /* true for the whole of a roll or an edit: see Game_Roll */
     RollLog log; /* see Game_CorrectRoll */
 };
 
@@ -90,7 +90,6 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
  * host). Callers use the two below, which say which walk they want. */
 static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_reported)
 {
-    game->busy = true;
     game->frames_reported = first;
     const uint8_t frames = (was_reported > game->frame_count) ? was_reported : game->frame_count;
     for (uint8_t i = first; i < frames; i++) {
@@ -103,7 +102,6 @@ static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_repo
             FrameListeners_Tell(&game->listeners, frame_number, 0U, false); /* reopened */
         }
     }
-    game->busy = false;
 }
 
 /* After a roll: nothing before the frames already reported can have changed, and nothing can
@@ -198,8 +196,10 @@ static GameStatus Game_Accept(Game *game, Pins pins)
     return GAME_OK;
 }
 
-/* A roll from inside a callback would complete frames, and tell the listeners about them, in
- * the middle of telling them about earlier ones: out of order. So it is refused. */
+/* The game is busy for the whole of a roll, and of an edit: the caller's code runs in the
+ * middle of both, the rule while a roll is counted and the listeners while the frames are told.
+ * A roll or an edit from there would change the game under the one in progress, and tell the
+ * listeners about frames out of order, so it is refused. */
 GameStatus Game_Roll(Game *game, Pins pins)
 {
     if (game == NULL) {
@@ -208,11 +208,13 @@ GameStatus Game_Roll(Game *game, Pins pins)
     if (game->busy) {
         return GAME_ERR_DURING_NOTIFICATION;
     }
+    game->busy = true;
     const GameStatus status = Game_Accept(game, pins);
     if (status == GAME_OK) {
         RollLog_Append(&game->log, pins);
         Game_ReportAfterRoll(game);
     }
+    game->busy = false;
     return status;
 }
 
@@ -291,9 +293,11 @@ GameStatus Game_EditRolls(Game *game, const RollEdit *edit)
         return GAME_ERR_DURING_NOTIFICATION;
     }
     RollLog edited;
-    const GameStatus status = RollLog_Edit(&game->log, edit, &edited);
-    if (status != GAME_OK) {
-        return status;
+    GameStatus status = RollLog_Edit(&game->log, edit, &edited);
+    if (status == GAME_OK) {
+        game->busy = true; /* see Game_Roll */
+        status = Game_ApplyEditedLog(game, &edited);
+        game->busy = false;
     }
-    return Game_ApplyEditedLog(game, &edited);
+    return status;
 }

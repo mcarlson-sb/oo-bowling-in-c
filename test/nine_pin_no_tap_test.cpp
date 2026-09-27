@@ -92,3 +92,41 @@ TEST(BrokenRuleTest, should_refuse_to_create_a_game_without_a_rule)
     GameHandle owner = MakeGameWithRule(nullptr);
     EXPECT_EQ(nullptr, owner.get());
 }
+
+namespace {
+
+/* A rule that breaks the contract a different way: it reaches back into its own game, through
+ * a global, the first time it is asked, and tries to roll and to correct a roll. */
+Game *s_rule_game = nullptr;
+bool s_rule_reached_back = false;
+GameStatus s_roll_from_rule = GAME_OK;
+GameStatus s_correction_from_rule = GAME_OK;
+
+Pins ReachesBackIntoTheGame(Pins pins_standing, Pins pins_down)
+{
+    (void)pins_standing;
+    if (!s_rule_reached_back) {
+        s_rule_reached_back = true;
+        s_roll_from_rule = Game_Roll(s_rule_game, 1U);
+        s_correction_from_rule = Game_CorrectRoll(s_rule_game, 1U, 1U);
+    }
+    return pins_down;
+}
+
+} // namespace
+
+TEST(BrokenRuleTest, should_refuse_a_roll_or_an_edit_made_from_inside_the_rule)
+{
+    /* The rule runs in the middle of a roll, with the frames half updated. A roll or an edit
+     * from there would change the game under the roll being counted, so both are refused,
+     * like a change from inside a listener, and the game ends with only the real rolls. */
+    GameHandle owner = MakeGameWithRule(&ReachesBackIntoTheGame);
+    s_rule_game = owner.get();
+    s_rule_reached_back = false;
+
+    RollAll(s_rule_game, {3U, 4U});
+
+    EXPECT_EQ(GAME_ERR_DURING_NOTIFICATION, s_roll_from_rule);
+    EXPECT_EQ(GAME_ERR_DURING_NOTIFICATION, s_correction_from_rule);
+    EXPECT_EQ(7U, Game_Score(s_rule_game));
+}

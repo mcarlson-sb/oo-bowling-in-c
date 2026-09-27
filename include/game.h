@@ -26,10 +26,11 @@ typedef enum {
     /* The game's PinCountRule counted the roll as more pins than were standing. The roll
      * is rejected and the game is left unchanged. */
     GAME_ERR_RULE_OUT_OF_RANGE,
-    /* Game_Roll, Game_CorrectRoll, Game_EditRolls or Pinsetter_Drain was called from inside
-     * a frame-changed callback. A roll then would tell the listeners about frames out of
-     * order, and an edit's replay would tell them out of order or twice, so it is rejected
-     * and the game is left unchanged. Call again once the callback has returned. */
+    /* Game_Roll, Game_CorrectRoll, Game_EditRolls or Pinsetter_Drain was called while the
+     * game was busy with another roll or edit: from inside a frame-changed callback, or from
+     * inside the game's PinCountRule. A change then would happen under the one in progress,
+     * and tell the listeners about frames out of order or twice, so it is rejected and the
+     * game is left unchanged. Call again once the callback or the rule has returned. */
     GAME_ERR_DURING_NOTIFICATION,
     /* Game_CorrectRoll or Game_EditRolls was given a roll number the game hasn't had (rolls
      * start at 1), or a range that runs past the last roll. Nothing is changed. */
