@@ -22,12 +22,14 @@ typedef struct {
 /* An empty log. */
 void RollLog_Init(RollLog *self);
 
-/* Adds a roll at the end. The game never accepts more rolls than a log holds. */
+/* Adds a roll at the end. The game never accepts more rolls than a log holds; a roll past
+ * that stops a debug build, and is refused in release. */
 void RollLog_Append(RollLog *self, Pins pins);
 
 uint8_t RollLog_Count(const RollLog *self);
 
-/* The roll at `index`, counting from 0. */
+/* The roll at `index`, counting from 0. Past the last roll, it stops a debug build, and reads
+ * as 0 in release. */
 Pins RollLog_At(const RollLog *self, uint8_t index);
 
 /* Writes to `edited` this log with `edit` (see RollEdit, in game.h) applied: the rolls before

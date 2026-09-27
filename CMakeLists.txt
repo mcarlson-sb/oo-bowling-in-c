@@ -74,6 +74,7 @@ enable_testing()
 add_executable(bowling_tests
     test/frame_test.cpp
     test/roll_list_test.cpp
+    test/roll_log_test.cpp
     test/slot_pool_test.cpp
     test/game_test.cpp
     test/nine_pin_no_tap_test.cpp
@@ -85,8 +86,9 @@ add_executable(bowling_tests
 )
 find_package(Threads REQUIRED) # the pinsetter test runs a second thread
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main Threads::Threads)
-# frame_test.cpp, roll_list_test.cpp, slot_pool_test.cpp and pinsetter_overlap_test.cpp test
-# private types or hooks directly, so they need the private headers.
+# frame_test.cpp, roll_list_test.cpp, roll_log_test.cpp, slot_pool_test.cpp and
+# pinsetter_overlap_test.cpp test private types or hooks directly, so they need the private
+# headers.
 target_include_directories(bowling_tests PRIVATE src)
 target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 

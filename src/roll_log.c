@@ -1,5 +1,6 @@
 #include "roll_log.h"
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -8,8 +9,15 @@ void RollLog_Init(RollLog *self)
     self->count = 0U;
 }
 
+/* The bounds check stays in every build: a roll past a whole game's is never written. Debug
+ * builds also stop at the assert, so whatever sent it gets found. (The game never accepts more
+ * rolls than a game has, so only a bug gets here.) */
 void RollLog_Append(RollLog *self, Pins pins)
 {
+    assert(self->count < GAME_MAX_ROLLS);
+    if (self->count >= GAME_MAX_ROLLS) {
+        return;
+    }
     self->pins[self->count] = pins;
     self->count++;
 }
@@ -19,8 +27,14 @@ uint8_t RollLog_Count(const RollLog *self)
     return self->count;
 }
 
+/* Reading a roll not yet made is a bug in the caller: it stops debug builds and reads as 0
+ * in release, never as stale memory. */
 Pins RollLog_At(const RollLog *self, uint8_t index)
 {
+    assert(index < self->count);
+    if (index >= self->count) {
+        return 0U;
+    }
     return self->pins[index];
 }
 
