@@ -280,21 +280,6 @@ TEST(PinsetterTest, should_leave_a_roll_posted_in_the_middle_of_a_drain_for_the_
     EXPECT_EQ(16U, Game_Score(game)); /* then 6+3 */
 }
 
-TEST(PinsetterTest, should_accept_a_null_pinsetter_as_every_game_function_accepts_a_null_game)
-{
-    /* Pinsetter_Create returns NULL when the pool is used up, like Game_Create. Every call
-     * then refuses quietly instead of crashing, as the Game_* calls do. */
-    GameHandle game_owner = MakeGame();
-    Game *game = game_owner.get();
-
-    EXPECT_FALSE(Pinsetter_Post(nullptr, 3U));
-    EXPECT_EQ(GAME_ERR_NULL_GAME, Pinsetter_Drain(nullptr, game));
-    EXPECT_FALSE(Pinsetter_DiscardOldest(nullptr));
-    EXPECT_EQ(0U, Pinsetter_RollsLost(nullptr));
-    Pinsetter_Destroy(nullptr);
-    EXPECT_EQ(0U, Game_Score(game)); /* nothing reached the game */
-}
-
 namespace {
 
 /* A listener that drains the pinsetter the first time it hears anything. */
