@@ -114,3 +114,16 @@ TEST(CorrectionListenerTest, should_tell_the_listeners_when_a_correction_reopens
     RollAll(game, {2U}); /* its second bonus: frame 1 is 16, frame 2 is 6 */
     EXPECT_EQ((std::map<int, int>{{1, 16}, {2, 6}}), scoreboard.scores);
 }
+
+/* ---- A correction the game can't make -------------------------------------------------- */
+
+TEST(CorrectionTest, should_reject_correcting_a_roll_that_has_not_been_made)
+{
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollAll(game, {3U, 4U});
+
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_CorrectRoll(game, 0U, 5U)); /* rolls start at 1 */
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_CorrectRoll(game, 3U, 5U)); /* only 2 so far */
+    EXPECT_EQ(7U, Game_Score(game));
+}

@@ -29,7 +29,10 @@ typedef enum {
     /* Game_Roll was called from inside a frame-changed callback. Allowing it would tell
      * listeners about frames out of order, so the roll is rejected and the game is left
      * unchanged. Roll again once the callback has returned. */
-    GAME_ERR_ROLL_DURING_NOTIFICATION
+    GAME_ERR_ROLL_DURING_NOTIFICATION,
+    /* Game_CorrectRoll was given a roll number the game hasn't had (rolls start at 1). Nothing
+     * is changed. */
+    GAME_ERR_NO_SUCH_ROLL
 } GameStatus;
 
 /* How many pins a roll counts as, given how many were standing before it and how many it

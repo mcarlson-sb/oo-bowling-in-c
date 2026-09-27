@@ -282,6 +282,9 @@ static void Game_ReportCorrection(Game *game, uint8_t was_reported)
 
 GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
 {
+    if ((roll_number == 0U) || (roll_number > game->roll_count)) {
+        return GAME_ERR_NO_SUCH_ROLL;
+    }
     const uint8_t was_reported = game->frames_reported;
     const uint8_t index = (uint8_t)(roll_number - 1U);
     const Pins was = game->rolls[index];
