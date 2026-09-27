@@ -119,10 +119,12 @@ Behind them:
   `Game_Roll`. A roll the game rejects is never thrown away, because it is often the right
   one, made to look impossible by an earlier miscount. Draining stops there, returns the
   roll's status and leaves it waiting, until the scorer corrects the earlier roll or discards
-  the reported one (`Pinsetter_DiscardOldest`). A post the full mailbox refuses is counted,
-  and the main loop reads the count with `Pinsetter_RollsLost`. `test/pinsetter_test.cpp`
-  covers both sides, with a real second thread and with a fake interrupt handler fired in the
-  middle of a drain.
+  the reported one (`Pinsetter_DiscardOldest`). Each drain takes only the rolls waiting when
+  it starts, so the main loop's work per pass is bounded, and a drain from inside a listener
+  is refused. A post the full mailbox refuses is counted: `Pinsetter_RollsLost` returns the
+  total, and each reader takes its own difference. `test/pinsetter_test.cpp` covers both
+  sides, with a real second thread and with a fake interrupt handler fired in the middle of a
+  drain.
 - Each frame is a **`FrameContext`** that holds the frame's current **state**:
   - **`RegularFrame`**: where every frame starts. On a first-roll 10 it becomes a strike
     state. When its rolls add up to 10 it becomes a spare state.
@@ -342,6 +344,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `include/game.h`, `src/game.c` | The public API and the `Game` object: the opaque handle, the pool, the roll chain, the listeners and the mailbox for rolls made from inside them |
 | `include/pinsetter.h`, `src/pinsetter.c` | The pinsetter: a lock-free ring of 21 rolls between the interrupt handler that posts them and the main loop that drains them into a game |
 | `src/game_limits.h` | `GAME_MAX_ROLLS`, shared by the game's roll log and the pinsetter's mailbox |
+| `src/game_internal.h` | `Game_IsNotifying`, which the pinsetter asks before draining; private to the library |
 | `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |
 | `src/frame.h/.c` | Abstract base `Frame`: its vtable, shared fields and methods, and `RollResult` |
 | `src/roll_list.h/.c` | `RollList`, the value type a frame keeps its rolls and bonus rolls in |
@@ -355,7 +358,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `test/nine_pin_no_tap_test.cpp` | A client that plays nine-pin no-tap by supplying its own `PinCountRule`, plus checks on rules that misbehave |
 | `test/scoreboard_test.cpp` | Clients that subscribe to changed frames: a live scoreboard and running stats |
 | `test/correction_test.cpp` | A scorer correcting and editing rolls: rescoring, the rule applied again on replay, rejected edits, listeners told only the final state, and property tests against a fresh game under both rules |
-| `test/pinsetter_test.cpp` | The pinsetter: rolls posted and drained in order, a drain stopped at an impossible roll and resolved, a whole game waiting, lost rolls counted (and the count wrapping), a fake interrupt in the middle of a drain, and a real second thread (run under ThreadSanitizer in CI) |
+| `test/pinsetter_test.cpp` | The pinsetter: rolls posted and drained in order, a drain stopped at an impossible roll and resolved, a whole game waiting, lost rolls counted (two readers, and the count wrapping), a fake interrupt in the middle of a drain, a drain refused from inside a listener, `NULL` handles, and a real second thread (run under ThreadSanitizer in CI) |
 | `test/remote_scoreboard_test.cpp` | A listener that writes each message into a byte buffer, and a decoder that rebuilds the scoreboard from the bytes alone |
 | `test/test_support.h` | What the black-box tests share: `GameHandle`, `RollAll`, `RunningStats` and the client-side no-tap rule |
 | `test/roll_list_test.cpp` | Tests of `RollList`, including its bounds checks in debug and release builds |

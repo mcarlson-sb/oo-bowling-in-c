@@ -748,6 +748,11 @@ it would need no change to `game.h` or `game.c`.
 | `...a roll posted by an interrupt in the middle of a drain goes in after the rest` | clean-up | Passed without new code. A fake interrupt handler |
 | `...the thread test wraps and fills the 21-roll mailbox again` | clean-up | The 21-roll mailbox had silently weakened it |
 | `...refuse to build where a count would need a lock` | clean-up | From the review |
+| `...two readers can each hear about every lost roll` | make-change | After review: `Pinsetter_RollsLost` was a query that changed state |
+| `...a drain takes only the rolls waiting when it starts` | make-change | After review: a bound on each drain |
+| `...refuse a drain from inside a listener` | make-change | After review. `Game_IsNotifying`, in a new private header, `game_internal.h` |
+| `...accept a NULL pinsetter, as every Game_* function accepts a NULL game` | make-change | After review |
+| `pinsetter.h: two contracts the caller keeps, a glitch's slot and detaching before destroy` | clean-up | After review. Comments only |
 
 From the remote scoreboard on, every commit message names a mutation that fails the commit's
 test. In every case but one (the remote scoreboard, below), it fails only that test.
@@ -821,10 +826,11 @@ cost the interrupt handler a roll of the game.
 
 **A full mailbox.** The interrupt handler's roll was lost, and only the handler saw `false`,
 with no one to tell. **The user chose a count.** The interrupt side increments it and the
-main loop never clears it. `Pinsetter_RollsLost` answers the difference from the last value
-the main loop saw, and unsigned wrap-around keeps that right. The count is 16 bits, so a
-test can reach the wrap (65,536 lost rolls), and one does. With a 21-roll mailbox, any
-answer but 0 is a real anomaly, and `pinsetter.h` says so.
+main loop never clears it. At first `Pinsetter_RollsLost` answered the difference from the
+last value the main loop saw; after review it returns the total, and each reader takes its
+own difference (see "After review"). Unsigned wrap-around keeps the difference right. The
+count is 16 bits, so a test can reach the wrap (65,536 lost rolls), and one does. With a
+21-roll mailbox, any increase is a real anomaly, and `pinsetter.h` says so.
 
 ### A firmware review of the mailbox
 
@@ -844,13 +850,13 @@ is marked:
 | **One producer, one consumer** | Documented at the top of `pinsetter.h`: only the interrupt side may post, and a listener that wants to roll calls `Game_Roll`. It isn't repeated on `Pinsetter_Post` itself | Documented; nothing checks it (next row) |
 | ...if a second producer posts | Two posts can read the same position, write the same slot and both return `true`: a roll is lost, or read twice. In the probe, the plain builds lost and repeated rolls (14, 21 and 10 frames where there should have been 20). **ThreadSanitizer never saw it**, even at 20,000 runs and 800,000 posts. Nothing in the library can detect it | **Argued**, and shown by a stress probe in the plain builds. **Not caught by ThreadSanitizer** |
 | **Interrupt safety** | `Pinsetter_Post` does two atomic loads, one plain store and one atomic store; when the mailbox is full, one load and one store. No loop, no callback, no lock, and no game, because it has no `Game` to reach. The lost-roll count is written with a load and a store, not a read-modify-write: it has one writer, and some interrupt-driven targets can't do an atomic read-modify-write without a lock | Bounded, with no callback: **argued**, by reading (and no `Game` is in reach, by its signature). No lock: **checked** by two static asserts that both atomics are lock-free. Posting never touches the game: **tested** (a fake interrupt handler, fired in the middle of a drain, sees the score unchanged) |
-| **A full mailbox** | Was invisible to all but the interrupt handler. Now counted, and read by the main loop | **Tested**: the count, and its wrap |
+| **A full mailbox** | Was invisible to all but the interrupt handler. Now counted, and read by the main loop. After review, reading it changes nothing, so any number of readers can watch it | **Tested**: the count, its wrap, and two readers. A read that writes no longer compiles (the query takes a `const Pinsetter *`) |
 | **Wrap-around** | The positions stay below 22 and wrap to 0, so no counter can overflow. The earlier free-running counts, taken `% 8`, were right only because 8 divides 2^32. Taken `% 21`, they would have skipped slots after 2^32 posts | The positions' wrap: **tested** (the thread test sends 105 rolls through 22 slots, and a ring that never wraps crashes it). The 2^32 case: **argued**, and designed out |
 | **Capacity at its edges** | 21 rolls accepted, the 22nd refused, and room again after a drain | **Tested**, one off each way: a 22-roll mailbox fails the test, and a 20-roll one fails the build (the static assert tying it to `GAME_MAX_ROLLS`) |
-| **The 21-roll promise has an edge** | It holds while every waiting roll is a real roll of one game. A glitch waiting to be discarded takes a slot too, and so would a roll of the game before, still unresolved. Then 21 more rolls make 22, and the last is refused (and counted) | **Argued**. Left to the user |
-| **A drain has no fixed bound** (`ENG-7.4`, bounded waits) | `Pinsetter_Drain` reads the post position again on each pass, so it also takes rolls that arrive while it runs. An interrupt handler posting faster than the game applies rolls would keep it draining. Reading the position once, at the start, would bound a drain at 21 rolls, and leave later ones for the next drain | Today's behavior: **tested** (the fake-interrupt test fails if the position is read once). The bound: **argued**. Left to the user |
-| **Draining from inside a listener** | `Game_Roll` then returns `GAME_QUEUED`, which the drain treats as accepted. The roll goes into the game's mailbox, where an impossible one is dropped: around the user's stop-and-keep policy | **Argued**. No test, no guard |
-| **`NULL`, and lifetime** | Unlike every `Game_*` function, the `Pinsetter_*` functions don't accept `NULL`: they would crash. And destroying a pinsetter while its interrupt handler can still post is a use after release that the pool can't see | **Argued**. Recorded, not fixed |
+| **The 21-roll promise has an edge** | It holds while every waiting roll is a real roll of one game. A glitch waiting to be discarded takes a slot too, and so would a roll of the game before, still unresolved. Then 21 more rolls make 22, and the last is refused (and counted) | **Argued**. After review, the user accepted it: documented in `pinsetter.h`, not sized for, because the count makes it visible |
+| **A drain had no fixed bound** (`ENG-7.4`, bounded waits) | `Pinsetter_Drain` read the post position again on each pass, so it also took rolls that arrived while it ran. An interrupt handler posting faster than the game applies rolls could keep it draining. After review it reads the position once, at the start: a drain applies at most 21 rolls, and later ones wait for the next | **Tested** (the fake-interrupt test now expects the next drain, and fails if the position is read on every pass) |
+| **Draining from inside a listener** | `Game_Roll` returned `GAME_QUEUED`, which the drain treated as accepted, and the roll went into the game's mailbox, where an impossible one is dropped: around the user's stop-and-keep policy. After review it is refused with `GAME_ERR_EDIT_DURING_NOTIFICATION`, and drains nothing | **Tested** (a glitch waiting in the pinsetter vanished before the guard; it is still there after) |
+| **`NULL`, and lifetime** | The `Pinsetter_*` functions crashed on `NULL`, unlike every `Game_*` function. After review they accept it the same way. Destroying a pinsetter while its interrupt handler can still post lands the post in the next pinsetter created: the pool can't see that, so `pinsetter.h` makes it the caller's contract | `NULL`: **tested**. Lifetime: **argued**, and documented |
 
 **ThreadSanitizer, one mutant at a time.** Each mutant ran alone, in its own commit and its
 own CI run, on a throwaway branch that has since been deleted. The thread test runs its five
@@ -921,13 +927,17 @@ objects.
 - **Size:** `src/` grew from 1,098 lines to 1,268 (762 to 882 of code), and `include/` from
   128 to 199 (40 to 61). Most of it is the pinsetter: `pinsetter.c` is 130 lines and
   `pinsetter.h` 65. The rest is the game's mailbox, the new statuses, and their comments.
+  The review's follow-up added 37 more lines to `src/` (23 of code: the `NULL` guards, the
+  private header and the drain's guard) and 21 lines of comments to `include/`.
 - **Memory, checked with `offsetof` and `sizeof`:**
   - A `Game` grew by 24 bytes, from 1,040 to 1,064: the mailbox, another 22-byte `RollLog`,
     at offset 1,040, then 2 bytes of padding. The pool of two games is 2,128 bytes.
   - A `Pinsetter` is 36 bytes: 22 roll slots, 2 of padding, two 4-byte positions, the 2-byte
     lost count and the 2-byte last value seen. The pool of two is 72 bytes, the same 72 that
     ThreadSanitizer reports as the size of `s_pinsetters`. It was 16 bytes before the review:
-    the whole-game mailbox added 14 slots and 2 of padding, and the lost count 4.
+    the whole-game mailbox added 14 slots and 2 of padding, and the lost count 4. After
+    review the last value seen is gone, and a `Pinsetter` is still 36 bytes: 4-byte alignment
+    turned those 2 bytes into padding.
 - **What the compiler and the sanitizers can't check:**
   - **One producer.** ThreadSanitizer can't see a second producer in practice (above), and
     nothing else looks.
@@ -936,8 +946,10 @@ objects.
     atomics. The static asserts check the lock-free part, on each compiler the build runs on.
   - **That the interrupt side stays bounded.** Nothing stops a later change adding a loop or
     a call to `Pinsetter_Post`. Only review does.
-  - **The drain's bound, and a drain from inside a listener** (both in the review).
-  - **A pinsetter's lifetime, and `NULL`.**
+  - **A pinsetter's lifetime.** Detaching the interrupt handler before `Pinsetter_Destroy`
+    is the caller's contract, in `pinsetter.h`; nothing checks it. (The drain's bound, a
+    drain from inside a listener, and `NULL` were on this list until the review's follow-up
+    made each one tested.)
 - **A test was weakened silently.** Making the mailbox 21 rolls left the thread test posting
   one game into a 22-slot ring. It never wrapped or filled again, though its comment said it
   did, and every build stayed green. Only reasoning found it, and a mutant (a ring that never
@@ -987,15 +999,49 @@ opposite of an object hiding its state.
 - One claim was confirmed instead. `0107421`'s "only ThreadSanitizer can see the race" in the
   plain version had never been run. M0 now shows the three races.
 
+### After review: one smell, and the four items left to the user
+
+**A query that changed state.** `Pinsetter_RollsLost` updated the pinsetter's `lost_seen` as
+it answered, so two readers, a scoreboard and a logger, would each steal the other's
+increments. A test with two readers showed it: the logger heard 0 after the scoreboard had
+asked. Following command-query separation, it now returns the total, never cleared, and each
+reader keeps its own last value and takes its own difference. The `lost_seen` field is gone,
+and the query takes a `const Pinsetter *`, so a version that writes no longer compiles. (GCC
+accepts `atomic_load_explicit` on a `const` object; C11's own wording doesn't promise it.)
+The earlier version was mine, and the review caught it, not a test: no test had two readers.
+
+The four items the review left to the user, each now settled:
+
+| Item | The user's choice | What changed | Evidence |
+|---|---|---|---|
+| A drain with no fixed bound | Bound it: a firmware main loop needs bounded work per pass (`ENG-7.4`) | `Pinsetter_Drain` reads the post position once, at the start. A roll posted mid-drain goes in on the next drain. Its own commit, because it is a policy change | The fake-interrupt test changed to match. Reading the position on every pass again fails it, and only it |
+| Draining from inside a listener | Refuse it, with the status edits get | `Pinsetter_Drain` returns `GAME_ERR_EDIT_DURING_NOTIFICATION` there. To ask the game, the pinsetter uses `Game_IsNotifying` from a private header, so the public API doesn't grow | A glitch waiting in the pinsetter vanished before the guard, and is still there after. Removing the guard fails that test, and only it |
+| A glitch in one of the 21 slots | Accept it and document it | A paragraph on `Pinsetter_Post` in `pinsetter.h` | Argued; the lost-roll count makes it visible |
+| `NULL` and lifetime | Accept `NULL` as every `Game_*` function does; make lifetime the caller's contract | Every `Pinsetter_*` function accepts `NULL` (`Pinsetter_Drain` returns `GAME_ERR_NULL_GAME`, its comment widened). One line on `Pinsetter_Destroy`: detach the interrupt handler first | A test calls each with `NULL`; it crashed before. Removing the guard in `Pinsetter_Post` crashes it, and only it |
+
+Two small things these left behind, noted and not changed:
+- `GAME_ERR_EDIT_DURING_NOTIFICATION` now also answers a drain, which isn't an edit. Its
+  comment in `game.h` says so. A name like `GAME_ERR_DURING_NOTIFICATION` would say it
+  better, but renaming it wasn't asked for.
+- `game_internal.h` is the first header through which a library module asks `Game` about its
+  state. It is asking, not telling. The alternative was to act on `GAME_QUEUED` after the
+  fact, when the roll is already in the game's mailbox and can't be taken back.
+
+Still open for the user: whether the game's own mailbox should keep, not drop, an impossible
+roll a listener queued; whether anything should check the one-producer rule at run time; and
+when to start the clean-up.
+
 ### The debt
 
 Before phase 6, `game.c` was 344 lines, 44% of the library's `.c` files (773 lines), with the
-roll-log and listener extractions deferred on purpose. Now it is **375 lines, 40% of 934**.
+roll-log and listener extractions deferred on purpose. At the end of phase 6 it was **375
+lines, 40% of 934**; after the review's follow-up, 381 of 956, still 40%.
 The share fell only because `pinsetter.c` (130 lines) joined the library. `game.c` itself grew
 by 31 lines: 33 for the game's mailbox, less the 2 that `GAME_MAX_ROLLS` took with it when it
 moved to `game_limits.h`. Counted together, the two boundary files, `game.c`
-and `pinsetter.c`, are 505 lines, 54% of the library: the boundary is now more than half of the
-code, and the frames, which are the whole design on `main`, are the smaller part.
+and `pinsetter.c`, are 505 lines, 54% of the library (527, 55%, after the follow-up): the
+boundary is now more than half of the code, and the frames, which are the whole design on
+`main`, are the smaller part.
 
 ---
 

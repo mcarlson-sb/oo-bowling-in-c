@@ -111,10 +111,11 @@ PRIVATE  src/
 
   slot_pool.h                    (standard headers only)
   game_limits.h                  (GAME_MAX_ROLLS; no includes)
+  game_internal.h  --> game.h    (Game_IsNotifying, for the library's own modules)
 
 Source files that include a header from another module:
-  game.c           --> frame_context.h, game_limits.h, slot_pool.h
-  pinsetter.c      --> game_limits.h, slot_pool.h
+  game.c           --> frame_context.h, game_internal.h, game_limits.h, slot_pool.h
+  pinsetter.c      --> game_internal.h, game_limits.h, slot_pool.h
   frame_context.c  --> frame_transition.h
   regular_frame.c  --> frame_transition.h (the one state that switches states)
 ```
@@ -234,7 +235,7 @@ s_pinsetters[2]                                        72 bytes
 |  post_at    : atomic_uint      written by the interrupt side|
 |  drain_at   : atomic_uint      written by the main loop     |
 |  rolls_lost : _Atomic uint16_t posts refused, ever          |
-|  lost_seen  : uint16_t         rolls_lost when last asked   |
+|  (2 bytes of padding)                                       |
 | Pinsetter [1]                                               |
 +-------------------------------------------------------------+
 ```
@@ -498,7 +499,11 @@ true
 
 main loop: Pinsetter_Drain(pinsetter, game)
    |
-   |-- drain_at == post_at (acquire)?  --yes--> GAME_OK: nothing is waiting
+   |-- pinsetter == NULL?             --yes--> GAME_ERR_NULL_GAME
+   |-- called from inside a listener? --yes--> GAME_ERR_EDIT_DURING_NOTIFICATION
+   |
+   |   end = post_at (acquire), read once: rolls posted from now on wait for the next drain
+   |-- drain_at == end?  --yes--> GAME_OK: nothing (more) was waiting
    |
    |   status = Game_Roll(game, rolls[drain_at])
    |-- the game rejected it?  --yes--> return its status; the roll stays waiting
@@ -512,10 +517,13 @@ view before the position that announces them: ThreadSanitizer catches each of th
 weakened to relaxed (KAY.md, phase 6). A drain that stops leaves the roll where it is. The
 scorer then either corrects an earlier roll (`Game_CorrectRoll`), when the reported roll was
 right and the one before it miscounted, or throws the reported one away
-(`Pinsetter_DiscardOldest`); the next drain carries on. Rolls reported after the tenth frame
+(`Pinsetter_DiscardOldest`); the next drain carries on. A drain takes at most the 21 rolls
+waiting when it starts, so the main loop's work per pass is bounded. Rolls reported after the
+tenth frame
 wait the same way, for the next game. The ring holds a whole game's rolls, so a stopped drain
 can't cost the interrupt handler a roll of the game; a static assert ties its size to
-`GAME_MAX_ROLLS`.
+`GAME_MAX_ROLLS`. The lost-roll count is only read, never cleared, so any number of readers
+can watch it, each taking its own difference.
 
 **Worked example: rolls 10, 3, 4.** `RollResult` is what each frame hands back.
 
@@ -588,7 +596,8 @@ fresh game's; if rejected, nothing may change.
 deterministic, the test itself playing the interrupt handler between main-loop calls, or,
 fired from inside a listener, in the middle of a drain. It covers order, a correction made
 while rolls wait, a drain stopped at an impossible roll and resolved both ways, rolls waiting
-for the next game, a whole game waiting, and the lost-roll count and its wrap. One test runs
+for the next game, a whole game waiting, the lost-roll count (two readers, and its wrap), a
+drain refused from inside a listener, and `NULL` handles. One test runs
 a real second thread through five games, wrapping and filling the ring; CI runs it under
 ThreadSanitizer.
 
