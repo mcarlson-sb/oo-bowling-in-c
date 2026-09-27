@@ -510,8 +510,13 @@ argument; the first was phase 3's double-completion guess.
 ### Costs
 
 - **Size:** the library grew by 90 lines of code and lost 20, with the rename (`src/` 980 →
-  1,065, `include/` 88 → 103). A `Game` grew by only 16 bytes, to 1,040, because some new fields
-  fit into existing padding.
+  1,065, `include/` 88 → 103).
+- **Memory, checked with `offsetof` and `sizeof`:** the log adds 22 bytes per game (21 rolls
+  and a count), but a `Game` grew by only 16, from 1,024 to 1,040 bytes. At the end of phase 3
+  the data ended at byte 1,018 and the struct was padded to 1,024; the log starts at offset
+  1,018 and ends at exactly 1,040, so 6 of its 22 bytes went into that padding. The pool of two
+  games is 2,080 bytes. (Earlier summaries said "1,024 in all" and "1,040 in all"; both meant
+  one `Game`, not the pool.)
 - **Time:** a correction replays up to 21 rolls through up to 10 frames. That's negligible
   here, but it's proportional to the game so far, where a roll is constant time.
 - **A new requirement the compiler can't check: the rule must be pure.** Restoring a rejected
