@@ -63,13 +63,17 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
     return true;
 }
 
-void Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
+GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 {
     unsigned drained = atomic_load_explicit(&pinsetter->drained, memory_order_relaxed);
     while (drained != atomic_load_explicit(&pinsetter->posted, memory_order_acquire)) {
         const Pins pins = pinsetter->rolls[drained % PINSETTER_CAPACITY];
+        const GameStatus status = Game_Roll(game, pins); /* on the main loop's thread */
+        if ((status != GAME_OK) && (status != GAME_QUEUED)) {
+            return status; /* the machine reported it: keep it, and let the scorer decide */
+        }
         drained++;
         atomic_store_explicit(&pinsetter->drained, drained, memory_order_release);
-        (void)Game_Roll(game, pins); /* on the main loop's thread, like every roll */
     }
+    return GAME_OK;
 }

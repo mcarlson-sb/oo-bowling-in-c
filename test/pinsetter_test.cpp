@@ -79,6 +79,28 @@ TEST(PinsetterTest, should_apply_rolls_still_waiting_after_a_correction_made_mea
     EXPECT_EQ(13U, Game_Score(game)); /* 2 then 8: a spare, with the 3 as its bonus */
 }
 
+TEST(PinsetterTest, should_stop_at_an_impossible_roll_and_keep_it_until_the_scorer_resolves_it)
+{
+    /* The pinsetter counted 5 when 2 fell, so its true 8 looks impossible. The 8 is the roll
+     * that's right. Draining stops there and says why, the 8 and the 3 behind it wait, and
+     * once the scorer corrects the first roll, the next drain applies them. */
+    GameHandle game_owner = MakeGame();
+    Game *game = game_owner.get();
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 5U)); /* miscounted: 2 fell */
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 8U));
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 3U));
+
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Pinsetter_Drain(pinsetter, game));
+    EXPECT_EQ(0U, Game_Score(game)); /* frame 1 is still open: the 8 and the 3 are waiting */
+
+    EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 2U));
+    EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, game));
+    EXPECT_EQ(13U, Game_Score(game)); /* 2 then 8, a spare with the 3 as its bonus */
+}
+
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
 {
     /* A real thread plays the interrupt handler: it only posts, retrying while the mailbox

@@ -33,8 +33,15 @@ void Pinsetter_Destroy(Pinsetter *pinsetter);
  * the mailbox is full: 8 rolls are waiting that the main loop hasn't drained. */
 bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins);
 
-/* Main-loop side. Rolls every posted roll into `game`, oldest first, with Game_Roll. */
-void Pinsetter_Drain(Pinsetter *pinsetter, Game *game);
+/* Main-loop side. Rolls every posted roll into `game`, oldest first, with Game_Roll, and
+ * returns GAME_OK once they have all gone in.
+ *
+ * A roll the game rejects is never thrown away: the machine reported it, and it is often the
+ * right one, made to look impossible by an earlier roll that was miscounted. So draining stops
+ * there and returns that roll's status (such as GAME_ERR_INVALID_PINS), leaving it, and every
+ * roll after it, waiting. The scorer resolves it, for instance by correcting the earlier roll
+ * with Game_CorrectRoll, and the next drain carries on from it. */
+GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game);
 
 #ifdef __cplusplus
 }
