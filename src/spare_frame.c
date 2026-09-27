@@ -1,10 +1,9 @@
 #include "spare_frame.h"
 
-/* A SpareFrame is born with both of its rolls, so every roll it sees is its one bonus
- * roll. */
+/* Born with both rolls, so every roll it sees is its one bonus roll. */
 static RollResult SpareFrame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
-    (void)context; /* only a RegularFrame changes state */
+    (void)context;
     Frame_AddBonusRoll(self, pins);
     Frame_Complete(self);
     return RollResult_Passed(pins);

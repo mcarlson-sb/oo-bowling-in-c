@@ -100,30 +100,15 @@ The operations every state must provide are a struct of function pointers:
 
 ```c
 /* src/frame.h */
-/* The state interface. Every state honors the same contract, so any of them can stand in
- * for a Frame (Liskov substitution), and callers never need to know which one they have. */
+/* The state interface: every state keeps this contract, so any can stand in for a Frame. */
 typedef struct {
-    /* Takes one roll.
-     *
-     * The caller guarantees:
-     *   - the frame is incomplete (Frame_Roll handles complete frames itself);
-     *   - `pins` is no more than pins_standing() allowed (Game_Roll has checked it);
-     *   - `context` is this frame's own context, never NULL.
-     *
-     * The state guarantees:
-     *   - it records the roll as one of its own rolls or bonus rolls, never more than a
-     *     RollList holds;
-     *   - it returns RollResult_Consumed() if it keeps the roll, or RollResult_Passed(pins),
-     *     with the same pins, if the next frame should also get it;
-     *   - it changes state only through `context`. Only RegularFrame does; the others
-     *     ignore `context`.
-     *
-     * The context passes itself in so that no frame stores a pointer back to it. */
+    /* Given an incomplete frame, no more pins than pins_standing() allows, and the frame's own
+     * context (passed in, so no state points back to it). Records the roll as a roll or bonus
+     * roll, and returns Consumed, or Passed(pins) for the next frame too. Changes state only
+     * through `context`. */
     RollResult (*roll)(Frame *self, struct FrameContext *context, Pins pins);
 
-    /* Pins standing for the next roll, if this is the game's latest frame: from 0 to
-     * FRAME_ALL_PINS. FRAME_ALL_PINS unless the next roll is this frame's own, on a partly
-     * cleared rack. Has no side effects. */
+    /* For the next roll, if this is the latest frame. No side effects. */
     Pins (*pins_standing)(const Frame *self);
 } FrameVtable;
 ```
@@ -149,7 +134,7 @@ Frame *StrikeFrame_Init(StrikeFrame *self);
 /* src/strike_frame.c */
 static RollResult StrikeFrame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
-    (void)context; /* only a RegularFrame changes state */
+    (void)context;
     Frame_AddBonusRoll(self, pins);
     if (Frame_HasAllBonusRolls(self)) {
         Frame_Complete(self);
@@ -289,8 +274,7 @@ A complete frame passes every roll on, whatever state it's in. That rule is writ
 /* src/frame.c */
 RollResult Frame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
-    /* A complete frame passes every roll on. Handled once here, so each state's roll() only
-     * ever sees rolls while its frame is still incomplete. */
+    /* Once here, so no state's roll() ever sees a complete frame. */
     if (self->complete) {
         return RollResult_Passed(pins);
     }

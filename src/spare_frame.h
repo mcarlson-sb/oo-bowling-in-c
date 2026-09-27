@@ -9,8 +9,7 @@ typedef struct {
     Frame base; /* must be first: SpareFrame "extends" Frame */
 } SpareFrame;
 
-/* Builds the spare from the frame it replaces: a copy of that frame's rolls, because this
- * state has its own storage, plus the roll that completed the spare. */
+/* Copies the replaced frame's rolls, since each state has its own storage. */
 Frame *SpareFrame_Init(SpareFrame *self, const Frame *replaced, Pins completing_pins);
 
 #endif /* SPARE_FRAME_H */

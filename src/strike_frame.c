@@ -2,7 +2,7 @@
 
 static RollResult StrikeFrame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
-    (void)context; /* only a RegularFrame changes state */
+    (void)context;
     Frame_AddBonusRoll(self, pins);
     if (Frame_HasAllBonusRolls(self)) {
         Frame_Complete(self);

@@ -1,8 +1,7 @@
 #ifndef REGULAR_FRAME_H
 #define REGULAR_FRAME_H
 
-/* The state every frame except the tenth starts in: rolls that are neither a strike nor a
- * spare. */
+/* The state every frame starts in, and stays in unless it becomes a strike or a spare. */
 
 #include "frame.h"
 

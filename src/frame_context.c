@@ -7,7 +7,6 @@ struct FrameStateFactory {
     Frame *(*new_spare)(FrameContext *self, const Frame *replaced, Pins completing_pins);
 };
 
-/* Frames 1 to 9: a strike or spare passes its bonus rolls on to the next frame. */
 static Frame *NewPassingStrike(FrameContext *self)
 {
     return StrikeFrame_Init(&self->strike);
@@ -23,7 +22,6 @@ static const struct FrameStateFactory s_regular_family = {
     .new_spare = NewPassingSpare,
 };
 
-/* The tenth frame: a strike or spare keeps its fill balls. */
 static Frame *NewTenthStrike(FrameContext *self)
 {
     return TenthStrikeFrame_Init(&self->tenth_strike);

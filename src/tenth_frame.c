@@ -2,12 +2,11 @@
 
 #include <stdbool.h>
 
-/* Fill balls are kept as the base class's bonus rolls, so the shared Frame_Score adds them
- * with no special case. */
+/* Fill balls are bonus rolls, so Frame_Score needs no special case. */
 
 static RollResult TenthStrikeFrame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
-    (void)context; /* the last frame's states never change state */
+    (void)context;
     Frame_AddBonusRoll(self, pins);
     if (Frame_HasAllBonusRolls(self)) {
         Frame_Complete(self);
@@ -15,8 +14,6 @@ static RollResult TenthStrikeFrame_Roll(Frame *self, struct FrameContext *contex
     return RollResult_Consumed();
 }
 
-/* The second fill ball rolls at what the first left standing, unless the first cleared the
- * rack. */
 static Pins TenthStrikeFrame_PinsStanding(const Frame *self)
 {
     if (!Frame_IsSecondBonusRoll(self)) {
@@ -42,7 +39,7 @@ Frame *TenthStrikeFrame_Init(TenthStrikeFrame *self)
 
 static RollResult TenthSpareFrame_Roll(Frame *self, struct FrameContext *context, Pins pins)
 {
-    (void)context; /* the last frame's states never change state */
+    (void)context;
     Frame_AddBonusRoll(self, pins);
     Frame_Complete(self);
     return RollResult_Consumed();
