@@ -125,3 +125,15 @@ TEST_F(ScoreboardTest, should_tell_a_second_independent_subscriber_too)
     EXPECT_EQ(3, stats.frames);
     EXPECT_DOUBLE_EQ(38.0 / 3.0, stats.Average());
 }
+
+TEST_F(ScoreboardTest, should_refuse_a_subscriber_once_every_slot_is_taken)
+{
+    RunningStats stats;
+    RunningStats one_too_many;
+    ASSERT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
+    EXPECT_FALSE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &one_too_many));
+
+    RollAll({3U, 4U});
+    EXPECT_EQ(1, stats.frames);
+    EXPECT_EQ(0, one_too_many.frames);
+}

@@ -208,13 +208,14 @@ Score Game_Score(const Game *game)
     return score;
 }
 
-void Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context)
+bool Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context)
 {
-    if (game == NULL) {
-        return;
+    if ((game == NULL) || (game->listener_count == GAME_MAX_LISTENERS)) {
+        return false;
     }
     FrameCompletedListener *listener = &game->listeners[game->listener_count];
     listener->callback = callback;
     listener->context = context;
     game->listener_count++;
+    return true;
 }

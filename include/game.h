@@ -4,6 +4,8 @@
 /* A bowling game. The representation is hidden: callers hold an opaque handle and act on
  * it only through these functions. */
 
+#include <stdbool.h>
+
 #include "bowling_types.h"
 
 #ifdef __cplusplus
@@ -46,9 +48,11 @@ void Game_Destroy(Game *game);
  * oldest first. */
 typedef void (*FrameCompletedCallback)(void *context, uint8_t frame_number, Score frame_score);
 
-/* Sets the one callback this game tells about completed frames. `context` is passed back to
- * it unchanged. */
-void Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context);
+/* Adds a callback this game tells about completed frames; `context` is passed back to it
+ * unchanged. A game has room for two. Returns false, adding nothing, if both are taken or
+ * `game` is NULL. */
+bool Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context);
+
 GameStatus Game_Roll(Game *game, Pins pins);
 Score Game_Score(const Game *game);
 
