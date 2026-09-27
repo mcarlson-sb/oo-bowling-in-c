@@ -42,6 +42,7 @@ struct Game {
     uint8_t listener_count;
     bool notifying; /* true while the listeners are being told: see Game_Roll */
     RollLog log; /* see Game_CorrectRoll */
+    RollLog mailbox; /* rolls made from inside a callback, oldest first: see Game_Roll */
 };
 
 /* The games themselves, and the pool that tracks which are in use. The pool's bookkeeping
@@ -151,6 +152,7 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     game->listener_count = 0U;
     game->notifying = false;
     game->log.count = 0U;
+    game->mailbox.count = 0U;
     return game;
 }
 
@@ -201,19 +203,47 @@ static GameStatus Game_Accept(Game *game, Pins pins)
     return GAME_OK;
 }
 
+/* Accepts one roll, logs it and tells the listeners what it completed. */
+static GameStatus Game_RollNow(Game *game, Pins pins)
+{
+    const GameStatus status = Game_Accept(game, pins);
+    if (status == GAME_OK) {
+        game->log.pins[game->log.count] = pins;
+        game->log.count++;
+        Game_ReportCompletedFrames(game);
+    }
+    return status;
+}
+
+/* Takes the oldest roll out of the mailbox. */
+static Pins Game_TakeFromMailbox(Game *game)
+{
+    const Pins oldest = game->mailbox.pins[0];
+    game->mailbox.count--;
+    for (uint8_t i = 0U; i < game->mailbox.count; i++) {
+        game->mailbox.pins[i] = game->mailbox.pins[i + 1U];
+    }
+    return oldest;
+}
+
+/* A roll from inside a callback can't be applied at once: it would complete frames, and
+ * tell listeners about them, in the middle of telling them about earlier ones. So it waits
+ * in the mailbox, and the roll that started the notification applies it once the listeners
+ * have heard everything before it. A queued roll can queue more; they are applied in the
+ * order they were made. */
 GameStatus Game_Roll(Game *game, Pins pins)
 {
     if (game == NULL) {
         return GAME_ERR_NULL_GAME;
     }
     if (game->notifying) {
-        return GAME_ERR_ROLL_DURING_NOTIFICATION;
+        game->mailbox.pins[game->mailbox.count] = pins;
+        game->mailbox.count++;
+        return GAME_QUEUED;
     }
-    const GameStatus status = Game_Accept(game, pins);
-    if (status == GAME_OK) {
-        game->log.pins[game->log.count] = pins;
-        game->log.count++;
-        Game_ReportCompletedFrames(game);
+    const GameStatus status = Game_RollNow(game, pins);
+    while (game->mailbox.count > 0U) {
+        (void)Game_RollNow(game, Game_TakeFromMailbox(game));
     }
     return status;
 }

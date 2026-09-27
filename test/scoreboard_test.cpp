@@ -206,10 +206,11 @@ void RollsFromInside_FrameChanged(void *context, uint8_t frame_number, Score fra
 
 } // namespace
 
-TEST(ListenerReentryTest, should_refuse_a_roll_made_from_inside_a_listener)
+TEST(ListenerReentryTest, should_queue_a_roll_made_from_inside_a_listener_until_it_returns)
 {
-    /* Allowed, a roll from inside a notification completed frame 2 and told the other
-     * listener about it before frame 1: out of order. Refusing it keeps the promise. */
+    /* Applied at once, a roll from inside a notification completed frame 2 and told the other
+     * listener about it before frame 1: out of order. Queued in the game's mailbox, it is
+     * applied once every listener has heard about frame 1. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     RollsFromInside rolls_from_inside;
@@ -220,10 +221,7 @@ TEST(ListenerReentryTest, should_refuse_a_roll_made_from_inside_a_listener)
 
     RollAll(game, {5U, 5U, 3U}); /* the 3 completes frame 1, a spare (13) */
 
-    EXPECT_EQ(GAME_ERR_ROLL_DURING_NOTIFICATION, rolls_from_inside.status);
-    EXPECT_EQ((Frames{{1, 13}}), other.frames); /* the refused roll changed nothing */
-    EXPECT_EQ(13U, Game_Score(game));
-
-    RollAll(game, {4U}); /* the same roll, made normally, is fine */
-    EXPECT_EQ((Frames{{1, 13}, {2, 7}}), other.frames);
+    EXPECT_EQ(GAME_QUEUED, rolls_from_inside.status); /* not judged yet: it was only queued */
+    EXPECT_EQ((Frames{{1, 13}, {2, 7}}), other.frames); /* the 4 completed frame 2, after 1 */
+    EXPECT_EQ(20U, Game_Score(game));
 }

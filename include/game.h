@@ -35,7 +35,11 @@ typedef enum {
     GAME_ERR_NO_SUCH_ROLL,
     /* Game_EditRolls would leave more rolls than any game can have (21). Nothing is
      * changed. */
-    GAME_ERR_TOO_MANY_ROLLS
+    GAME_ERR_TOO_MANY_ROLLS,
+    /* Not an error. Game_Roll was called from inside a frame-changed callback, so the roll
+     * went into the game's mailbox. It is checked and applied, like any roll, as soon as
+     * the listeners have heard about the roll before it. */
+    GAME_QUEUED
 } GameStatus;
 
 /* How many pins a roll counts as, given how many were standing before it and how many it
@@ -66,8 +70,9 @@ void Game_Destroy(Game *game);
  *   - After a roll, it is told about each frame the roll completed, oldest first.
  *   - After a correction (Game_CorrectRoll), it is told again about every complete frame,
  *     with its new score: a frame number it has heard before is an update.
- * A callback may read the game (Game_Score sees the whole roll), but not roll:
- * Game_Roll from inside a callback returns GAME_ERR_ROLL_DURING_NOTIFICATION. */
+ * A callback may read the game (Game_Score sees the whole roll). It may also roll: Game_Roll
+ * from inside a callback returns GAME_QUEUED, and the roll is applied once the listeners
+ * have heard about the roll before it. */
 typedef void (*FrameChangedCallback)(void *context, uint8_t frame_number, Score frame_score,
                                      bool frame_complete);
 
