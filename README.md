@@ -66,8 +66,9 @@ The release build reaches 100% of lines and every branch except that last guard.
 
 ## What the code does
 
-The public API is six functions in `include/game.h`: `Game_Create`, `Game_CreateWithRule`,
-`Game_OnFrameCompleted`, `Game_Roll`, `Game_Score` and `Game_Destroy`. Behind them:
+The public API is seven functions in `include/game.h`: `Game_Create`, `Game_CreateWithRule`,
+`Game_OnFrameChanged`, `Game_Roll`, `Game_CorrectRoll`, `Game_Score` and `Game_Destroy`.
+Behind them:
 
 - A **`Game`** holds up to ten frames. Each roll goes to the frames in order until one keeps
   it. If none does, a new frame is started with it.
@@ -75,9 +76,19 @@ The public API is six functions in `include/game.h`: `Game_Create`, `Game_Create
   as. `Game_Create` uses the standard rule: the pins that fell. `Game_CreateWithRule` takes a
   rule from the caller, so a variant of the game can be played without the library knowing
   it. `test/nine_pin_no_tap_test.cpp` plays nine-pin no-tap that way.
-- After each roll, the game tells up to two **listeners**, set with `Game_OnFrameCompleted`,
-  about every frame the roll completed: its number and score, oldest first.
-  `test/scoreboard_test.cpp` drives a live scoreboard and running stats that way.
+- The game keeps a **log of every roll**, as the pins that fell. `Game_CorrectRoll` fixes a
+  roll entered wrongly: it replays the log from the start, counting each roll again with the
+  game's rule, and rescores everything after it. A correction that would make a later roll
+  impossible is rejected, and nothing changes.
+- The game tells up to two **listeners**, set with `Game_OnFrameChanged`, when a frame
+  changes: its number, its score, and whether it is complete.
+  - After a roll, it tells them about every frame that roll completed, oldest first.
+  - After a correction, it tells them every complete frame again, with its new score (a
+    frame number they have heard before is an update). A frame the correction reopened is
+    sent with `complete = false`.
+
+  `test/scoreboard_test.cpp` drives a live scoreboard and running stats that way, and
+  `test/correction_test.cpp` checks that they stay right through corrections.
 - Each frame is a **`FrameContext`** that holds the frame's current **state**:
   - **`RegularFrame`**: where every frame starts. On a first-roll 10 it becomes a strike
     state. When its rolls add up to 10 it becomes a spare state.
@@ -93,7 +104,10 @@ The public API is six functions in `include/game.h`: `Game_Create`, `Game_Create
   - it knocks down more pins than are standing (`GAME_ERR_INVALID_PINS`);
   - the game's rule counts it as more pins than were standing (`GAME_ERR_RULE_OUT_OF_RANGE`);
   - it is made from inside a listener (`GAME_ERR_ROLL_DURING_NOTIFICATION`). A listener may
-    read the game, but not roll it: that would tell listeners about frames out of order.
+    read the game, but not roll it or correct it: that would tell listeners about frames out
+    of order.
+
+  A correction is also rejected for a roll that hasn't been made (`GAME_ERR_NO_SUCH_ROLL`).
 
 ## Why this is object-oriented
 
@@ -174,9 +188,9 @@ the `.c` file:
 - `struct FrameStateFactory`: `frame_context.h` only forward-declares it.
 
 **The tests follow the same line.**
-- `test/game_test.cpp`, `test/nine_pin_no_tap_test.cpp` and `test/scoreboard_test.cpp` use only
-  `game.h` (through `test/test_support.h`), as a real caller would. They are black-box tests
-  of the public API.
+- `test/game_test.cpp`, `test/nine_pin_no_tap_test.cpp`, `test/scoreboard_test.cpp` and
+  `test/correction_test.cpp` use only `game.h` (through `test/test_support.h`), as a real
+  caller would. They are black-box tests of the public API.
 - `test/frame_test.cpp`, `test/roll_list_test.cpp` and `test/slot_pool_test.cpp` are white-box
   tests of private types. They are the only tests granted `src/`, and `CMakeLists.txt` says
   why.
@@ -226,7 +240,7 @@ The factory table's layout is hidden: `frame_context.h` only forward-declares it
 |---|---|---|
 | **Object Pool** | `Game_Create` and `Game_Destroy` over `s_games[2]`, with the in-use bookkeeping in `SlotPool` (`src/slot_pool.c`) | Memory is fixed at compile time. Running out is reported (`NULL`), never undefined |
 | **Opaque handle** | `Game` | Callers depend only on the API, never on the layout |
-| **Observer** | `Game_OnFrameCompleted`: a callback and a context pointer, two listener slots | Subscribers learn about completed frames without polling, and `Game` doesn't know who they are |
+| **Observer** | `Game_OnFrameChanged`: a callback and a context pointer, two listener slots | Subscribers learn about changed frames without polling, and `Game` doesn't know who they are |
 | **Strategy** | `PinCountRule`, given to `Game_CreateWithRule` | The caller decides how a roll is counted, at run time, without the library containing the variant |
 | **Result object** | `RollResult { consumed, pins }` | Says directly whether a frame kept a roll, with no special "magic" values |
 
@@ -296,7 +310,8 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `test/game_test.cpp` | Host tests through the public API: scoring, end of game, game storage, tenth frame, input validation, `NULL` handles |
 | `KAY.md` | The log of the Kay-style OO experiment on the `kay-oo` branch |
 | `test/nine_pin_no_tap_test.cpp` | A client that plays nine-pin no-tap by supplying its own `PinCountRule`, plus checks on rules that misbehave |
-| `test/scoreboard_test.cpp` | Clients that subscribe to completed frames: a live scoreboard and running stats |
+| `test/scoreboard_test.cpp` | Clients that subscribe to changed frames: a live scoreboard and running stats |
+| `test/correction_test.cpp` | A scorer correcting rolls: rescoring, the rule applied again on replay, rejected corrections, listeners kept right, and a property test against a fresh game |
 | `test/test_support.h` | What the black-box tests share: `GameHandle`, `RollAll` and the client-side no-tap rule |
 | `test/roll_list_test.cpp` | Tests of `RollList`, including its bounds checks in debug and release builds |
 | `test/slot_pool_test.cpp` | Tests of `SlotPool` |

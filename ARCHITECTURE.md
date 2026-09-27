@@ -24,7 +24,7 @@ Each layer talks only to the one below it. Only the top layer is visible to call
    caller (any C code)
         |
         |  Game_Create  Game_CreateWithRule  Game_Destroy
-        |  Game_OnFrameCompleted  Game_Roll  Game_Score
+        |  Game_OnFrameChanged  Game_Roll  Game_CorrectRoll  Game_Score
         v
 +--------------------------------------------------------------+
 |  Game                                   include/game.h       |  public
@@ -173,9 +173,9 @@ the whole game is laid out at compile time. Sizes are from the compiler on a 64-
 (checked with `_Static_assert`); a 32-bit MCU, with 4-byte pointers, is smaller.
 
 ```
-s_games[2]                                          2,048 bytes
+s_games[2]                                          2,080 bytes
 +-------------------------------------------------------------+
-| Game [0]                                        1,024 bytes |
+| Game [0]                                        1,040 bytes |
 |  +-------------------------------------------------------+  |
 |  | frames[10]  : FrameContext                 10 x 96    |  |
 |  |  +-------------------------------------------------+  |  |
@@ -192,8 +192,11 @@ s_games[2]                                          2,048 bytes
 |  | frame_count     : uint8_t                             |  |
 |  | count_pins      : PinCountRule      the caller's rule |  |
 |  | frames_reported : uint8_t           told to listeners |  |
-|  | listeners[2]    : FrameCompletedListener              |  |
+|  | listeners[2]    : FrameChangedListener                |  |
 |  | listener_count  : uint8_t                             |  |
+|  | notifying       : bool              telling listeners |  |
+|  | rolls[21]       : Pins              the roll log      |  |
+|  | roll_count      : uint8_t                             |  |
 |  +-------------------------------------------------------+  |
 | Game [1]                                                    |
 +-------------------------------------------------------------+
@@ -368,7 +371,7 @@ nobody kept it?  --yes--> Game_AddNewFrame: start a new frame with this roll
    |
    v
 Game_ReportCompletedFrames: tell each listener about every frame this roll completed,
-   |   oldest first (Game_OnFrameCompleted)
+   |   oldest first (Game_OnFrameChanged)
    v
 GAME_OK
 ```
@@ -382,13 +385,43 @@ earlier strike collecting its bonus must also receive a 10, not a 9. The frames 
 that a rule exists.
 
 **Telling listeners, after the roll.** Once a roll has gone all the way through, `Game`
-tells each listener (up to two, set with `Game_OnFrameCompleted`) about every frame the roll
+tells each listener (up to two, set with `Game_OnFrameChanged`) about every frame the roll
 completed, oldest first. A frame never completes before the one before it, so `Game` only
 keeps a count of frames already reported, and checks the frames just past it. Frames don't
 hold listeners, and no listener is called while a roll is half applied. A listener may read
-the game (`Game_Score` then sees the whole roll) but not roll it: a roll from inside a
-listener would tell the listeners about frames out of order, so it is refused. KAY.md records why
-this won over frames telling the listeners themselves.
+the game (`Game_Score` then sees the whole roll) but not roll or correct it: that would tell
+the listeners about frames out of order, so it is refused. KAY.md records why this won over
+frames telling the listeners themselves.
+
+**Correcting a roll.** The game keeps every accepted roll in a log, as the pins that fell, so a
+roll is a thing the game can go back to, not just a call that changed some state and was
+gone.
+
+```
+Game_CorrectRoll(game, roll_number, pins)
+   |
+   |-- game == NULL?                      --yes--> GAME_ERR_NULL_GAME
+   |-- called from inside a listener?     --yes--> GAME_ERR_ROLL_DURING_NOTIFICATION
+   |-- no such roll?                      --yes--> GAME_ERR_NO_SUCH_ROLL
+   v
+rolls[roll_number - 1] = pins                  (the log holds the pins that fell)
+   |
+Game_Replay: empty the frames, then Game_Accept every roll in the log, in order
+   |   (each one counted again by the game's PinCountRule)
+   |
+   |-- a roll is now impossible?          --yes--> put the old roll back, replay that,
+   |                                               and return the impossible roll's status
+   v
+Game_ReportCorrection: tell each frame again, oldest first
+   |   a complete frame   --> (number, new score, complete = true)
+   |   a reopened frame   --> (number, 0,         complete = false)
+   v
+GAME_OK
+```
+
+The log keeps the pins that fell, not what they were counted as, because replaying applies
+the rule again. Under nine-pin no-tap, a first-ball 9 counts as a strike. If a correction
+turns it into a second ball, it has to be counted again, from the 9, as a spare.
 
 **Worked example: rolls 10, 3, 4.** `RollResult` is what each frame hands back.
 
@@ -443,10 +476,17 @@ by passing its own `PinCountRule` to `Game_CreateWithRule`, plus two checks on r
 misbehave (one that counts too many pins, and none at all).
 
 `test/scoreboard_test.cpp` is black-box as well: a live scoreboard and a running-stats keeper
-subscribe with `Game_OnFrameCompleted`. It covers one frame, nothing completed, one roll
+subscribe with `Game_OnFrameChanged`. It covers one frame, nothing completed, one roll
 completing two frames, the tenth frame's fill balls, a full set of listeners, and stats
 under no-tap. The black-box tests share `test/test_support.h`: `GameHandle`, `RollAll`, and
 the client-side no-tap rule.
+
+`test/correction_test.cpp` is black-box too: a scorer correcting rolls. It covers rescoring,
+the rule counted again on replay, a correction rejected for making a later roll impossible,
+listeners kept right through rescored and reopened frames, and the corrections the game
+refuses. Its last test is a property test: across 3,000 random games, each corrected at a
+random roll, the listeners must end up exactly where they would on a fresh game fed the
+corrected rolls.
 
 `test/frame_test.cpp` is white-box too: a debug-build death test that `Frame_Roll` enforces the
 `roll()` contract (a context is never NULL).

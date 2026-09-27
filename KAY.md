@@ -428,12 +428,131 @@ would also mean building a message selector and a dispatch step: exactly the
 
 ---
 
+## Phase 5: correcting a roll
+
+**Feature.** The scorer entered 7, but the bowler knocked down 8: fix the roll and rescore
+everything after it. The review predicted this would make each roll a thing in its own right
+(a message kept as data, not just a call), and would test the phase 1 prediction that
+replaying needs the pins that actually fell. Two decisions were the user's:
+- A correction that makes a later roll impossible is **rejected**.
+- A correction that reopens a completed frame is told with **one "frame changed" message**.
+
+### What the tests pulled in
+
+| Commit | Tag | What |
+|---|---|---|
+| `Refactor: separate accepting a roll from telling the listeners` | make-easy | `Game_Accept`: check and apply a roll, telling no one, so it can be replayed |
+| `Corrections: rescore the game when a roll is corrected` | make-change | A log of every accepted roll; `Game_CorrectRoll` swaps one entry and replays |
+| `...reject a correction that makes a later roll impossible` | make-change | The user's policy. The old roll is put back and the original log replayed |
+| `...every replayed roll is counted again from the pins that fell` | make-change | Passed without new code; a mutation proved it guards the prediction |
+| `...re-send the rescored frames to the listeners` | make-change | The same message, with a repeated frame number as an update |
+| `Refactor: move RunningStats into the shared test support` | make-easy | So the correction tests use phase 3's subscriber unchanged |
+| `...running stats keep their numbers right across a correction` | make-change | The subscriber changed, not the library |
+| `Refactor: frame-completed becomes frame-changed, with a completion flag` | make-easy | The user's choice; no behavior change |
+| `...tell the listeners when a correction reopens a frame` | make-change | A reopened frame is sent with `complete = false` |
+| `...reject a roll number the game hasn't had`, `...NULL game`, `...from inside a listener` | clean-up | The edges of the new call |
+| `...a property test that listeners match a fresh game` | clean-up | 3,000 random corrected games against fresh ones |
+
+### Messages as data
+
+A roll used to disappear into frame state the moment it was accepted. Now the game keeps
+every roll, as the pins that fell, and can go back and replay them. That's the review's "the
+message is a thing" point, pulled in by a feature.
+
+**The phase 1 prediction, tested two phases later.** Replaying applies the caller's rule
+again, so the log must hold the pins that fell, not what they were counted as. Under no-tap,
+the rolls 10, then 9 (counted as a strike), then 3, with the first roll corrected to 1, must
+turn the 9 into a spare. That test passed without new code, because storing the rolled pins
+was also the simplest thing to do. A mutation that logs the counted value made that test, and
+only that test, fail: the replay then tries to knock down 10 pins with 9 standing.
+
+### "Rescored": one message, or two?
+
+As the review suggested, the existing message was tried first: re-send every complete frame,
+and a listener treats a repeated frame number as an update.
+- **The keyed scoreboard** needed no change.
+- **Phase 3's running stats** failed, as predicted. It counted every message, so after a
+  correction it had 4 frames and an average of 7.5, where it should have had 2 and 8.
+- **The fix was in the subscriber, not the library.** Stats now keeps the latest score for each
+  frame. It never genuinely had to tell an update from a new frame; it only needed state keyed
+  by frame number.
+
+Then a case the review didn't raise: **a correction can reopen a completed frame.** The scorer
+entered 3, 4, but the first ball was a strike, and frame 1 now waits for a second bonus roll.
+A probe showed both listeners kept believing frame 1 was complete, with 7. Re-sending
+*complete* frames can't take anything back.
+
+The user chose **one "frame changed" message**, carrying the number, the score and whether the
+frame is complete. A reopened frame is sent with `complete = false`. It is still one kind of
+message: it describes a frame's state, not an event. So phase 4 stays skipped, now with
+evidence: no receiver ever needed to decline a message, and no second *kind* was needed. But
+every subscriber had to change, because the callback's signature changed and each subscriber
+must now drop a frame that reopens.
+
+### A property test, and a wrong assumption
+
+Coverage showed one branch never taken: a frame the listeners had been told about that no
+longer exists after the replay. I reasoned that a one-roll correction couldn't cause that. A
+property test settled it. Across 3,000 random games (fixed seed), each corrected at a random
+roll, a corrected game's listeners must end up exactly where a fresh game's would, fed the
+corrected rolls. The test holds, and it reaches that branch: **the reasoning was wrong, and the
+defensive code was needed.** It's the second time in this experiment that a test overturned an
+argument; the first was phase 3's double-completion guess.
+
+### Kay's three properties
+
+| Property | Moved? | Evidence |
+|---|---|---|
+| **Messaging** | Yes, in a new direction | A roll is now kept and replayed as data. The notification became a *state update* that is safe to repeat, not a one-off event, which suits a receiver that may hear the same thing twice |
+| **Hiding of state-process** | Unchanged | The log is private to `Game`; listeners still see only numbers |
+| **Late binding** | No | Nothing new is bound at run time |
+
+### Costs
+
+- **Size:** the library grew by 90 lines of code and lost 20, with the rename (`src/` 980 →
+  1,065, `include/` 88 → 103). A `Game` grew by only 16 bytes, to 1,040, because some new fields
+  fit into existing padding.
+- **Time:** a correction replays up to 21 rolls through up to 10 frames. That's negligible
+  here, but it's proportional to the game so far, where a roll is constant time.
+- **A new requirement the compiler can't check: the rule must be pure.** Restoring a rejected
+  correction replays the original log and trusts that the result is the game as it was. A rule
+  that reads global state could replay differently. A debug build's `assert` catches only a
+  replay that *fails*, not one that silently differs.
+- **Cost moved to the subscribers:**
+  - The callback's signature changed.
+  - Every subscriber must be safe to tell twice (keyed by frame number) and must handle
+    `complete = false`.
+  - A subscriber whose effect can't be undone (one that rings a bell for each strike, or
+    appends to a paper log) couldn't follow corrections at all with this message. It would
+    need a separate message that says "this is a correction". No such subscriber exists here.
+
+### The strongest argument that this still isn't Kay OO
+
+The "message as data" lives *inside* `Game`: a private array of bytes that only `Game` ever
+replays, never sent to anything else. The notification is still one synchronous callback with a
+fixed signature. And "a repeated frame number is an update" is a convention every subscriber has
+to know and follow; nothing enforces it.
+
+### Would a simpler design do?
+
+**Here the honest comparison isn't a `switch`: it's the procedural kata.** Once the game keeps
+every roll, the score could be *computed* from the rolls by one pure function, as the classic
+procedural version does, and a correction would be trivial: change the array, compute again.
+Keeping the rolls makes the incremental frame objects into a cache that has to be rebuilt after
+every correction. For this feature alone, data plus a function would be simpler than objects.
+The State pattern still earns its place in validating rolls as they arrive and in telling
+listeners *as* frames complete. But corrections are the first feature that argues *against*
+the object design, not for it.
+
+---
+
 ## Conclusion: late binding pays at the boundaries between owners
 
-Across the three phases, Kay's properties moved **only where a feature crossed a boundary
-between owners**:
+Across the phases, Kay's properties moved **only where a feature crossed a boundary between
+owners**:
 - a counting rule the caller owns (phase 1);
-- listeners the caller owns (phase 3).
+- listeners the caller owns (phase 3);
+- a game's history, which the caller may now revise (phase 5).
 
 Inside the library, where one party owns everything, the closed Simula-style design held up
 against every test. The evidence is in the diff: **of the 20 library files, the experiment
@@ -442,13 +561,14 @@ changed only `game.h` and `game.c`**, the boundary. The frame classes, the state
 binding *inward* ("tell, don't ask"), had no feature behind it and was declined.
 
 The cost landed in exactly the same place. Every defect class the experiment found or
-guarded against sits at one of those two boundaries, and the closed interior never had any of
+guarded against sits at one of those boundaries, and the closed interior never had any of
 them:
 
 | Boundary | What late binding cost there |
 |---|---|
 | The caller's rule | A buggy rule silently corrupted a game (the pins-standing wrap to 255); a `NULL` rule would crash. Now `GAME_ERR_RULE_OUT_OF_RANGE`, and `NULL` refused |
 | The caller's listeners | A wrong cast of the `void *` context is undefined behavior no build can catch; a `NULL` callback wasted a slot; a third subscriber overflowed the array for a commit; a roll from inside a listener broke the ordering promise. Now refused, refused, refused, and `GAME_ERR_ROLL_DURING_NOTIFICATION` |
+| The caller revising history | A roll number the game hasn't had would have written far past the log; a correction from inside a listener would have replayed mid-notification; a correction can reopen a frame the listeners were told was complete; restoring a rejected correction trusts that the rule is pure. Now `GAME_ERR_NO_SUCH_ROLL`, refused, a `complete = false` message, and a documented requirement the compiler can't check |
 
 **The teachable conclusion: use late binding at the boundaries between owners, where it pays
 for itself, and nowhere else.** Where the caller owns a variation, a function pointer or a
@@ -456,6 +576,12 @@ callback is the simplest honest design, and a `switch` can't do the job. Inside 
 code, the closed design is simpler, safer and fully checked by the compiler. Every boundary
 you open also needs guarding: the new checks all appeared right there, and none was needed
 anywhere else.
+
+**One counterpoint, from phase 5.** Keeping every roll as data makes the score computable by one
+pure function, as the procedural kata does, and a correction would then be trivial. The
+incremental frame objects become a cache that has to be rebuilt. Corrections are the one
+feature that argued *against* objects inside the library, which fits the conclusion: inside
+one owner's code, the simplest design wins, and here that is data plus a function.
 
 What the experiment did **not** reach is Kay's OO proper: messages as first-class things,
 receivers that can decline, and binding that stays open while the program runs. Each would
