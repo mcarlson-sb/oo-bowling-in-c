@@ -17,9 +17,11 @@ machinery is added ahead of a test that needs it.
 - **Late binding paid off only where a feature crossed a boundary between owners:** a
   counting rule the caller owns (phase 1), listeners the caller owns (phase 3), a game's
   history, which the caller may revise (phase 5), and a machine on another thread and a
-  display on the far side of a wire (phase 6). Of `main`'s library files, only `game.h` and
-  `game.c` changed; phase 6 added the pinsetter beside them. The frame classes, the states
-  and the context are exactly as `main` has them.
+  display on the far side of a wire (phase 6). **The features changed only the boundary:**
+  up to `kay-phase-6b`, of `main`'s library files only `game.h` and `game.c` changed, and the
+  six new ones sit beside them. The clean-up after that reached the interior, the frame
+  classes, the states, the context and `SlotPool` among them, but only to restructure it,
+  never to change what it does.
 - **Phase 6 made messages asynchronous, and data.** The pinsetter posts a roll and doesn't
   wait; the main loop delivers it later. The remote scoreboard rebuilt itself from bytes with
   no change to the game, because phase 5 had already made the message describe a state. A
@@ -1463,13 +1465,29 @@ owners**:
 - a machine on another thread, and a display on the far side of a wire (phase 6).
 
 Inside the library, where one party owns everything, the closed Simula-style design held up
-against every test. The evidence is in the diff: **of `main`'s 20 library files, the
-experiment changed only `game.h` and `game.c`**, the boundary. Phase 6 added six more, all at
-the boundary too: the pinsetter (`pinsetter.h`, `pinsetter.c` and its private
-`pinsetter_hooks.h`), the fail-stop (`fault.h`, `fault.c`), and a one-constant private header.
-The frame classes, the states, the context, `RollList` and `SlotPool` are untouched since
-`main`. Phase 2, the one attempt to push late binding *inward* ("tell, don't ask"), had no
-feature behind it and was declined.
+against every test. The evidence is in two diffs, which have to be read apart:
+
+- **The features, `main` to `kay-phase-6b`: only the boundary changed.** Of `main`'s 20
+  library files, the six phases changed only `game.h` and `game.c`. The six files they added
+  are at the boundary too: the pinsetter (`pinsetter.h`, `pinsetter.c` and its private
+  `pinsetter_hooks.h`), the fail-stop (`fault.h`, `fault.c`), and `game_limits.h`, one constant
+  the game and the pinsetter share. The frame classes, the states, the context, `RollList` and
+  `SlotPool` were exactly as `main` has them.
+- **The clean-up, `kay-phase-6b` to now: the interior was restructured, not changed.** The
+  clean-up touched `frame.c` and `frame.h` (`Frame_IsComplete`, and one place each for how a
+  strike and a spare are built), `frame_context.c`, `regular_frame.c`, `spare_frame.c`,
+  `strike_frame.c`, `tenth_frame.c`, `slot_pool.c`, `slot_pool.h` and `bowling_types.h`, and it
+  split new modules out of the boundary: `roll_log.h/.c` and `frame_listeners.h/.c` out of
+  `game.c`, and `pinsetter_isr.c` and `pinsetter_ring.h` out of `pinsetter.c`. None of those
+  commits changed what the library does, and the tests passed unchanged through them. Behavior
+  changed in that stretch only at the boundary, by the user's review decisions: a rejected edit
+  that can't be undone now stops the program (`b219ff6`), and the edit API takes a `RollEdit`,
+  refusing a `NULL` one.
+
+So the finding holds, and is sharper for the split: **features needed late binding only at the
+boundary, and nothing inside it ever needed to behave differently.** The interior changed only
+because a clean-up made it clearer. Phase 2, the one attempt to push late binding *inward*
+("tell, don't ask"), had no feature behind it and was declined.
 
 The cost landed in exactly the same place. Every defect class the experiment found or
 guarded against sits at one of those boundaries, and the closed interior never had any of
