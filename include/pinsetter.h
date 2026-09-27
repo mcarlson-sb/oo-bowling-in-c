@@ -43,7 +43,10 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins);
  * right one, made to look impossible by an earlier roll that was miscounted. So draining stops
  * there and returns that roll's status (such as GAME_ERR_INVALID_PINS), leaving it, and every
  * roll after it, waiting. The scorer resolves it, for instance by correcting the earlier roll
- * with Game_CorrectRoll, and the next drain carries on from it. */
+ * with Game_CorrectRoll, and the next drain carries on from it.
+ *
+ * Not from inside a frame-changed callback: there it drains nothing and returns
+ * GAME_ERR_EDIT_DURING_NOTIFICATION. */
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game);
 
 /* Main-loop side. Throws away the oldest waiting roll: the one a drain stopped at, when the

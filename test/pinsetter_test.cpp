@@ -280,6 +280,52 @@ TEST(PinsetterTest, should_leave_a_roll_posted_in_the_middle_of_a_drain_for_the_
     EXPECT_EQ(16U, Game_Score(game)); /* then 6+3 */
 }
 
+namespace {
+
+/* A listener that drains the pinsetter the first time it hears anything. */
+struct DrainsFromInside {
+    Game *game = nullptr;
+    Pinsetter *pinsetter = nullptr;
+    bool drained = false;
+    GameStatus status = GAME_OK;
+};
+
+void DrainsFromInside_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                   bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    auto *listener = static_cast<DrainsFromInside *>(context);
+    if (!listener->drained) {
+        listener->drained = true;
+        listener->status = Pinsetter_Drain(listener->pinsetter, listener->game);
+    }
+}
+
+} // namespace
+
+TEST(PinsetterTest, should_refuse_a_drain_from_inside_a_listener)
+{
+    /* From inside a listener, a drained roll would go into the game's own mailbox, which drops
+     * an impossible roll: the glitch below would vanish, and the scorer never hear of it. So
+     * the drain is refused, like an edit, and the roll waits for the main loop. */
+    GameHandle game_owner = MakeGame();
+    Game *game = game_owner.get();
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+    DrainsFromInside listener;
+    listener.game = game;
+    listener.pinsetter = pinsetter;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &DrainsFromInside_FrameChanged, &listener));
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 11U)); /* a glitch */
+
+    RollAll(game, {3U, 4U}); /* frame 1 completes, and the listener drains */
+
+    EXPECT_EQ(GAME_ERR_EDIT_DURING_NOTIFICATION, listener.status);
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Pinsetter_Drain(pinsetter, game)); /* still there */
+}
+
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
 {
     /* A real thread plays the interrupt handler: it only posts, retrying when the mailbox is

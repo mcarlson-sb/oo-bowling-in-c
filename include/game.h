@@ -29,7 +29,8 @@ typedef enum {
     /* Game_CorrectRoll or Game_EditRolls was called from inside a frame-changed callback.
      * Replaying the game then would tell listeners about frames out of order, or twice, so
      * it is rejected and the game is left unchanged. Call again once the callback has
-     * returned. (A roll from inside a callback is queued instead: see GAME_QUEUED.) */
+     * returned. (A roll from inside a callback is queued instead: see GAME_QUEUED.)
+     * Pinsetter_Drain returns it too, from inside a callback, and drains nothing. */
     GAME_ERR_EDIT_DURING_NOTIFICATION,
     /* Game_CorrectRoll or Game_EditRolls was given a roll number the game hasn't had (rolls
      * start at 1), or a range that runs past the last roll. Nothing is changed. */
