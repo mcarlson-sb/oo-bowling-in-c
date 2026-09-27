@@ -91,7 +91,7 @@ gets `GAME_ERR_BUSY`, adding a listener gets `false`, and `Game_Destroy` stops
 the program. Reading the game (`Game_Score`) is always allowed.
 
 `Game_ReportFrames` is the one bridge between them: it reads the frames and tells the
-listeners. It is the only function that touches both, and it owns `frames_reported`.
+listeners. It is the only function that touches both, and it owns `frames_told_complete`.
 
 **Beside the game: the pinsetter.** The one part of the system that runs on another thread
 (in firmware, an interrupt handler). It never calls the game; the main loop carries each roll
@@ -262,7 +262,7 @@ s_games[2]                                          2,096 bytes
 |  |  ... 9 more                                           |  |
 |  | frame_count     : uint8_t                             |  |
 |  | count_pins      : PinCountRule      the caller's rule |  |
-|  | frames_reported : uint8_t           told to listeners |  |
+|  | frames_told_complete : uint8_t                        |  |
 |  | listeners       : FrameListeners          40 bytes    |  |
 |  |   entries[2], count             (callback, context)   |  |
 |  | busy            : bool       a roll or edit under way |  |

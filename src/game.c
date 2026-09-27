@@ -17,7 +17,7 @@ struct Game {
     FrameContext frames[GAME_FRAMES];
     uint8_t frame_count;
     PinCountRule count_pins;
-    uint8_t frames_reported; /* frames the listeners have been told are complete */
+    uint8_t frames_told_complete;
     FrameListeners listeners;
     bool busy; /* see Game_Roll */
     RollLog log;
@@ -73,19 +73,20 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
 
 /* Tells the listeners about the frames from index `first` on, and about a frame they were told
  * was complete, and no longer is, as reopened. Complete frames always come first, so
- * frames_reported ends as the number complete. Inline, like the two below, because every
+ * frames_told_complete ends as the number complete. Inline, like the two below, because every
  * callback's stack sits on top of it (as a call it cost 112 bytes more). */
-static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_reported)
+static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t were_told_complete)
 {
-    game->frames_reported = first;
-    const uint8_t frames = (was_reported > game->frame_count) ? was_reported : game->frame_count;
+    game->frames_told_complete = first;
+    const uint8_t frames =
+        (were_told_complete > game->frame_count) ? were_told_complete : game->frame_count;
     for (uint8_t i = first; i < frames; i++) {
         const FrameNumber frame_number = (FrameNumber)(i + 1U);
         if ((i < game->frame_count) && FrameContext_IsComplete(&game->frames[i])) {
             FrameListeners_Tell(&game->listeners, frame_number,
                                 FrameContext_Score(&game->frames[i]), true);
-            game->frames_reported = frame_number;
-        } else if (i < was_reported) {
+            game->frames_told_complete = frame_number;
+        } else if (i < were_told_complete) {
             FrameListeners_Tell(&game->listeners, frame_number, 0U, false);
         }
     }
@@ -94,12 +95,12 @@ static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_repo
 /* A roll can't change or reopen a frame already reported. */
 static inline void Game_ReportAfterRoll(Game *game)
 {
-    Game_ReportFrames(game, game->frames_reported, game->frames_reported);
+    Game_ReportFrames(game, game->frames_told_complete, game->frames_told_complete);
 }
 
-static inline void Game_ReportAfterEdit(Game *game, uint8_t was_reported)
+static inline void Game_ReportAfterEdit(Game *game, uint8_t were_told_complete)
 {
-    Game_ReportFrames(game, 0U, was_reported);
+    Game_ReportFrames(game, 0U, were_told_complete);
 }
 
 static Pins Game_CountPinsDown(Pins pins_standing, Pins pins_down)
@@ -125,7 +126,7 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     Game *game = &s_games[slot];
     game->frame_count = 0U;
     game->count_pins = count_pins;
-    game->frames_reported = 0U;
+    game->frames_told_complete = 0U;
     FrameListeners_Init(&game->listeners);
     game->busy = false;
     RollLog_Init(&game->log);
@@ -218,7 +219,7 @@ Score Game_Score(const Game *game)
 static void Game_CatchUpNewestListener(Game *game)
 {
     game->busy = true;
-    for (uint8_t i = 0U; i < game->frames_reported; i++) {
+    for (uint8_t i = 0U; i < game->frames_told_complete; i++) {
         FrameListeners_TellNewest(&game->listeners, (FrameNumber)(i + 1U),
                                   FrameContext_Score(&game->frames[i]), true);
     }
@@ -254,13 +255,13 @@ static GameStatus Game_Replay(Game *game)
  * isn't pure, and then no known-good game is left, so the program stops. */
 static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
 {
-    const uint8_t was_reported = game->frames_reported;
+    const uint8_t were_told_complete = game->frames_told_complete;
     const RollLog saved = game->log;
     game->log = *edited;
 
     const GameStatus status = Game_Replay(game);
     if (status == GAME_OK) {
-        Game_ReportAfterEdit(game, was_reported);
+        Game_ReportAfterEdit(game, were_told_complete);
     } else {
         game->log = saved;
         if (Game_Replay(game) != GAME_OK) {
