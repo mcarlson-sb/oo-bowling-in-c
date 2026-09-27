@@ -386,3 +386,13 @@ TEST(EditRollsTest, should_reject_an_edit_that_would_make_more_rolls_than_a_game
     EXPECT_EQ(GAME_ERR_GAME_OVER, Game_EditRolls(game, 1U, 0U, extra, 1U));
     EXPECT_EQ(33U, Game_Score(game));
 }
+
+TEST(EditRollsTest, should_refuse_new_rolls_given_as_a_null_pointer)
+{
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollAll(game, {3U, 4U});
+
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, 1U, 1U, nullptr, 1U));
+    EXPECT_EQ(7U, Game_Score(game));
+}

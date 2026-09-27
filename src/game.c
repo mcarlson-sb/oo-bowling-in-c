@@ -330,6 +330,9 @@ GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
     if ((first_roll == 0U) || ((first + rolls_removed) > game->log.count)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
+    if ((new_pins == NULL) && (new_count > 0U)) {
+        return GAME_ERR_NO_SUCH_ROLL; /* new rolls promised, but none given */
+    }
     const unsigned new_length = ((unsigned)game->log.count - rolls_removed) + new_count;
     if (new_length > GAME_MAX_ROLLS) {
         return GAME_ERR_GAME_OVER; /* no game has that many rolls, and the log has no room */
