@@ -38,7 +38,17 @@ cmake --build build-release
 ctest --test-dir build-release --output-on-failure
 ```
 
-Warnings are errors in the library and the tests alike. GitHub Actions runs all three builds
+And under ThreadSanitizer, for the pinsetter's two threads. MinGW ships no ThreadSanitizer
+runtime, so this one needs Linux (or WSL). Where address-space randomization is set high, as
+on GitHub's runners, it also needs `sudo sysctl vm.mmap_rnd_bits=28` first:
+
+```sh
+cmake -S . -B build-tsan -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DOO_C_TSAN=ON
+cmake --build build-tsan
+ctest --test-dir build-tsan --output-on-failure
+```
+
+Warnings are errors in the library and the tests alike. GitHub Actions runs all four builds
 (`.github/workflows/ci.yml`) on every push and pull request.
 
 ### Coverage
@@ -69,7 +79,9 @@ The release build reaches 100% of lines and every branch except that loop condit
 
 The public API is eight functions in `include/game.h`: `Game_Create`, `Game_CreateWithRule`,
 `Game_OnFrameChanged`, `Game_Roll`, `Game_EditRolls`, `Game_CorrectRoll`, `Game_Score` and
-`Game_Destroy`. Behind them:
+`Game_Destroy`, and six in `include/pinsetter.h`: `Pinsetter_Create`, `Pinsetter_Post`,
+`Pinsetter_Drain`, `Pinsetter_DiscardOldest`, `Pinsetter_RollsLost` and `Pinsetter_Destroy`.
+Behind them:
 
 - A **`Game`** holds up to ten frames. Each roll goes to the frames in order until one keeps
   it. If none does, a new frame is started with it.
@@ -93,6 +105,24 @@ The public API is eight functions in `include/game.h`: `Game_Create`, `Game_Crea
 
   `test/scoreboard_test.cpp` drives a live scoreboard and running stats that way, and
   `test/correction_test.cpp` checks that they stay right through corrections.
+  `test/remote_scoreboard_test.cpp` sends each message down a wire as 4 bytes, and rebuilds
+  the scoreboard from the bytes alone.
+
+  A listener may read the game. It may also roll: the roll waits in the game's **mailbox**
+  (`Game_Roll` returns `GAME_QUEUED`) and is applied once every listener has heard about the
+  roll before it, so the listeners still hear about frames in order. A listener may not edit
+  the game (`GAME_ERR_EDIT_DURING_NOTIFICATION`).
+- The **pinsetter** (`include/pinsetter.h`) is the machine that counts the pins, and in
+  firmware it reports each roll from an interrupt handler. It never touches a game: the
+  interrupt side only posts the pins to the pinsetter's own mailbox, a lock-free ring with
+  room for a whole game's 21 rolls, and the main loop drains them into a game with
+  `Game_Roll`. A roll the game rejects is never thrown away, because it is often the right
+  one, made to look impossible by an earlier miscount. Draining stops there, returns the
+  roll's status and leaves it waiting, until the scorer corrects the earlier roll or discards
+  the reported one (`Pinsetter_DiscardOldest`). A post the full mailbox refuses is counted,
+  and the main loop reads the count with `Pinsetter_RollsLost`. `test/pinsetter_test.cpp`
+  covers both sides, with a real second thread and with a fake interrupt handler fired in the
+  middle of a drain.
 - Each frame is a **`FrameContext`** that holds the frame's current **state**:
   - **`RegularFrame`**: where every frame starts. On a first-roll 10 it becomes a strike
     state. When its rolls add up to 10 it becomes a spare state.
@@ -107,13 +137,16 @@ The public API is eight functions in `include/game.h`: `Game_Create`, `Game_Crea
   - the game is over (`GAME_ERR_GAME_OVER`);
   - it knocks down more pins than are standing (`GAME_ERR_INVALID_PINS`);
   - the game's rule counts it as more pins than were standing (`GAME_ERR_RULE_OUT_OF_RANGE`);
-  - it is made from inside a listener (`GAME_ERR_ROLL_DURING_NOTIFICATION`). A listener may
-    read the game, but not roll it or edit it: that would tell listeners about frames out of
-    order.
+  - it is made from inside a listener, and the rolls already queued there would make more
+    than a game can have (`GAME_ERR_TOO_MANY_ROLLS`).
+
+  A roll queued from inside a listener is checked when it is applied. If it is impossible
+  then, it is dropped and the queued rolls after it still apply.
 
   An edit is also rejected for rolls that haven't been made, including an edit that starts
   after the last roll (`GAME_ERR_NO_SUCH_ROLL`): adding a roll is `Game_Roll`'s job. It is
-  also rejected if it would make more than 21 rolls (`GAME_ERR_TOO_MANY_ROLLS`).
+  also rejected if it would make more than 21 rolls (`GAME_ERR_TOO_MANY_ROLLS`), or if it is
+  made from inside a listener (`GAME_ERR_EDIT_DURING_NOTIFICATION`).
 
 ## Why this is object-oriented
 
@@ -152,12 +185,13 @@ Four refinements on top of those:
 
 ## Public and private headers
 
-Only two headers are in `include/`, because that folder is the library's public API: only
+Only three headers are in `include/`, because that folder is the library's public API: only
 what code *using* the library needs.
 
 | Header | Why it's public |
 |---|---|
-| `include/game.h` | The API: `Game_Create`, `Game_CreateWithRule`, `Game_Roll`, `Game_Score`, `Game_Destroy`, `GameStatus`, `PinCountRule` and the opaque `Game` |
+| `include/game.h` | The API: `Game_Create`, `Game_CreateWithRule`, `Game_Roll`, `Game_EditRolls`, `Game_CorrectRoll`, `Game_OnFrameChanged`, `Game_Score`, `Game_Destroy`, `GameStatus`, `PinCountRule`, `FrameChangedCallback` and the opaque `Game` |
+| `include/pinsetter.h` | The pinsetter's two sides: `Pinsetter_Post` for the interrupt handler, and `Pinsetter_Drain`, `Pinsetter_DiscardOldest` and `Pinsetter_RollsLost` for the main loop, around the opaque `Pinsetter` |
 | `include/bowling_types.h` | `game.h`'s signatures use `Pins` and `Score`, and a public header must compile on its own |
 
 Everything else is in `src/` and is private.
@@ -194,9 +228,10 @@ the `.c` file:
 - `struct FrameStateFactory`: `frame_context.h` only forward-declares it.
 
 **The tests follow the same line.**
-- `test/game_test.cpp`, `test/nine_pin_no_tap_test.cpp`, `test/scoreboard_test.cpp` and
-  `test/correction_test.cpp` use only `game.h` (through `test/test_support.h`), as a real
-  caller would. They are black-box tests of the public API.
+- `test/game_test.cpp`, `test/nine_pin_no_tap_test.cpp`, `test/scoreboard_test.cpp`,
+  `test/correction_test.cpp`, `test/pinsetter_test.cpp` and `test/remote_scoreboard_test.cpp`
+  use only the public headers (through `test/test_support.h`), as a real caller would. They
+  are black-box tests of the public API.
 - `test/frame_test.cpp`, `test/roll_list_test.cpp` and `test/slot_pool_test.cpp` are white-box
   tests of private types. They are the only tests granted `src/`, and `CMakeLists.txt` says
   why.
@@ -304,11 +339,13 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 
 | File | Role |
 |---|---|
-| `include/game.h`, `src/game.c` | The public API and the `Game` object: the opaque handle, the pool and the roll chain |
+| `include/game.h`, `src/game.c` | The public API and the `Game` object: the opaque handle, the pool, the roll chain, the listeners and the mailbox for rolls made from inside them |
+| `include/pinsetter.h`, `src/pinsetter.c` | The pinsetter: a lock-free ring of 21 rolls between the interrupt handler that posts them and the main loop that drains them into a game |
+| `src/game_limits.h` | `GAME_MAX_ROLLS`, shared by the game's roll log and the pinsetter's mailbox |
 | `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |
 | `src/frame.h/.c` | Abstract base `Frame`: its vtable, shared fields and methods, and `RollResult` |
 | `src/roll_list.h/.c` | `RollList`, the value type a frame keeps its rolls and bonus rolls in |
-| `src/slot_pool.h/.c` | `SlotPool`, which tracks which of the game pool's slots are in use |
+| `src/slot_pool.h/.c` | `SlotPool`, which tracks which of a pool's slots are in use, for the games and for the pinsetters |
 | `src/regular_frame.*`, `src/strike_frame.*`, `src/spare_frame.*` | The states for frames 1 to 9. `RegularFrame` is also where the tenth frame starts |
 | `src/tenth_frame.*` | The tenth frame's strike and spare states |
 | `src/frame_context.h/.c` | The State-pattern context and the two state families (Abstract Factory) |
@@ -318,7 +355,9 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `test/nine_pin_no_tap_test.cpp` | A client that plays nine-pin no-tap by supplying its own `PinCountRule`, plus checks on rules that misbehave |
 | `test/scoreboard_test.cpp` | Clients that subscribe to changed frames: a live scoreboard and running stats |
 | `test/correction_test.cpp` | A scorer correcting and editing rolls: rescoring, the rule applied again on replay, rejected edits, listeners told only the final state, and property tests against a fresh game under both rules |
-| `test/test_support.h` | What the black-box tests share: `GameHandle`, `RollAll` and the client-side no-tap rule |
+| `test/pinsetter_test.cpp` | The pinsetter: rolls posted and drained in order, a drain stopped at an impossible roll and resolved, a whole game waiting, lost rolls counted (and the count wrapping), a fake interrupt in the middle of a drain, and a real second thread (run under ThreadSanitizer in CI) |
+| `test/remote_scoreboard_test.cpp` | A listener that writes each message into a byte buffer, and a decoder that rebuilds the scoreboard from the bytes alone |
+| `test/test_support.h` | What the black-box tests share: `GameHandle`, `RollAll`, `RunningStats` and the client-side no-tap rule |
 | `test/roll_list_test.cpp` | Tests of `RollList`, including its bounds checks in debug and release builds |
 | `test/slot_pool_test.cpp` | Tests of `SlotPool` |
 | `test/frame_test.cpp` | A debug-build check that `Frame_Roll` enforces the `roll()` contract |

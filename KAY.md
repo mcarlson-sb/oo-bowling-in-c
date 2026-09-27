@@ -15,16 +15,24 @@ machinery is added ahead of a test that needs it.
 ## In short
 
 - **Late binding paid off only where a feature crossed a boundary between owners:** a
-  counting rule the caller owns (phase 1), listeners the caller owns (phase 3), and a game's
-  history, which the caller may revise (phase 5). Across every phase, only `game.h` and
-  `game.c` changed. The frame classes, the states and the context are exactly as `main` has
-  them.
+  counting rule the caller owns (phase 1), listeners the caller owns (phase 3), a game's
+  history, which the caller may revise (phase 5), and a machine on another thread and a
+  display on the far side of a wire (phase 6). Of `main`'s library files, only `game.h` and
+  `game.c` changed; phase 6 added the pinsetter beside them. The frame classes, the states
+  and the context are exactly as `main` has them.
+- **Phase 6 made messages asynchronous, and data.** The pinsetter posts a roll and doesn't
+  wait; the main loop delivers it later. The remote scoreboard rebuilt itself from bytes with
+  no change to the game, because phase 5 had already made the message describe a state.
 - **The costs landed at the same boundaries.** Every defect class the experiment found sits
   at one of them, and the closed interior never had any:
   - a buggy rule silently corrupting a game;
   - a `void *` cast the compiler can't check;
   - a call back into the game breaking the order of notifications;
-  - two edits showing listeners a game that never existed.
+  - two edits showing listeners a game that never existed;
+  - a roll the machine reported, dropped silently (now kept until the scorer resolves it);
+  - memory ordering between two threads (ThreadSanitizer catches each ordering weakened);
+  - a second producer on the pinsetter, which loses rolls and which **nothing** catches:
+    not ThreadSanitizer, even at 800,000 posts.
 - **Inside one owner's code, the closed design is simpler and fully checked.** Corrections
   even argued *against* objects there: once every roll is kept, data plus one function would
   do.
@@ -36,7 +44,9 @@ machinery is added ahead of a test that needs it.
   - the double-completion test didn't separate two designs;
   - a "reported frame can't vanish" argument was wrong;
   - the no-tap property had a hole of its own;
-  - a scratch-copy design would have left dangling pointers.
+  - a scratch-copy design would have left dangling pointers;
+  - ThreadSanitizer, expected to catch a second producer, never did;
+  - a capacity change silently stopped the thread test from testing what it said it did.
 
 The full conclusion is at the end.
 
@@ -705,18 +715,304 @@ the level of *this* API's meaning, not in how C calls it.
 
 ---
 
+## Phase 6: rolls from a pinsetter, scores to a remote scoreboard
+
+**Feature.** In firmware, the pinsetter (the machine at the end of the lane that counts the
+pins) reports each roll from an interrupt handler, at any moment. The main loop may be in the
+middle of anything then, even telling the listeners about the roll before. And a scoreboard
+may be on the far side of a wire. Two things were asked for: rolls that arrive through a
+mailbox, and a remote scoreboard that gets only bytes. The prediction for the second was that
+it would need no change to `game.h` or `game.c`.
+
+### What the tests pulled in
+
+| Commit | Tag | What |
+|---|---|---|
+| `Mailbox: a roll from inside a listener is queued until the notification ends` | make-change | `GAME_QUEUED`, and a mailbox in `Game`: phase 3's refusal becomes a queue. The re-entry test that pinned the refusal now pins the order |
+| `Mailbox: refuse to queue more rolls than the game has left` | make-change | Without it, the 22nd queued roll was written past the mailbox, and UBSan trapped |
+| `Mailbox: a queued roll that turns out impossible is dropped, and the rest still apply` | clean-up | Passed without new code. See the user's decisions for why the pinsetter doesn't do this |
+| `Refactor: GAME_ERR_ROLL_DURING_NOTIFICATION becomes GAME_ERR_EDIT_DURING_NOTIFICATION` | clean-up | Only edits are refused now. Same enum slot |
+| `Pinsetter: posted rolls go into the game, in order, when the main loop drains them` | make-change | `pinsetter.h`: `Pinsetter_Post` for the interrupt side, `Pinsetter_Drain` for the main loop. The pinsetter never holds a game |
+| `...rolls still waiting apply after a correction made meanwhile` | clean-up | Passed without new code: edits never wait in a mailbox |
+| `...refuse a post when the mailbox is full` | make-change | Never overwrite a roll the main loop hasn't seen |
+| `CI: a ThreadSanitizer build, OO_C_TSAN, run on Linux` | make-easy | |
+| `...rolls posted from another thread reach the game, in order` | make-change | A real thread plays the interrupt handler. The ring's counts become C11 atomics |
+| `Remote scoreboard: a decoder rebuilds the scoreboard from the listener's bytes alone` | make-change | Passed without new code |
+| `Pinsetter: stop at an impossible roll and keep it until the scorer resolves it` | make-change | The user's policy. `Pinsetter_Drain` returns a `GameStatus` |
+| `...let the scorer discard a roll that really was a glitch` | make-change | `Pinsetter_DiscardOldest` |
+| `...rolls made after the game is over wait for the next game` | make-change | Passed without new code |
+| `Refactor: the pinsetter's ring keeps two positions, not two counts, so any capacity works` | make-easy | Argued, not tested: see the review |
+| `...the mailbox holds a whole game's rolls, 21, while a drain is stopped` | make-change | The user's sizing. `GAME_MAX_ROLLS` moves to a private header, `game_limits.h`, and a static assert ties the capacity to it |
+| `...count the rolls lost while the mailbox was full` | make-change | The user's choice. `Pinsetter_RollsLost` |
+| `...the lost-roll count stays right when it wraps around` | clean-up | Passed without new code |
+| `...a roll posted by an interrupt in the middle of a drain goes in after the rest` | clean-up | Passed without new code. A fake interrupt handler |
+| `...the thread test wraps and fills the 21-roll mailbox again` | clean-up | The 21-roll mailbox had silently weakened it |
+| `...refuse to build where a count would need a lock` | clean-up | From the review |
+
+From the remote scoreboard on, every commit message names a mutation that fails the commit's
+test. In every case but one (the remote scoreboard, below), it fails only that test.
+
+### One boundary, crossed both ways
+
+The pinsetter and the remote scoreboard are one boundary, seen from its two sides. Rolls come
+in from a machine the game doesn't own, and scores go out to a display it doesn't own.
+Neither side holds a pointer into the game:
+- The interrupt side has no `Game` at all. `Pinsetter_Post` takes a pinsetter and the pins,
+  nothing else. Only the main loop, which passes a game to `Pinsetter_Drain`, joins the two.
+- The remote scoreboard gets 4 bytes for each message (the frame number, the score low byte
+  then high, and whether the frame is complete). It rebuilds the scoreboard from those bytes
+  alone, through a correction that reopens a frame.
+
+**The prediction held: the remote scoreboard needed no change to `game.h` or `game.c`.** The
+frame-changed message was already made of values only (a number, a score and a flag) since
+phase 5 made it describe a frame's state rather than an event. A message made of values can
+be put on a wire as it is. The test's mutation shows the same thing from the other side.
+Stopping the reopened-frame message fails the remote scoreboard, but also the five
+correction tests that already check that message. No mutation fails the remote scoreboard
+alone, because a listener at the end of a wire needs nothing a local listener doesn't
+already get. **Phase 5's choice to send states, not events, is what made the far side
+possible**, and it cost nothing now.
+
+The incoming direction is where the work was. Going out, the game calls a listener
+synchronously. Coming in, a roll arrives on another thread, so a synchronous call won't do:
+the main loop may be in the middle of a notification, an edit, anything. The mailbox makes
+the incoming direction asynchronous. The sender posts and doesn't wait, and the roll is
+delivered later, when the receiver is ready.
+
+### Two mailboxes, two jobs
+
+Phase 6 has two mailboxes. They look alike, but they aren't:
+
+| | The game's mailbox | The pinsetter's mailbox |
+|---|---|---|
+| Why it exists | A listener rolled while the game was telling the listeners: re-entry | A roll arrived on another thread: concurrency |
+| Threads | One | Two, each writing only its own position |
+| Shape | A `RollLog`, shifted on each take | A ring of 22 slots, with two atomic positions |
+| A roll it can't apply | Dropped; the rest apply (`d860bc8`) | Kept; draining stops there (the user's policy) |
+| Who hears about it | Nobody: the sender was told `GAME_QUEUED` and has moved on | The main loop, from `Pinsetter_Drain`'s status |
+
+They share no code, and sharing it would be wrong: the game's needs no atomics, and the
+pinsetter's can't shift its contents under the other thread.
+
+### The user's decisions
+
+**A roll the machine reported that the game rejects.** The pinsetter used to drop it
+silently, with `(void)Game_Roll(...)` in `Pinsetter_Drain`. (The constitution's `ENG-3.7`
+says never to discard a status silently.) The options put to the user were: drop it
+silently; drop it and report it; or stop and keep it until someone resolves it. The deciding
+fact is a bowling one. An "impossible" roll is often the right one, made to look impossible
+by an earlier miscount: the machine recorded 5 when 2 fell, and the true 8 then looks
+impossible. Dropping it loses the one roll that was right. **The user chose to stop and keep
+it**, and to size the mailbox to a whole game, 21 rolls, so that a stopped drain can never
+cost the interrupt handler a roll of the game.
+- The scorer resolves a stopped drain in one of two ways, both tested. Either correct the
+  earlier roll with `Game_CorrectRoll`, which already existed, and drain again. Or discard
+  the reported roll as a glitch, with `Pinsetter_DiscardOldest`, which the second test
+  pulled in.
+- One consequence passed without new code. Rolls reported after the tenth frame (the next
+  bowler starting before the main loop moves on) are refused with `GAME_ERR_GAME_OVER`, and
+  wait for the next game. Before, they vanished.
+- One consequence for the interrupt side: a slot now goes back to it only after the game has
+  taken the roll in it, because until then the roll may have to stay.
+- **Not decided: the game's own mailbox still drops** an impossible roll that a listener
+  queued (`d860bc8`). The question was asked about the pinsetter. A listener's roll comes
+  from software, not the machine, and its sender was told `GAME_QUEUED` and can't be told
+  again. This one is left to the user.
+
+**A full mailbox.** The interrupt handler's roll was lost, and only the handler saw `false`,
+with no one to tell. **The user chose a count.** The interrupt side increments it and the
+main loop never clears it. `Pinsetter_RollsLost` answers the difference from the last value
+the main loop saw, and unsigned wrap-around keeps that right. The count is 16 bits, so a
+test can reach the wrap (65,536 lost rolls), and one does. With a 21-roll mailbox, any
+answer but 0 is a real anomaly, and `pinsetter.h` says so.
+
+### A firmware review of the mailbox
+
+This is the review the constitution's C / MISRA-C avatar would make, against its Engineering
+laws on architecture, code quality, resiliency and AI review. The other three avatars (ISO
+26262, and the two product lines) don't apply to a bowling scorer, and no safety claim is
+made. It is an AI review, so by `ENG-9.2` it is a first pass, not an approval. Each finding
+is marked:
+- **tested:** a deterministic test fails without it;
+- **checked:** ThreadSanitizer or the compiler rejects the broken version;
+- **argued:** reasoning only.
+
+| Property | Finding | Status |
+|---|---|---|
+| **Memory ordering** | Each side publishes its own position with a release store, after touching the roll, and reads the other side's with an acquire load, before touching one. No `volatile`: the positions are C11 atomics | **Checked.** ThreadSanitizer catches each of the four orderings weakened to relaxed, one at a time (the table below). It also catches the plain version with no atomics at all, which confirms what `0107421` could only claim |
+| ...on a real target | ThreadSanitizer checks the C11 model on an x86 host, with two threads. An MCU's interrupt handler preempts the main loop on one core, and the C11 guarantee that carries over to that is for lock-free atomics | **Argued**, and **checked** that both atomics are lock-free (below) |
+| **One producer, one consumer** | Documented at the top of `pinsetter.h`: only the interrupt side may post, and a listener that wants to roll calls `Game_Roll`. It isn't repeated on `Pinsetter_Post` itself | Documented; nothing checks it (next row) |
+| ...if a second producer posts | Two posts can read the same position, write the same slot and both return `true`: a roll is lost, or read twice. In the probe, the plain builds lost and repeated rolls (14, 21 and 10 frames where there should have been 20). **ThreadSanitizer never saw it**, even at 20,000 runs and 800,000 posts. Nothing in the library can detect it | **Argued**, and shown by a stress probe in the plain builds. **Not caught by ThreadSanitizer** |
+| **Interrupt safety** | `Pinsetter_Post` does two atomic loads, one plain store and one atomic store; when the mailbox is full, one load and one store. No loop, no callback, no lock, and no game, because it has no `Game` to reach. The lost-roll count is written with a load and a store, not a read-modify-write: it has one writer, and some interrupt-driven targets can't do an atomic read-modify-write without a lock | Bounded, with no callback: **argued**, by reading (and no `Game` is in reach, by its signature). No lock: **checked** by two static asserts that both atomics are lock-free. Posting never touches the game: **tested** (a fake interrupt handler, fired in the middle of a drain, sees the score unchanged) |
+| **A full mailbox** | Was invisible to all but the interrupt handler. Now counted, and read by the main loop | **Tested**: the count, and its wrap |
+| **Wrap-around** | The positions stay below 22 and wrap to 0, so no counter can overflow. The earlier free-running counts, taken `% 8`, were right only because 8 divides 2^32. Taken `% 21`, they would have skipped slots after 2^32 posts | The positions' wrap: **tested** (the thread test sends 105 rolls through 22 slots, and a ring that never wraps crashes it). The 2^32 case: **argued**, and designed out |
+| **Capacity at its edges** | 21 rolls accepted, the 22nd refused, and room again after a drain | **Tested**, one off each way: a 22-roll mailbox fails the test, and a 20-roll one fails the build (the static assert tying it to `GAME_MAX_ROLLS`) |
+| **The 21-roll promise has an edge** | It holds while every waiting roll is a real roll of one game. A glitch waiting to be discarded takes a slot too, and so would a roll of the game before, still unresolved. Then 21 more rolls make 22, and the last is refused (and counted) | **Argued**. Left to the user |
+| **A drain has no fixed bound** (`ENG-7.4`, bounded waits) | `Pinsetter_Drain` reads the post position again on each pass, so it also takes rolls that arrive while it runs. An interrupt handler posting faster than the game applies rolls would keep it draining. Reading the position once, at the start, would bound a drain at 21 rolls, and leave later ones for the next drain | Today's behavior: **tested** (the fake-interrupt test fails if the position is read once). The bound: **argued**. Left to the user |
+| **Draining from inside a listener** | `Game_Roll` then returns `GAME_QUEUED`, which the drain treats as accepted. The roll goes into the game's mailbox, where an impossible one is dropped: around the user's stop-and-keep policy | **Argued**. No test, no guard |
+| **`NULL`, and lifetime** | Unlike every `Game_*` function, the `Pinsetter_*` functions don't accept `NULL`: they would crash. And destroying a pinsetter while its interrupt handler can still post is a use after release that the pool can't see | **Argued**. Recorded, not fixed |
+
+**ThreadSanitizer, one mutant at a time.** Each mutant ran alone, in its own commit and its
+own CI run, on a throwaway branch that has since been deleted. The thread test runs its five
+games 20 times per run; for the second producer, the stress was raised until something
+failed. The key lines of each report are copied here because Actions logs expire. The line
+numbers are those of `src/pinsetter.c` as committed: line 92 is the post writing the roll,
+and line 101 the drain reading it.
+
+| Mutant | CI run | Caught? | ThreadSanitizer's report |
+|---|---|---|---|
+| None (the baseline) | [36290752684](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36290752684) | All four builds pass | None |
+| M0: plain positions, no atomics | [36290833004](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36290833004) | Yes, at 20 runs | Three races. `Write of size 4 ... by main thread: Pinsetter_Drain pinsetter.c:107` / `Previous read of size 4 ... by thread T1: Pinsetter_Post pinsetter.c:83` (the drain position). `Read of size 1 ... Pinsetter_Drain :101` / `Previous write of size 1 ... by thread T1: Pinsetter_Post :92` (the roll). `Read of size 4 ... Pinsetter_Drain :100` / `Previous write of size 4 ... by thread T3` (the post position) |
+| M1: the post publishes with a relaxed store | [36290906278](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36290906278) | Yes, at 20 | `Read of size 1 ... by main thread: Pinsetter_Drain pinsetter.c:101` / `Previous write of size 1 ... by thread T1: Pinsetter_Post pinsetter.c:92` / `Location is global 's_pinsetters' of size 72` |
+| M2: the drain reads the post position relaxed | [36290947961](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36290947961) | Yes, at 20 | The same pair: the drain's read at :101 after the post's write at :92 |
+| M3: the drain gives a slot back with a relaxed store | [36290979034](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36290979034) | Yes, at 20 | `Write of size 1 ... by thread T1: Pinsetter_Post pinsetter.c:92` / `Previous read of size 1 ... by main thread: Pinsetter_Drain pinsetter.c:101`: the interrupt side reusing a slot the main loop had read |
+| M4: the post reads the drain position relaxed | [36291015323](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36291015323) | Yes, at 20 | The same pair as M3 |
+| M5: a second producer (two threads post 20 gutter balls each) | [20 runs](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36291053588), [200](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36291103816), [2,000](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36291140274), [20,000](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36291186957) | **No, at any stress.** The plain builds caught lost and repeated rolls from 2,000 runs (debug first at run 259, release at run 1,278), and at 20,000 (in 14 runs in debug, 10 in release and 6 under UBSan) | None |
+
+Two results the review didn't expect:
+- **M3 and M4 need the ring to wrap.** They are races on *reusing* a slot. The thread test as
+  it stood before the review (one game of 21 rolls into a fresh 22-slot ring) never wrapped,
+  so it could not have caught either. That is the weakened test described under Costs.
+- **ThreadSanitizer is not the tool for a second producer.** It reports two accesses that
+  have no ordering between them, and most of the time here there is one: between two posts,
+  the consumer's acquire and release link the two producers. Only two posts that read the same
+  position at the same moment would show, and under ThreadSanitizer's slowdown that never
+  happened. The score check in the uninstrumented builds, which run fast enough to collide,
+  caught it. So nothing checks the one-producer rule while the program runs.
+
+### Watched: did the mailbox push validation into the frames?
+
+**No. `Game` still checks every roll at the door.** A queued roll, and a drained one, goes
+through the same `Game_Accept` as any other: game over, more pins than are standing, and
+the rule's range. Neither mailbox validates anything. They carry pins, and pass on the game's
+answer. What did appear is tell-don't-ask *at the boundary*. The pinsetter doesn't ask the
+game whether a roll would be accepted: it tells the game the roll, and acts on the answer
+(stop and keep). Inside the game, `Game` still asks the latest frame how many pins are
+standing. Phase 2's reason for declining still holds: no test needs a frame to validate its
+own roll.
+
+### Watched: are the listeners and the mailbox one module or two?
+
+**The listeners and the game's mailbox are one module.** They share one flag, `notifying`:
+it is what sends a roll to the mailbox, and it is set only while the listeners are being told.
+The mailbox exists only because a listener can roll, it is emptied only after a notification
+ends, and the loop in `Game_Roll` that empties it is the tail end of telling the listeners.
+Take the listeners out of `game.c`, and the mailbox has to go with them. **The pinsetter is a
+second module, and already apart**, in its own files, sharing nothing with the game but
+`GAME_MAX_ROLLS`. So the clean-up has three pieces, not four: the roll log with its replay,
+the listeners with their mailbox, and the pinsetter as it is. Not started: the user's call.
+
+### Kay's three properties
+
+| Property | Moved? | Evidence |
+|---|---|---|
+| **Messaging** | Yes, the most yet | For the first time a message is **asynchronous**: the interrupt side posts and returns without waiting, and the roll is delivered later, when the main loop is ready. The sender has no reference to the receiver at all. Going out, a message is now **data that crosses a wire**: 4 bytes a frame, rebuilt by a receiver that shares no code with the game. And a message the receiver can't accept is no longer lost: it waits for a person |
+| **Hiding of state-process** | Yes | The interrupt side can't reach the game: `Pinsetter_Post` has no `Game` to pass. The ring and its positions are private to `pinsetter.c`. The far side of the wire knows a byte format, not a type |
+| **Late binding** | A little | Which game gets a roll is decided when it is delivered, not when it is sent. The main loop passes a game to each drain, and a roll reported after the tenth frame goes into whichever game comes next. It is a parameter, not dispatch |
+
+**Cook.** The pinsetter is an abstract data type: one implementation, behind an opaque
+handle. The remote scoreboard is the first receiver that shares nothing with the library but
+a protocol. That is closer to Cook's objects, which work together only through an interface,
+than anything before. But the interface is a byte format, the way two processes talk, not two
+objects.
+
+### Costs
+
+- **Size:** `src/` grew from 1,098 lines to 1,268 (762 to 882 of code), and `include/` from
+  128 to 199 (40 to 61). Most of it is the pinsetter: `pinsetter.c` is 130 lines and
+  `pinsetter.h` 65. The rest is the game's mailbox, the new statuses, and their comments.
+- **Memory, checked with `offsetof` and `sizeof`:**
+  - A `Game` grew by 24 bytes, from 1,040 to 1,064: the mailbox, another 22-byte `RollLog`,
+    at offset 1,040, then 2 bytes of padding. The pool of two games is 2,128 bytes.
+  - A `Pinsetter` is 36 bytes: 22 roll slots, 2 of padding, two 4-byte positions, the 2-byte
+    lost count and the 2-byte last value seen. The pool of two is 72 bytes, the same 72 that
+    ThreadSanitizer reports as the size of `s_pinsetters`. It was 16 bytes before the review:
+    the whole-game mailbox added 14 slots and 2 of padding, and the lost count 4.
+- **What the compiler and the sanitizers can't check:**
+  - **One producer.** ThreadSanitizer can't see a second producer in practice (above), and
+    nothing else looks.
+  - **The memory ordering on a real target.** ThreadSanitizer checks the C11 model on a host.
+    The target's compiler and instruction set are trusted to implement it for lock-free
+    atomics. The static asserts check the lock-free part, on each compiler the build runs on.
+  - **That the interrupt side stays bounded.** Nothing stops a later change adding a loop or
+    a call to `Pinsetter_Post`. Only review does.
+  - **The drain's bound, and a drain from inside a listener** (both in the review).
+  - **A pinsetter's lifetime, and `NULL`.**
+- **A test was weakened silently.** Making the mailbox 21 rolls left the thread test posting
+  one game into a 22-slot ring. It never wrapped or filled again, though its comment said it
+  did, and every build stayed green. Only reasoning found it, and a mutant (a ring that never
+  wraps) confirmed it. The test now sends five games through one pinsetter, and a probe
+  counted the mailbox full in 20 of 20 runs.
+
+### The strongest argument that this still isn't Kay OO
+
+The asynchrony came from the hardware, not from the design. The "message" is one byte in a
+ring buffer: it has no selector, carries no reply address, and there is only one kind. The
+receiver can't decline it. It can only fail to apply it, and that answer goes to the main
+loop, not to the sender, which can never be told. The mailbox is the standard queue of any
+interrupt-driven firmware, with one producer and one consumer, and it was well understood
+long before objects. Erlang's processes have mailboxes too, but they receive many kinds of
+message, matched as they arrive, with a process behind each mailbox. Here there is one queue,
+one consumer and one kind of message. And the wire going out carries a hand-rolled, fixed
+4-byte format. What makes the far side possible is that the message is plain data: the
+opposite of an object hiding its state.
+
+### Would a simpler design do?
+
+- **For the pinsetter: not much simpler, in portable C.** On a single-core MCU, a plain queue
+  with interrupts turned off around the main loop's side is simpler to reason about, and
+  needs no atomics. But turning interrupts off is a platform call, a port of its own in the
+  constitution's terms (`ENG-2.2`), and a host test with a real thread can't use it. The
+  lock-free ring is the simplest thing that runs, and is checked, on both. Its one real
+  extra, the spare slot that tells full from empty, costs a byte.
+- **For the game's mailbox: yes, the refusal was simpler.** Phase 3 refused a roll from
+  inside a listener with one flag. The queue is the brief's own feature, not a need the
+  pinsetter created: the pinsetter's rolls never go through it, because the main loop drains
+  outside any notification. Of everything in phase 6, the game's mailbox buys the least.
+- **For the policy: dropping was simpler, and wrong.** Stop-and-keep cost one status, one
+  function (`Pinsetter_DiscardOldest`) and 14 more slots. Dropping loses the roll that was
+  right.
+
+### Where the tests overturned my reasoning
+
+- **An open frame scores 0**, not the pins so far. I got that wrong twice, in the first
+  drafts of two tests (the stopped drain, and the fake interrupt), and the tests said so.
+- **I expected ThreadSanitizer to catch a second producer**, and said so when asking the user
+  how to run the probes. It didn't, at any stress. The plain builds' score check did.
+- **The thread test had stopped testing the wrap**, after my own change to the capacity, and I
+  didn't notice until I was reasoning about M3. The never-wrap mutant confirmed it.
+- **The naive capacity change passed every test.** Here the tests didn't disagree with the
+  reasoning; they were silent, because 2^32 posts is out of their reach. So that step is
+  argued, and the design removes the case rather than a test covering it.
+- One claim was confirmed instead. `0107421`'s "only ThreadSanitizer can see the race" in the
+  plain version had never been run. M0 now shows the three races.
+
+### The debt
+
+Before phase 6, `game.c` was 344 lines, 44% of the library's `.c` files (773 lines), with the
+roll-log and listener extractions deferred on purpose. Now it is **375 lines, 40% of 934**.
+The share fell only because `pinsetter.c` (130 lines) joined the library. `game.c` itself grew
+by 31 lines: 33 for the game's mailbox, less the 2 that `GAME_MAX_ROLLS` took with it when it
+moved to `game_limits.h`. Counted together, the two boundary files, `game.c`
+and `pinsetter.c`, are 505 lines, 54% of the library: the boundary is now more than half of the
+code, and the frames, which are the whole design on `main`, are the smaller part.
+
+---
+
 ## Conclusion: late binding pays at the boundaries between owners
 
 Across the phases, Kay's properties moved **only where a feature crossed a boundary between
 owners**:
 - a counting rule the caller owns (phase 1);
 - listeners the caller owns (phase 3);
-- a game's history, which the caller may now revise (phase 5).
+- a game's history, which the caller may now revise (phase 5);
+- a machine on another thread, and a display on the far side of a wire (phase 6).
 
 Inside the library, where one party owns everything, the closed Simula-style design held up
-against every test. The evidence is in the diff: **of the 20 library files, the experiment
-changed only `game.h` and `game.c`**, the boundary. The frame classes, the states, the context,
-`RollList` and `SlotPool` are untouched since `main`. Phase 2, the one attempt to push late
+against every test. The evidence is in the diff: **of `main`'s 20 library files, the
+experiment changed only `game.h` and `game.c`**, the boundary. Phase 6 added three more, all at
+the boundary too: `pinsetter.h`, `pinsetter.c` and a one-constant private header. The frame
+classes, the states, the context, `RollList` and `SlotPool` are untouched since `main`. Phase 2, the one attempt to push late
 binding *inward* ("tell, don't ask"), had no feature behind it and was declined.
 
 The cost landed in exactly the same place. Every defect class the experiment found or
@@ -726,8 +1022,9 @@ them:
 | Boundary | What late binding cost there |
 |---|---|
 | The caller's rule | A buggy rule silently corrupted a game (the pins-standing wrap to 255); a `NULL` rule would crash. Now `GAME_ERR_RULE_OUT_OF_RANGE`, and `NULL` refused |
-| The caller's listeners | A wrong cast of the `void *` context is undefined behavior no build can catch; a `NULL` callback wasted a slot; a third subscriber overflowed the array for a commit; a roll from inside a listener broke the ordering promise. Now refused, refused, refused, and `GAME_ERR_ROLL_DURING_NOTIFICATION` |
+| The caller's listeners | A wrong cast of the `void *` context is undefined behavior no build can catch; a `NULL` callback wasted a slot; a third subscriber overflowed the array for a commit; a roll from inside a listener broke the ordering promise. Now refused, refused, refused, and (since phase 6) queued until the notification ends |
 | The caller revising history | A roll number the game hasn't had would have written far past the log; a correction from inside a listener would have replayed mid-notification; a correction can reopen a frame the listeners were told was complete; restoring a rejected correction trusts that the rule is pure. Now `GAME_ERR_NO_SUCH_ROLL`, refused, a `complete = false` message, and a documented requirement the compiler can't check |
+| A machine on another thread | Each position published with a weaker ordering is a data race; a roll the game rejected was dropped silently; a full mailbox lost the roll with no one told; a second producer loses rolls, and nothing catches it. Now release and acquire (each checked by ThreadSanitizer), stop-and-keep, a lost-roll count, and a rule documented in `pinsetter.h` that only review enforces |
 
 **The teachable conclusion: use late binding at the boundaries between owners, where it pays
 for itself, and nowhere else.** Where the caller owns a variation, a function pointer or a
@@ -743,6 +1040,8 @@ feature that argued *against* objects inside the library, which fits the conclus
 one owner's code, the simplest design wins, and here that is data plus a function.
 
 What the experiment did **not** reach is Kay's OO proper: messages as first-class things,
-receivers that can decline, and binding that stays open while the program runs. Each would
+receivers that can decline, and binding that stays open while the program runs. Phase 6 came
+nearest: its messages are asynchronous and cross a wire as data. But they are one byte in a
+ring and four bytes on a wire, with no selector and no reply, so they are data, not objects. Each would
 have meant rebuilding part of a language runtime in C (message selectors, dispatch,
 `doesNotUnderstand`). No feature asked for that, so it wasn't built.
