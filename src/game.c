@@ -6,20 +6,12 @@
 
 #include "frame_context.h"
 #include "frame_listeners.h"
-#include "game_limits.h"
+#include "roll_log.h"
 #include "slot_pool.h"
 
 /* Frames in a game of bowling. The last one keeps its own fill balls, so a game never needs
  * more. */
 #define GAME_FRAMES 10U
-
-/* Every accepted roll, as the pins that fell. Plain values only, so a RollLog can be copied
- * safely: saving one before an edit, and putting it back, is how a rejected edit is undone.
- * (A Game or FrameContext can't be copied like that: each context points at its own state.) */
-typedef struct {
-    Pins pins[GAME_MAX_ROLLS];
-    uint8_t count;
-} RollLog;
 
 /* Games available at once. There is no heap, so games come from a fixed pool. */
 #define GAME_POOL_SIZE 2U
@@ -138,7 +130,7 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     game->count_pins = count_pins;
     game->frames_reported = 0U;
     FrameListeners_Init(&game->listeners);
-    game->log.count = 0U;
+    RollLog_Init(&game->log);
     return game;
 }
 
@@ -201,8 +193,7 @@ GameStatus Game_Roll(Game *game, Pins pins)
     }
     const GameStatus status = Game_Accept(game, pins);
     if (status == GAME_OK) {
-        game->log.pins[game->log.count] = pins;
-        game->log.count++;
+        RollLog_Append(&game->log, pins);
         Game_ReportFrames(game, game->frames_reported, game->frames_reported);
     }
     return status;
@@ -234,8 +225,8 @@ bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *contex
 static GameStatus Game_Replay(Game *game)
 {
     game->frame_count = 0U;
-    for (uint8_t i = 0U; i < game->log.count; i++) {
-        const GameStatus status = Game_Accept(game, game->log.pins[i]);
+    for (uint8_t i = 0U; i < RollLog_Count(&game->log); i++) {
+        const GameStatus status = Game_Accept(game, RollLog_At(&game->log, i));
         if (status != GAME_OK) {
             return status;
         }
@@ -279,30 +270,11 @@ GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
     if (FrameListeners_AreBeingTold(&game->listeners)) {
         return GAME_ERR_DURING_NOTIFICATION;
     }
-    const uint8_t first = (uint8_t)(first_roll - 1U); /* index of the first roll replaced */
-    if ((first_roll == 0U) || (first_roll > game->log.count) ||
-        ((first + rolls_removed) > game->log.count)) {
-        return GAME_ERR_NO_SUCH_ROLL; /* an edit starts at a roll the game has had */
-    }
-    if ((new_pins == NULL) && (new_count > 0U)) {
-        return GAME_ERR_NO_SUCH_ROLL; /* new rolls promised, but none given */
-    }
-    const unsigned new_length = ((unsigned)game->log.count - rolls_removed) + new_count;
-    if (new_length > GAME_MAX_ROLLS) {
-        return GAME_ERR_TOO_MANY_ROLLS; /* no game has that many, and the log has no room */
-    }
-
-    /* The rolls before the range, then the new rolls, then the rolls after it. */
+    const RollEdit edit = { first_roll, rolls_removed, new_pins, new_count };
     RollLog edited;
-    edited.count = 0U;
-    for (uint8_t i = 0U; i < first; i++) {
-        edited.pins[edited.count++] = game->log.pins[i];
-    }
-    for (uint8_t i = 0U; i < new_count; i++) {
-        edited.pins[edited.count++] = new_pins[i];
-    }
-    for (uint8_t i = (uint8_t)(first + rolls_removed); i < game->log.count; i++) {
-        edited.pins[edited.count++] = game->log.pins[i];
+    const GameStatus status = RollLog_Edit(&game->log, &edit, &edited);
+    if (status != GAME_OK) {
+        return status;
     }
     return Game_ApplyEditedLog(game, &edited);
 }
