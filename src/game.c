@@ -81,17 +81,12 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
 /* Tells the listeners about the frames from index `first` on, as they are now. A complete
  * frame is sent with its score. A frame they were told was complete, but no longer is, is sent
  * with complete = false. `was_reported` is how many frames they had been told were complete.
+ * Complete frames always come first (a frame's bonus rolls are the next frames' own rolls), so
+ * the count reported is simply how many are complete.
  *
- * A frame never completes before the one before it: its bonus rolls, if any, are the next
- * frames' own rolls. So complete frames always come first, and the count of frames reported is
- * simply how many are complete: no before-and-after copy of every frame's flag is needed.
- *   - After a roll, nothing before the frames already reported can have changed, and nothing
- *     can have reopened, so the walk starts there: `first` and `was_reported` are both that
- *     count.
- *   - After an edit, any frame can have changed, so the walk starts at the first frame.
- *
- * Inline: every listener callback runs on top of this, so its frame is paid under each one. As
- * an ordinary call it added 112 bytes there (release, 64-bit host). */
+ * Inline, like the two below: every listener callback runs on top of these, so their frames
+ * are paid under each one. As an ordinary call it added 112 bytes there (release, 64-bit
+ * host). Callers use the two below, which say which walk they want. */
 static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_reported)
 {
     game->frames_reported = first;
@@ -106,6 +101,20 @@ static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_repo
             FrameListeners_Tell(&game->listeners, frame_number, 0U, false); /* reopened */
         }
     }
+}
+
+/* After a roll: nothing before the frames already reported can have changed, and nothing can
+ * have reopened, so the walk starts at the first frame not yet reported. */
+static inline void Game_ReportAfterRoll(Game *game)
+{
+    Game_ReportFrames(game, game->frames_reported, game->frames_reported);
+}
+
+/* After an edit: any frame can have changed, or reopened, so the walk starts at the first
+ * frame. `was_reported` is how many the listeners had been told were complete before it. */
+static inline void Game_ReportAfterEdit(Game *game, uint8_t was_reported)
+{
+    Game_ReportFrames(game, 0U, was_reported);
 }
 
 /* Standard bowling: a roll counts as the pins it knocked down. */
@@ -198,7 +207,7 @@ GameStatus Game_Roll(Game *game, Pins pins)
     const GameStatus status = Game_Accept(game, pins);
     if (status == GAME_OK) {
         RollLog_Append(&game->log, pins);
-        Game_ReportFrames(game, game->frames_reported, game->frames_reported);
+        Game_ReportAfterRoll(game);
     }
     return status;
 }
@@ -252,7 +261,7 @@ static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
 
     const GameStatus status = Game_Replay(game);
     if (status == GAME_OK) {
-        Game_ReportFrames(game, 0U, was_reported);
+        Game_ReportAfterEdit(game, was_reported);
     } else {
         game->log = saved;
         if (Game_Replay(game) != GAME_OK) {
