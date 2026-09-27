@@ -370,3 +370,19 @@ TEST(EditRollsTest, should_fix_a_strike_that_was_really_9_then_1)
     EXPECT_EQ(GAME_OK, Game_EditRolls(game, 1U, 1U, really, 2U));
     EXPECT_EQ(20U, Game_Score(game)); /* a spare, 9 + 1 + 3, then 3 + 4 */
 }
+
+TEST(EditRollsTest, should_reject_an_edit_that_would_make_more_rolls_than_a_game_can_have)
+{
+    /* The longest game, 21 rolls. Inserting one more can't be a real game, and the edited log
+     * has room for 21: it must be refused before anything is written. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    for (int frame = 1; frame <= 9; frame++) {
+        RollAll(game, {1U, 1U});
+    }
+    RollAll(game, {5U, 5U, 5U});
+
+    const Pins extra[] = {1U};
+    EXPECT_EQ(GAME_ERR_GAME_OVER, Game_EditRolls(game, 1U, 0U, extra, 1U));
+    EXPECT_EQ(33U, Game_Score(game));
+}
