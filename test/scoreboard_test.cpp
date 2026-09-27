@@ -12,8 +12,10 @@ struct Scoreboard {
     std::vector<std::pair<int, int>> frames; /* (frame number, frame score) */
 };
 
-void Scoreboard_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
+void Scoreboard_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                             bool frame_complete)
 {
+    (void)frame_complete; /* every message so far is a completion */
     auto *scoreboard = static_cast<Scoreboard *>(context);
     scoreboard->frames.emplace_back(frame_number, frame_score);
 }
@@ -26,7 +28,7 @@ protected:
 
     void SetUp() override
     {
-        ASSERT_TRUE(Game_OnFrameCompleted(game, &Scoreboard_FrameCompleted, &scoreboard));
+        ASSERT_TRUE(Game_OnFrameChanged(game, &Scoreboard_FrameChanged, &scoreboard));
     }
 };
 
@@ -79,7 +81,7 @@ TEST_F(ScoreboardTest, should_tell_the_scoreboard_about_the_tenth_frame_only_aft
 TEST(ScoreboardNullTest, should_ignore_setting_a_callback_on_a_null_game)
 {
     Scoreboard scoreboard;
-    Game_OnFrameCompleted(nullptr, &Scoreboard_FrameCompleted, &scoreboard);
+    Game_OnFrameChanged(nullptr, &Scoreboard_FrameChanged, &scoreboard);
     EXPECT_TRUE(scoreboard.frames.empty());
 }
 
@@ -90,7 +92,7 @@ TEST(ScoreboardNullTest, should_ignore_setting_a_callback_on_a_null_game)
 TEST_F(ScoreboardTest, should_tell_a_second_independent_subscriber_too)
 {
     RunningStats stats;
-    Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats);
+    Game_OnFrameChanged(game, &RunningStats_FrameChanged, &stats);
 
     RollAll(game, {3U, 4U, 10U, 5U, 5U, 1U});
 
@@ -103,8 +105,8 @@ TEST_F(ScoreboardTest, should_refuse_a_subscriber_once_every_slot_is_taken)
 {
     RunningStats stats;
     RunningStats one_too_many;
-    ASSERT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
-    EXPECT_FALSE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &one_too_many));
+    ASSERT_TRUE(Game_OnFrameChanged(game, &RunningStats_FrameChanged, &stats));
+    EXPECT_FALSE(Game_OnFrameChanged(game, &RunningStats_FrameChanged, &one_too_many));
 
     RollAll(game, {3U, 4U});
     EXPECT_EQ(1, stats.Frames());
@@ -120,7 +122,7 @@ TEST(RunningStatsNoTapTest, should_average_the_counted_scores_under_no_tap)
     GameHandle owner = MakeGameWithRule(&NinePinNoTap);
     Game *game = owner.get();
     RunningStats stats;
-    ASSERT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
+    ASSERT_TRUE(Game_OnFrameChanged(game, &RunningStats_FrameChanged, &stats));
 
     for (const Pins pins : {Pins{9U}, Pins{3U}, Pins{4U}}) {
         EXPECT_EQ(GAME_OK, Game_Roll(game, pins)) << "setup roll of " << +pins;
@@ -132,10 +134,10 @@ TEST(RunningStatsNoTapTest, should_average_the_counted_scores_under_no_tap)
 
 TEST_F(ScoreboardTest, should_refuse_a_null_callback_without_using_up_a_slot)
 {
-    EXPECT_FALSE(Game_OnFrameCompleted(game, nullptr, nullptr));
+    EXPECT_FALSE(Game_OnFrameChanged(game, nullptr, nullptr));
 
     RunningStats stats; /* the fixture's scoreboard has one slot; this takes the other */
-    EXPECT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
+    EXPECT_TRUE(Game_OnFrameChanged(game, &RunningStats_FrameChanged, &stats));
 }
 
 /* ---- Calling back into the game from inside a listener ---------------------------------- */
@@ -148,8 +150,10 @@ struct LiveTotal {
     std::vector<int> totals_seen;
 };
 
-void LiveTotal_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
+void LiveTotal_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                            bool frame_complete)
 {
+    (void)frame_complete; /* every message so far is a completion */
     (void)frame_number;
     (void)frame_score;
     auto *live = static_cast<LiveTotal *>(context);
@@ -164,7 +168,7 @@ TEST(ListenerReentryTest, should_let_a_listener_read_the_score_of_the_whole_roll
     Game *game = owner.get();
     LiveTotal live;
     live.game = game;
-    ASSERT_TRUE(Game_OnFrameCompleted(game, &LiveTotal_FrameCompleted, &live));
+    ASSERT_TRUE(Game_OnFrameChanged(game, &LiveTotal_FrameChanged, &live));
 
     for (int i = 0; i < 14; i++) {
         EXPECT_EQ(GAME_OK, Game_Roll(game, 0U)); /* frames 1 to 7: gutter balls */
@@ -187,8 +191,10 @@ struct RollsFromInside {
     GameStatus status = GAME_OK;
 };
 
-void RollsFromInside_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
+void RollsFromInside_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                  bool frame_complete)
 {
+    (void)frame_complete; /* every message so far is a completion */
     (void)frame_number;
     (void)frame_score;
     auto *listener = static_cast<RollsFromInside *>(context);
@@ -209,8 +215,8 @@ TEST(ListenerReentryTest, should_refuse_a_roll_made_from_inside_a_listener)
     RollsFromInside rolls_from_inside;
     rolls_from_inside.game = game;
     Scoreboard other;
-    ASSERT_TRUE(Game_OnFrameCompleted(game, &RollsFromInside_FrameCompleted, &rolls_from_inside));
-    ASSERT_TRUE(Game_OnFrameCompleted(game, &Scoreboard_FrameCompleted, &other));
+    ASSERT_TRUE(Game_OnFrameChanged(game, &RollsFromInside_FrameChanged, &rolls_from_inside));
+    ASSERT_TRUE(Game_OnFrameChanged(game, &Scoreboard_FrameChanged, &other));
 
     RollAll(game, {5U, 5U, 3U}); /* the 3 completes frame 1, a spare (13) */
 

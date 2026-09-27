@@ -21,16 +21,16 @@
 #define GAME_MAX_LISTENERS 2U
 
 typedef struct {
-    FrameCompletedCallback callback;
+    FrameChangedCallback callback;
     void *context;
-} FrameCompletedListener;
+} FrameChangedListener;
 
 struct Game {
     FrameContext frames[GAME_FRAMES];
     uint8_t frame_count;
     PinCountRule count_pins; /* how this game counts a roll: see Game_CreateWithRule */
     uint8_t frames_reported; /* frames already told to the listeners */
-    FrameCompletedListener listeners[GAME_MAX_LISTENERS];
+    FrameChangedListener listeners[GAME_MAX_LISTENERS];
     uint8_t listener_count;
     bool notifying; /* true while the listeners are being told: see Game_Roll */
     Pins rolls[GAME_MAX_ROLLS]; /* each accepted roll, as the pins that fell: Game_CorrectRoll */
@@ -97,11 +97,12 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
     return result;
 }
 
-static void Game_TellListeners(const Game *game, uint8_t frame_number, Score frame_score)
+static void Game_TellListeners(const Game *game, uint8_t frame_number, Score frame_score,
+                               bool frame_complete)
 {
     for (uint8_t i = 0U; i < game->listener_count; i++) {
-        const FrameCompletedListener *listener = &game->listeners[i];
-        listener->callback(listener->context, frame_number, frame_score);
+        const FrameChangedListener *listener = &game->listeners[i];
+        listener->callback(listener->context, frame_number, frame_score, frame_complete);
     }
 }
 
@@ -118,7 +119,7 @@ static void Game_ReportCompletedFrames(Game *game)
            FrameContext_IsComplete(&game->frames[game->frames_reported])) {
         const FrameContext *frame = &game->frames[game->frames_reported];
         game->frames_reported++;
-        Game_TellListeners(game, game->frames_reported, FrameContext_Score(frame));
+        Game_TellListeners(game, game->frames_reported, FrameContext_Score(frame), true);
     }
     game->notifying = false;
 }
@@ -231,12 +232,12 @@ Score Game_Score(const Game *game)
     return score;
 }
 
-bool Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context)
+bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context)
 {
     if ((game == NULL) || (callback == NULL) || (game->listener_count == GAME_MAX_LISTENERS)) {
         return false;
     }
-    FrameCompletedListener *listener = &game->listeners[game->listener_count];
+    FrameChangedListener *listener = &game->listeners[game->listener_count];
     listener->callback = callback;
     listener->context = context;
     game->listener_count++;

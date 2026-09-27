@@ -56,8 +56,10 @@ struct KeyedScoreboard {
     std::map<int, int> scores; /* frame number -> score */
 };
 
-void KeyedScoreboard_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
+void KeyedScoreboard_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                  bool frame_complete)
 {
+    (void)frame_complete; /* every message so far is a completion */
     static_cast<KeyedScoreboard *>(context)->scores[frame_number] = frame_score;
 }
 
@@ -68,7 +70,7 @@ TEST(CorrectionListenerTest, should_tell_the_scoreboard_the_rescored_frames)
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     KeyedScoreboard scoreboard;
-    ASSERT_TRUE(Game_OnFrameCompleted(game, &KeyedScoreboard_FrameCompleted, &scoreboard));
+    ASSERT_TRUE(Game_OnFrameChanged(game, &KeyedScoreboard_FrameChanged, &scoreboard));
     RollAll(game, {3U, 4U, 5U, 2U});
     ASSERT_EQ((std::map<int, int>{{1, 7}, {2, 7}}), scoreboard.scores);
 
@@ -81,7 +83,7 @@ TEST(CorrectionListenerTest, should_keep_running_stats_right_after_a_correction)
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     RunningStats stats;
-    ASSERT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
+    ASSERT_TRUE(Game_OnFrameChanged(game, &RunningStats_FrameChanged, &stats));
     RollAll(game, {3U, 4U, 5U, 2U}); /* frames of 7 and 7 */
 
     EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 5U)); /* frames of 9 and 7 */

@@ -54,8 +54,10 @@ struct RunningStats {
     }
 };
 
-inline void RunningStats_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
+inline void RunningStats_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                      bool frame_complete)
 {
+    (void)frame_complete; /* every message so far is a completion */
     static_cast<RunningStats *>(context)->frame_scores[frame_number] = frame_score;
 }
 

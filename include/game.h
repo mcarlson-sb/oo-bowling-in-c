@@ -26,7 +26,7 @@ typedef enum {
     /* The game's PinCountRule counted the roll as more pins than were standing. The roll
      * is rejected and the game is left unchanged. */
     GAME_ERR_RULE_OUT_OF_RANGE,
-    /* Game_Roll was called from inside a frame-completed callback. Allowing it would tell
+    /* Game_Roll was called from inside a frame-changed callback. Allowing it would tell
      * listeners about frames out of order, so the roll is rejected and the game is left
      * unchanged. Roll again once the callback has returned. */
     GAME_ERR_ROLL_DURING_NOTIFICATION
@@ -47,16 +47,20 @@ Game *Game_CreateWithRule(PinCountRule count_pins);
 
 void Game_Destroy(Game *game);
 
-/* Told each time a frame completes, after the roll that completed it: the frame's number (1
- * to 10) and its score. When one roll completes several frames, it is told about each,
- * oldest first. A callback may read the game (Game_Score sees the whole roll), but
- * not roll: Game_Roll from inside a callback returns GAME_ERR_ROLL_DURING_NOTIFICATION. */
-typedef void (*FrameCompletedCallback)(void *context, uint8_t frame_number, Score frame_score);
+/* Told when a frame changes: the frame's number (1 to 10), its score, and whether it is
+ * complete.
+ *   - After a roll, it is told about each frame the roll completed, oldest first.
+ *   - After a correction (Game_CorrectRoll), it is told again about every complete frame,
+ *     with its new score: a frame number it has heard before is an update.
+ * A callback may read the game (Game_Score sees the whole roll), but not roll:
+ * Game_Roll from inside a callback returns GAME_ERR_ROLL_DURING_NOTIFICATION. */
+typedef void (*FrameChangedCallback)(void *context, uint8_t frame_number, Score frame_score,
+                                     bool frame_complete);
 
-/* Adds a callback this game tells about completed frames; `context` is passed back to it
+/* Adds a callback this game tells about changed frames; `context` is passed back to it
  * unchanged. A game has room for two. Returns false, adding nothing, if both are taken, or
  * if `game` or `callback` is NULL. */
-bool Game_OnFrameCompleted(Game *game, FrameCompletedCallback callback, void *context);
+bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context);
 
 GameStatus Game_Roll(Game *game, Pins pins);
 
