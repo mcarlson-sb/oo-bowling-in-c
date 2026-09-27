@@ -35,9 +35,9 @@ Pins RollLog_At(const RollLog *self, uint8_t index)
 
 static bool RollLog_HasRange(const RollLog *self, const RollEdit *edit)
 {
-    const uint8_t first = (uint8_t)(edit->first_roll - 1U); /* index of the first roll replaced */
+    const uint8_t first_index = (uint8_t)(edit->first_roll - 1U);
     return (edit->first_roll != 0U) && (edit->first_roll <= self->count) &&
-           ((first + edit->rolls_removed) <= self->count);
+           ((first_index + edit->rolls_removed) <= self->count);
 }
 
 GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edited)
@@ -56,15 +56,15 @@ GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edit
         return GAME_ERR_TOO_MANY_ROLLS;
     }
 
-    const uint8_t first = (uint8_t)(edit->first_roll - 1U); /* index of the first roll replaced */
+    const uint8_t first_index = (uint8_t)(edit->first_roll - 1U);
     edited->count = 0U;
-    for (uint8_t i = 0U; i < first; i++) {
+    for (uint8_t i = 0U; i < first_index; i++) {
         edited->pins[edited->count++] = self->pins[i];
     }
     for (uint8_t i = 0U; i < edit->new_count; i++) {
         edited->pins[edited->count++] = edit->new_pins[i];
     }
-    for (uint8_t i = (uint8_t)(first + edit->rolls_removed); i < self->count; i++) {
+    for (uint8_t i = (uint8_t)(first_index + edit->rolls_removed); i < self->count; i++) {
         edited->pins[edited->count++] = self->pins[i];
     }
     return GAME_OK;
