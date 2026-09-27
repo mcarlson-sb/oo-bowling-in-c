@@ -305,6 +305,9 @@ TEST(CorrectionListenerTest, should_tell_the_listeners_nothing_when_a_correction
             frame_complete ? frame_number : -frame_number, frame_score);
     };
     ASSERT_TRUE(Game_OnFrameChanged(game, record, &heard));
+    /* Added mid-game, the listener is caught up first; the test is about what comes after. */
+    EXPECT_EQ((std::vector<std::pair<int, int>>{{1, 15}, {2, 7}}), heard);
+    heard.clear();
 
     EXPECT_EQ(GAME_ERR_INVALID_PINS, Game_CorrectRoll(game, 1U, 8U)); /* 8 + 3 > 10 */
     EXPECT_TRUE(heard.empty());
@@ -384,6 +387,9 @@ TEST(EditRollsTest, should_fix_a_tenth_frame_entered_with_a_roll_too_many_in_one
     ASSERT_EQ(10U, Game_Score(game));
     Transcript transcript;
     ASSERT_TRUE(Game_OnFrameChanged(game, &Transcript_FrameChanged, &transcript));
+    /* Added mid-game, the listener is caught up first; the test is about what comes after. */
+    EXPECT_EQ((std::vector<Transcript::Message>{{10, 10, true}}), transcript.AboutFrame(10));
+    transcript.messages.clear();
 
     const Pins really[] = {9U, 0U};
     const RollEdit edit = MakeEdit(19U, 3U, really, 2U); /* rolls 19 to 21 become 9, 0 */

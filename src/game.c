@@ -231,12 +231,30 @@ Score Game_Score(const Game *game)
     return score;
 }
 
+/* Tells the newest listener, and only it, about every frame the others have already been told
+ * is complete, oldest first. The game is busy meanwhile, as for any callback: the new listener
+ * may read the game, not change it. The others hear nothing again, which they would take for
+ * updates. */
+static void Game_CatchUpNewestListener(Game *game)
+{
+    game->busy = true;
+    for (uint8_t i = 0U; i < game->frames_reported; i++) {
+        FrameListeners_TellNewest(&game->listeners, (FrameNumber)(i + 1U),
+                                  FrameContext_Score(&game->frames[i]), true);
+    }
+    game->busy = false;
+}
+
 bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context)
 {
     if ((game == NULL) || game->busy) {
         return false; /* busy: added mid-roll, it would join a telling already under way */
     }
-    return FrameListeners_Add(&game->listeners, callback, context);
+    if (!FrameListeners_Add(&game->listeners, callback, context)) {
+        return false;
+    }
+    Game_CatchUpNewestListener(game);
+    return true;
 }
 
 /* Empties the frames and replays the roll log from the start. Stops at, and returns the

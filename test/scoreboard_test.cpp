@@ -293,3 +293,115 @@ TEST(ListenerReentryTest, should_refuse_a_listener_added_from_inside_a_listener_
     EXPECT_FALSE(s_subscribing_rule_added);
     EXPECT_EQ((Frames{}), s_subscribing_rule_late.frames);
 }
+
+namespace {
+
+/* Every message a listener hears, with whether it said the frame is complete. */
+struct Heard {
+    struct Message {
+        int frame;
+        int score;
+        bool complete;
+        bool operator==(const Message &other) const
+        {
+            return (frame == other.frame) && (score == other.score) && (complete == other.complete);
+        }
+    };
+    std::vector<Message> messages;
+};
+
+void Heard_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                        bool frame_complete)
+{
+    static_cast<Heard *>(context)->messages.push_back({frame_number, frame_score, frame_complete});
+}
+
+using Messages = std::vector<Heard::Message>;
+
+} // namespace
+
+TEST(LateListenerTest, should_tell_a_listener_added_mid_game_every_frame_already_complete)
+{
+    /* A scoreboard restarted mid-game catches up at once, and only it: the listener that was
+     * there from the start hears nothing again, which it would take for updates. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    Heard original;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &Heard_FrameChanged, &original));
+    RollAll(game, {3U, 4U, 2U, 5U});
+
+    Heard late;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &Heard_FrameChanged, &late));
+    EXPECT_EQ((Messages{{1, 7, true}, {2, 7, true}}), late.messages);
+    EXPECT_EQ(2U, original.messages.size());
+
+    RollAll(game, {1U, 1U});
+    EXPECT_EQ((Heard::Message{3, 2, true}), late.messages.back());
+    EXPECT_EQ(original.messages, late.messages);
+}
+
+TEST(LateListenerTest, should_hear_a_correction_after_catching_up_as_an_original_listener_does)
+{
+    /* After the catch-up, a late listener hears exactly what one there from the start hears,
+     * including a frame that a correction reopens. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    Heard original;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &Heard_FrameChanged, &original));
+    RollAll(game, {3U, 4U});
+    Heard late;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &Heard_FrameChanged, &late));
+
+    EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 10U)); /* a strike: frame 1 reopens */
+
+    EXPECT_EQ((Messages{{1, 7, true}, {1, 0, false}}), late.messages);
+    EXPECT_EQ(original.messages, late.messages);
+}
+
+TEST(LateListenerTest, should_tell_nothing_to_a_listener_added_before_any_frame_completes)
+{
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    Heard before_play;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &Heard_FrameChanged, &before_play));
+    RollAll(game, {3U}); /* frame 1 is still open */
+    Heard after_one_roll;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &Heard_FrameChanged, &after_one_roll));
+
+    EXPECT_EQ((Messages{}), before_play.messages);
+    EXPECT_EQ((Messages{}), after_one_roll.messages);
+}
+
+namespace {
+
+/* A late listener that tries to roll while it is being caught up. */
+struct RollsWhileCatchingUp {
+    Game *game = nullptr;
+    std::vector<GameStatus> statuses;
+};
+
+void RollsWhileCatchingUp_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                       bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    auto *listener = static_cast<RollsWhileCatchingUp *>(context);
+    listener->statuses.push_back(Game_Roll(listener->game, 1U));
+}
+
+} // namespace
+
+TEST(LateListenerTest, should_let_a_listener_being_caught_up_read_the_game_but_not_change_it)
+{
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollAll(game, {3U, 4U});
+    RollsWhileCatchingUp late;
+    late.game = game;
+
+    ASSERT_TRUE(Game_OnFrameChanged(game, &RollsWhileCatchingUp_FrameChanged, &late));
+
+    EXPECT_EQ((std::vector<GameStatus>{GAME_ERR_DURING_NOTIFICATION}), late.statuses);
+    EXPECT_EQ(7U, Game_Score(game));
+}

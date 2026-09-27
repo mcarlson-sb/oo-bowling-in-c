@@ -47,4 +47,16 @@ static inline void FrameListeners_Tell(FrameListeners *self, FrameNumber frame_n
     }
 }
 
+/* Tells only the newest listener, the last one added, about one frame: to catch it up on a
+ * game already under way. Inline, like FrameListeners_Tell, for the same reason. */
+static inline void FrameListeners_TellNewest(const FrameListeners *self, FrameNumber frame_number,
+                                             Score frame_score, bool frame_complete)
+{
+    if (self->count == 0U) {
+        return;
+    }
+    const FrameListener *newest = &self->entries[self->count - 1U];
+    newest->callback(newest->context, frame_number, frame_score, frame_complete);
+}
+
 #endif /* FRAME_LISTENERS_H */
