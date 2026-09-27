@@ -385,7 +385,7 @@ TEST(EditRollsTest, should_reject_an_edit_that_would_make_more_rolls_than_a_game
     RollAll(game, {5U, 5U, 5U});
 
     const Pins extra[] = {1U};
-    EXPECT_EQ(GAME_ERR_GAME_OVER, Game_EditRolls(game, 1U, 0U, extra, 1U));
+    EXPECT_EQ(GAME_ERR_TOO_MANY_ROLLS, Game_EditRolls(game, 1U, 0U, extra, 1U));
     EXPECT_EQ(33U, Game_Score(game));
 }
 

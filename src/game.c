@@ -325,7 +325,7 @@ GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
     }
     const unsigned new_length = ((unsigned)game->log.count - rolls_removed) + new_count;
     if (new_length > GAME_MAX_ROLLS) {
-        return GAME_ERR_GAME_OVER; /* no game has that many rolls, and the log has no room */
+        return GAME_ERR_TOO_MANY_ROLLS; /* no game has that many, and the log has no room */
     }
 
     /* The rolls before the range, then the new rolls, then the rolls after it. */

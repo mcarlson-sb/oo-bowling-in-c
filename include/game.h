@@ -32,7 +32,10 @@ typedef enum {
     GAME_ERR_ROLL_DURING_NOTIFICATION,
     /* Game_CorrectRoll or Game_EditRolls was given a roll number the game hasn't had (rolls
      * start at 1), or a range that runs past the last roll. Nothing is changed. */
-    GAME_ERR_NO_SUCH_ROLL
+    GAME_ERR_NO_SUCH_ROLL,
+    /* Game_EditRolls would leave more rolls than any game can have (21). Nothing is
+     * changed. */
+    GAME_ERR_TOO_MANY_ROLLS
 } GameStatus;
 
 /* How many pins a roll counts as, given how many were standing before it and how many it
@@ -92,7 +95,7 @@ GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins);
  * roll (that roll's status), if the range isn't rolls the game has had (so an edit can't add
  * rolls after the last one: that is Game_Roll's job) or `new_pins` is NULL
  * with rolls promised (GAME_ERR_NO_SUCH_ROLL), if it would make more than 21 rolls
- * (GAME_ERR_GAME_OVER), or if called from inside a callback
+ * (GAME_ERR_TOO_MANY_ROLLS), or if called from inside a callback
  * (GAME_ERR_ROLL_DURING_NOTIFICATION). */
 GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
                           const Pins *new_pins, uint8_t new_count);
