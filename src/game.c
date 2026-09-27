@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "frame_context.h"
+#include "frame_listeners.h"
 #include "game_limits.h"
 #include "slot_pool.h"
 
@@ -23,22 +24,12 @@ typedef struct {
 /* Games available at once. There is no heap, so games come from a fixed pool. */
 #define GAME_POOL_SIZE 2U
 
-/* Who to tell when a frame completes. */
-#define GAME_MAX_LISTENERS 2U
-
-typedef struct {
-    FrameChangedCallback callback;
-    void *context;
-} FrameChangedListener;
-
 struct Game {
     FrameContext frames[GAME_FRAMES];
     uint8_t frame_count;
     PinCountRule count_pins; /* how this game counts a roll: see Game_CreateWithRule */
     uint8_t frames_reported; /* frames already told to the listeners */
-    FrameChangedListener listeners[GAME_MAX_LISTENERS];
-    uint8_t listener_count;
-    bool notifying; /* true while the listeners are being told: see Game_Roll */
+    FrameListeners listeners; /* who to tell when a frame changes: see Game_OnFrameChanged */
     RollLog log; /* see Game_CorrectRoll */
 };
 
@@ -94,15 +85,6 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
     return result;
 }
 
-static void Game_TellListeners(const Game *game, uint8_t frame_number, Score frame_score,
-                               bool frame_complete)
-{
-    for (uint8_t i = 0U; i < game->listener_count; i++) {
-        const FrameChangedListener *listener = &game->listeners[i];
-        listener->callback(listener->context, frame_number, frame_score, frame_complete);
-    }
-}
-
 /* Tells the listeners about the frames from index `first` on, as they are now. A complete
  * frame is sent with its score. A frame they were told was complete, but no longer is, is sent
  * with complete = false. `was_reported` is how many frames they had been told were complete.
@@ -116,19 +98,18 @@ static void Game_TellListeners(const Game *game, uint8_t frame_number, Score fra
  *   - After an edit, any frame can have changed, so the walk starts at the first frame. */
 static void Game_ReportFrames(Game *game, uint8_t first, uint8_t was_reported)
 {
-    game->notifying = true;
     game->frames_reported = first;
     const uint8_t frames = (was_reported > game->frame_count) ? was_reported : game->frame_count;
     for (uint8_t i = first; i < frames; i++) {
         const uint8_t frame_number = (uint8_t)(i + 1U);
         if ((i < game->frame_count) && FrameContext_IsComplete(&game->frames[i])) {
-            Game_TellListeners(game, frame_number, FrameContext_Score(&game->frames[i]), true);
+            FrameListeners_Tell(&game->listeners, frame_number,
+                                FrameContext_Score(&game->frames[i]), true);
             game->frames_reported = frame_number;
         } else if (i < was_reported) {
-            Game_TellListeners(game, frame_number, 0U, false); /* reopened */
+            FrameListeners_Tell(&game->listeners, frame_number, 0U, false); /* reopened */
         }
     }
-    game->notifying = false;
 }
 
 /* Standard bowling: a roll counts as the pins it knocked down. */
@@ -156,8 +137,7 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     game->frame_count = 0U;
     game->count_pins = count_pins;
     game->frames_reported = 0U;
-    game->listener_count = 0U;
-    game->notifying = false;
+    FrameListeners_Init(&game->listeners);
     game->log.count = 0U;
     return game;
 }
@@ -216,7 +196,7 @@ GameStatus Game_Roll(Game *game, Pins pins)
     if (game == NULL) {
         return GAME_ERR_NULL_GAME;
     }
-    if (game->notifying) {
+    if (FrameListeners_AreBeingTold(&game->listeners)) {
         return GAME_ERR_DURING_NOTIFICATION;
     }
     const GameStatus status = Game_Accept(game, pins);
@@ -243,14 +223,10 @@ Score Game_Score(const Game *game)
 
 bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context)
 {
-    if ((game == NULL) || (callback == NULL) || (game->listener_count == GAME_MAX_LISTENERS)) {
+    if (game == NULL) {
         return false;
     }
-    FrameChangedListener *listener = &game->listeners[game->listener_count];
-    listener->callback = callback;
-    listener->context = context;
-    game->listener_count++;
-    return true;
+    return FrameListeners_Add(&game->listeners, callback, context);
 }
 
 /* Empties the frames and replays the roll log from the start. Stops at, and returns the
@@ -300,7 +276,7 @@ GameStatus Game_EditRolls(Game *game, uint8_t first_roll, uint8_t rolls_removed,
     if (game == NULL) {
         return GAME_ERR_NULL_GAME;
     }
-    if (game->notifying) {
+    if (FrameListeners_AreBeingTold(&game->listeners)) {
         return GAME_ERR_DURING_NOTIFICATION;
     }
     const uint8_t first = (uint8_t)(first_roll - 1U); /* index of the first roll replaced */
