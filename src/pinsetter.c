@@ -1,5 +1,4 @@
-/* The pinsetter's main-loop side, and its pool. The interrupt side is in pinsetter_isr.c; the
- * ring they share is in pinsetter_ring.h. */
+/* The pinsetter's main-loop side, and its pool. */
 #include "pinsetter.h"
 
 #include <stdatomic.h>
@@ -11,7 +10,6 @@
 #include "pinsetter_ring.h"
 #include "slot_pool.h"
 
-/* Pinsetters available at once. There is no heap, so they come from a fixed pool. */
 #define PINSETTER_POOL_SIZE 2U
 
 static Pinsetter s_pinsetters[PINSETTER_POOL_SIZE];
@@ -22,9 +20,6 @@ Pinsetter *Pinsetter_Create(void)
 {
     uint8_t slot = 0U;
     if (!SlotPool_Acquire(&s_pool, &slot)) {
-        /* A configuration error, not a runtime condition: the system has more lanes than
-         * PINSETTER_POOL_SIZE. There is no safe pinsetter to hand back, so stop, in every
-         * build, at the moment the mistake is made. */
         Fault_Stop("pinsetter: none free; PINSETTER_POOL_SIZE is smaller than the lanes");
     }
     Pinsetter *pinsetter = &s_pinsetters[slot];
@@ -38,8 +33,6 @@ Pinsetter *Pinsetter_Create(void)
     return pinsetter;
 }
 
-/* A pointer that isn't one of ours, NULL included, is ignored. One whose slot is already free
- * was destroyed before: a bug in the caller, so the program stops, in every build. */
 void Pinsetter_Destroy(Pinsetter *pinsetter)
 {
     for (uint8_t i = 0U; i < PINSETTER_POOL_SIZE; i++) {
@@ -49,18 +42,16 @@ void Pinsetter_Destroy(Pinsetter *pinsetter)
     }
 }
 
-/* Rolls the waiting rolls into the game, stopping at the first it refuses. */
 static GameStatus Pinsetter_DrainWaiting(Pinsetter *pinsetter, Game *game)
 {
-    /* Only the rolls waiting now: one read of the post position, so a drain applies at most a
-     * mailbox's worth, however fast the interrupt side posts. Later rolls wait for the next. */
+    /* Read once, so rolls posted during the drain wait for the next one. */
     const unsigned post_at = atomic_load_explicit(&pinsetter->post_at, memory_order_acquire);
     unsigned drain_at = atomic_load_explicit(&pinsetter->drain_at, memory_order_relaxed);
     while (drain_at != post_at) {
         const Pins pins = pinsetter->rolls[drain_at];
-        const GameStatus status = Game_Roll(game, pins); /* on the main loop's thread */
+        const GameStatus status = Game_Roll(game, pins);
         if (status != GAME_OK) {
-            return status; /* the machine reported it: keep it, and let the scorer decide */
+            return status;
         }
         drain_at = Pinsetter_Next(drain_at);
         atomic_store_explicit(&pinsetter->drain_at, drain_at, memory_order_release);
@@ -68,11 +59,8 @@ static GameStatus Pinsetter_DrainWaiting(Pinsetter *pinsetter, Game *game)
     return GAME_OK;
 }
 
-/* The drain keeps its own copy of the read position while Game_Roll runs the listeners, and
- * writes it back after each roll. So while it runs, a discard from a listener is refused:
- * written over, it would have reported success and changed nothing. A drain from inside a
- * drain is refused at once, and leaves the flag to the drain that set it: clearing it on the
- * way out would let the next discard through. */
+/* The drain writes its copy of drain_at back after each roll, over any discard a listener
+ * made; hence `draining`. A nested drain returns without clearing the outer one's flag. */
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 {
     if (pinsetter->draining) {
@@ -86,19 +74,17 @@ GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 
 uint16_t Pinsetter_RollsLost(const Pinsetter *pinsetter)
 {
-    /* Only read: never cleared, so the interrupt side stays its only writer, and any number of
-     * readers can ask without changing what the others see. */
     return atomic_load_explicit(&pinsetter->rolls_lost, memory_order_relaxed);
 }
 
 bool Pinsetter_DiscardOldest(Pinsetter *pinsetter)
 {
     if (pinsetter->draining) {
-        return false; /* from inside a drain: see Pinsetter_Drain */
+        return false;
     }
     const unsigned drain_at = atomic_load_explicit(&pinsetter->drain_at, memory_order_relaxed);
     if (drain_at == atomic_load_explicit(&pinsetter->post_at, memory_order_acquire)) {
-        return false; /* nothing waiting */
+        return false;
     }
     atomic_store_explicit(&pinsetter->drain_at, Pinsetter_Next(drain_at), memory_order_release);
     return true;
