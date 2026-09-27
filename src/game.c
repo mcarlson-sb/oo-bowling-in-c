@@ -237,6 +237,9 @@ GameStatus Game_Roll(Game *game, Pins pins)
         return GAME_ERR_NULL_GAME;
     }
     if (game->notifying) {
+        if ((game->log.count + game->mailbox.count) >= GAME_MAX_ROLLS) {
+            return GAME_ERR_TOO_MANY_ROLLS; /* they can't all be real, and the mailbox is full */
+        }
         game->mailbox.pins[game->mailbox.count] = pins;
         game->mailbox.count++;
         return GAME_QUEUED;

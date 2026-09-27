@@ -33,8 +33,8 @@ typedef enum {
     /* Game_CorrectRoll or Game_EditRolls was given a roll number the game hasn't had (rolls
      * start at 1), or a range that runs past the last roll. Nothing is changed. */
     GAME_ERR_NO_SUCH_ROLL,
-    /* Game_EditRolls would leave more rolls than any game can have (21). Nothing is
-     * changed. */
+    /* Game_EditRolls would leave more rolls than any game can have (21), or a callback
+     * queued more rolls than the game has left. Nothing is changed. */
     GAME_ERR_TOO_MANY_ROLLS,
     /* Not an error. Game_Roll was called from inside a frame-changed callback, so the roll
      * went into the game's mailbox. It is checked and applied, like any roll, as soon as

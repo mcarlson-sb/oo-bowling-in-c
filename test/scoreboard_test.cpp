@@ -225,3 +225,46 @@ TEST(ListenerReentryTest, should_queue_a_roll_made_from_inside_a_listener_until_
     EXPECT_EQ((Frames{{1, 13}, {2, 7}}), other.frames); /* the 4 completed frame 2, after 1 */
     EXPECT_EQ(20U, Game_Score(game));
 }
+
+namespace {
+
+/* A listener that, the first time it hears anything, queues 22 gutter balls: more rolls than
+ * any game has. */
+struct FloodsTheMailbox {
+    Game *game = nullptr;
+    std::vector<GameStatus> statuses;
+};
+
+void FloodsTheMailbox_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                   bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    auto *listener = static_cast<FloodsTheMailbox *>(context);
+    if (listener->statuses.empty()) {
+        for (int i = 0; i < 22; i++) {
+            listener->statuses.push_back(Game_Roll(listener->game, 0U));
+        }
+    }
+}
+
+} // namespace
+
+TEST(ListenerReentryTest, should_refuse_to_queue_more_rolls_than_a_game_can_have)
+{
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    FloodsTheMailbox listener;
+    listener.game = game;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &FloodsTheMailbox_FrameChanged, &listener));
+
+    RollAll(game, {3U, 4U}); /* frame 1 complete: the game has 2 of its 21 rolls */
+
+    /* 19 more rolls could still be real; the 3 after them can't be. */
+    std::vector<GameStatus> expected(19U, GAME_QUEUED);
+    expected.insert(expected.end(), 3U, GAME_ERR_TOO_MANY_ROLLS);
+    EXPECT_EQ(expected, listener.statuses);
+    EXPECT_EQ(7U, Game_Score(game));
+    EXPECT_EQ(GAME_ERR_GAME_OVER, Game_Roll(game, 0U)); /* 18 gutter balls ended the game */
+}
