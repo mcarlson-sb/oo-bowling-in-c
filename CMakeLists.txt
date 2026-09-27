@@ -46,6 +46,19 @@ add_library(bowling STATIC
 target_include_directories(bowling PUBLIC include PRIVATE src)
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
 
+# Stack tripwires (ENG-1.3): -Wstack-usage warns, and -Werror fails the build, on any function
+# whose frame is over the limit. Host numbers, from this host's compilers: a tripwire for
+# regressions, not a target budget. The limits have headroom over the largest frames today,
+# measured across all four builds (-O0 debug and UBSan, -O3 release, -O1 ThreadSanitizer):
+#   - the interrupt path's file, pinsetter.c: 160 bytes, over Pinsetter_Enqueue's 128 at -O0.
+#     The limit covers the whole file; GCC can't hold one function to a tighter one.
+#   - everything else: 320 bytes, over Game_CorrectRoll's and Game_EditRolls's 224.
+set(OO_C_STACK_LIMIT 320)
+set(OO_C_INTERRUPT_STACK_LIMIT 160)
+target_compile_options(bowling PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
+set_source_files_properties(src/pinsetter.c PROPERTIES
+    COMPILE_OPTIONS -Wstack-usage=${OO_C_INTERRUPT_STACK_LIMIT})
+
 # ---- Host unit tests (GoogleTest) -----------------------------------------
 include(FetchContent)
 FetchContent_Declare(
