@@ -272,5 +272,11 @@ GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
         assert(restored == GAME_OK);
         (void)restored; /* used only by the assert, which NDEBUG removes */
     }
+    if (status == GAME_OK) {
+        /* Tell the listeners every complete frame again, with its new score. They treat a
+         * frame number they have heard before as an update. */
+        game->frames_reported = 0U;
+        Game_ReportCompletedFrames(game);
+    }
     return status;
 }

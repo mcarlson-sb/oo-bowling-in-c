@@ -1,4 +1,5 @@
 /* A scorer fixing a roll entered wrongly: the game rescores everything after it. */
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -41,4 +42,36 @@ TEST(CorrectionTest, should_recount_every_replayed_roll_from_the_pins_that_fell)
      * spare, not a strike. It must be counted again from the 9 that fell. */
     EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 1U));
     EXPECT_EQ(13U, Game_Score(game)); /* spare 1 + 9, plus its bonus 3 */
+}
+
+/* ---- Telling the listeners about a correction ------------------------------------------- *
+ * A correction is told with the same frame-completed message, and a listener treats a frame
+ * number it has heard before as an update. */
+
+
+namespace {
+
+/* A scoreboard that keeps the latest score it has heard for each frame. */
+struct KeyedScoreboard {
+    std::map<int, int> scores; /* frame number -> score */
+};
+
+void KeyedScoreboard_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
+{
+    static_cast<KeyedScoreboard *>(context)->scores[frame_number] = frame_score;
+}
+
+} // namespace
+
+TEST(CorrectionListenerTest, should_tell_the_scoreboard_the_rescored_frames)
+{
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    KeyedScoreboard scoreboard;
+    ASSERT_TRUE(Game_OnFrameCompleted(game, &KeyedScoreboard_FrameCompleted, &scoreboard));
+    RollAll(game, {3U, 4U, 5U, 2U});
+    ASSERT_EQ((std::map<int, int>{{1, 7}, {2, 7}}), scoreboard.scores);
+
+    EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 5U)); /* frame 1 was 5, 4 */
+    EXPECT_EQ((std::map<int, int>{{1, 9}, {2, 7}}), scoreboard.scores);
 }
