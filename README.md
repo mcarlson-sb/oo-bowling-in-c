@@ -170,6 +170,37 @@ Behind them:
   also rejected if it would make more than 21 rolls (`GAME_ERR_TOO_MANY_ROLLS`), or if it is
   made from inside a listener or the rule (`GAME_ERR_BUSY`).
 
+## Follow one roll
+
+A game has had a strike, then a 6. The next roll is a 3. Here is every call it makes, in
+order. Where a step says **function pointer**, go-to-definition stops, and the row says where
+the call lands.
+
+| Step | Where | What happens |
+|---|---|---|
+| 1 | `Game_Roll` (`src/game.c`) | Refuses a `NULL` or busy game, then sets `busy` until it returns |
+| 2 | `Game_Accept` | Not over. Asks the latest frame how many pins are standing: `FrameContext_PinsStanding`, then `Frame_PinsStanding`, which makes a **function pointer** call, `self->vtable->pins_standing`. Frame 2 is a `RegularFrame`, so it lands in `RegularFrame_PinsStanding`: 4. A 3 fits |
+| 3 | `Game_Accept` | **Function pointer:** `game->count_pins(4, 3)`. The game's rule; `Game_Create` set it to `Game_CountPinsDown`, so it counts 3. `Game_CreateWithRule` puts the caller's rule here instead |
+| 4 | `Game_ApplyPinsToFrames` | Offers the 3 to each frame, oldest first, through `FrameContext_Roll` and `Frame_Roll` |
+| 5 | `Frame_Roll` (`src/frame.c`), frame 1 | **Function pointer:** `self->vtable->roll`. Frame 1 is a `StrikeFrame`, so it lands in `StrikeFrame_Roll` (`src/strike_frame.c`): its second bonus roll. The frame is complete, at 19, and it passes the 3 on |
+| 6 | `Frame_Roll`, frame 2 | The same call lands in `RegularFrame_Roll` (`src/regular_frame.c`): not a strike, not a spare, so it keeps the 3. The frame is complete, at 9. The roll is consumed, so no new frame starts |
+| 7 | `Game_Roll` | Appends the 3 to the roll log |
+| 8 | `Game_ReportAfterRoll`, then `Game_ReportFrames` | Walks the frames not yet reported, and for each complete one calls `FrameListeners_Tell`, which makes a **function pointer** call to each listener's `callback`: the caller's code. Frame 1, 19, complete; then frame 2, 9, complete |
+| 9 | `Game_Roll` | Clears `busy` and returns `GAME_OK`. `Game_Score` is now 28 |
+
+Three kinds of function pointer, then, and two owners:
+
+- **The library's own:** the frame's `vtable`. Which function runs depends on the state the
+  frame is in, and a frame changes state inside `RegularFrame_Roll`. On an earlier roll, the
+  10 made frame 1 a `StrikeFrame` through one more pointer, the context's
+  `factory->new_strike`, which is how frame 10's strike becomes a `TenthStrikeFrame` instead.
+- **The caller's:** the rule (`count_pins`) and the listeners (`callback`). The library can't
+  know where these land, so it checks the rule's answer, and marks itself busy while either
+  runs.
+
+[ARCHITECTURE.md, section 8](ARCHITECTURE.md#8-a-rolls-journey) follows the same path in
+more detail, with a rejected roll and an edit.
+
 ## Why this is object-oriented
 
 The four pillars of OO, each done with a plain C mechanism, plus information hiding. That one
