@@ -220,3 +220,25 @@ TEST(CorrectionPropertyTest, should_leave_listeners_as_a_fresh_game_of_the_corre
     }
     EXPECT_GT(corrections_accepted, 500); /* the property was really exercised */
 }
+
+/* ---- After review ----------------------------------------------------------------------- */
+
+TEST(CorrectionListenerTest, should_tell_the_listeners_nothing_when_a_correction_is_rejected)
+{
+    /* A rejected correction replays the corrected log, fails partway, then replays the
+     * original. Its net effect is nothing, so the listeners must hear nothing at all. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollAll(game, {7U, 3U, 5U, 2U}); /* frames of 15 and 7 */
+
+    std::vector<std::pair<int, int>> heard;
+    auto record = [](void *context, uint8_t frame_number, Score frame_score, bool frame_complete) {
+        static_cast<std::vector<std::pair<int, int>> *>(context)->emplace_back(
+            frame_complete ? frame_number : -frame_number, frame_score);
+    };
+    ASSERT_TRUE(Game_OnFrameChanged(game, record, &heard));
+
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Game_CorrectRoll(game, 1U, 8U)); /* 8 + 3 > 10 */
+    EXPECT_TRUE(heard.empty());
+    EXPECT_EQ(22U, Game_Score(game));
+}
