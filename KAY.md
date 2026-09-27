@@ -1463,6 +1463,49 @@ section was written: `GAME_ERR_ROLL_DURING_NOTIFICATION`, then
 `GAME_ERR_EDIT_DURING_NOTIFICATION`, then `GAME_ERR_DURING_NOTIFICATION`, and now
 `GAME_ERR_BUSY`.
 
+### Comment clutter
+
+The user's review: "we have a SERIOUS case of 'Comment Clutter'. Comments in code should be
+minimal, useful, and not redundant to the code. If a comment is needed first see if creating
+or improving an intent revealing name would make the comment unneccisary." (`ENG-3.6`,
+`ENG-3.5`.)
+
+**The rule applied.** A comment stayed only if it said something the code couldn't: a public
+contract (what a caller must do, what refuses a call, what an error leaves behind), or a
+why (why the reporting walk is inline, why a failed undo stops, why the lost-roll count is a
+load and a store). Comments that restated a name or the next line went, and so did history
+and design narrative, which this log and ARCHITECTURE.md already hold. Where a comment only
+explained a name, the name changed instead:
+
+| Was | Now | The comment it replaced |
+|---|---|---|
+| `frames_reported`, `was_reported` | `frames_told_complete`, `were_told_complete` | "frames the listeners have been told are complete" |
+| `Frame_IsFirstRoll`, `Frame_IsSecondBonusRoll` | `Frame_NextIsFirstRoll`, `Frame_NextIsSecondBonusRoll` | "Which roll comes next" |
+| `first` in `RollLog_Edit` | `first_index` | "index of the first roll replaced", twice |
+
+One comment was wrong and was corrected: `regular_frame.h` said the tenth frame doesn't start
+as a RegularFrame; it does. STATE_PATTERN.md quotes the vtable, `StrikeFrame_Roll` and
+`Frame_Roll`, and follows the code.
+
+**Measured**, as lines holding any part of a comment, over non-blank lines, from `a16b859` to
+the end of the clean-up:
+
+| | Before | After |
+|---|---|---|
+| `include/` | 184 of 256 (71%) | 68 of 135 (50%) |
+| `src/` | 342 of 1,347 (25%) | 112 of 1,149 (9%) |
+| `test/` | 365 of 1,944 (18%) | 206 of 1,785 (11%) |
+
+The public headers stay the most commented, as they should: they are the contract, and have
+no other documentation. `game.h` went from 91 comment lines to 37, `pinsetter.h` from 70 to
+20. `game.c` went from 332 lines to 297; its code is unchanged. Most of what remains in the
+tests is the one-line note beside a roll sequence saying what it scores.
+
+**Eleven commits**, each comments or a rename only, with debug, release and UBSan passing
+before each, and TSan in CI on the pinsetter commit. One commit message is wrong: `d144760`
+names a helper `DestroyingListener`; it is `DestroysItsGame_FrameChanged`. The commit is
+pushed, so the correction is recorded here rather than by rewriting it.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on
