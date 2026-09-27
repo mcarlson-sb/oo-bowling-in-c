@@ -6,6 +6,7 @@
 
 #include "fault.h"
 #include "game_limits.h"
+#include "pinsetter_hooks.h"
 #include "slot_pool.h"
 
 /* Rolls the mailbox holds before the main loop must drain it: a whole game's. A drain stops
@@ -22,6 +23,11 @@ _Static_assert(PINSETTER_CAPACITY >= GAME_MAX_ROLLS,
 /* Pinsetters available at once. There is no heap, so they come from a fixed pool. */
 #define PINSETTER_POOL_SIZE 2U
 
+/* C11 lets a compiler build an atomic out of a lock. An interrupt handler that took a lock the
+ * main loop was holding would wait forever, so refuse to build where either count needs one. */
+_Static_assert(ATOMIC_INT_LOCK_FREE == 2, "the positions must be atomic without a lock");
+_Static_assert(ATOMIC_SHORT_LOCK_FREE == 2, "the lost-roll count must be atomic without a lock");
+
 /* A ring buffer with one writer on each side, so it needs no lock:
  *   - `post_at` is where the next roll goes. Only the interrupt side writes it.
  *   - `drain_at` is the oldest waiting roll. Only the main loop writes it.
@@ -31,16 +37,14 @@ _Static_assert(PINSETTER_CAPACITY >= GAME_MAX_ROLLS,
  * touching the roll, and reads the other side's with an acquire load, before touching one.
  * So a roll is always written before the main loop can see it, and read before the interrupt
  * side can reuse its place. */
-/* C11 lets a compiler build an atomic out of a lock. An interrupt handler that took a lock the
- * main loop was holding would wait forever, so refuse to build where either count needs one. */
-_Static_assert(ATOMIC_INT_LOCK_FREE == 2, "the positions must be atomic without a lock");
-_Static_assert(ATOMIC_SHORT_LOCK_FREE == 2, "the lost-roll count must be atomic without a lock");
-
 struct Pinsetter {
     Pins rolls[PINSETTER_SLOTS];
     atomic_uint post_at;
     atomic_uint drain_at;
     _Atomic uint16_t rolls_lost; /* posts ever refused. Only the interrupt side writes it */
+#if PINSETTER_CHECK_OVERLAP
+    atomic_flag posting; /* set while a post is under way: see Pinsetter_Post */
+#endif
 };
 
 static Pinsetter s_pinsetters[PINSETTER_POOL_SIZE];
@@ -60,6 +64,9 @@ Pinsetter *Pinsetter_Create(void)
     atomic_store(&pinsetter->post_at, 0U);
     atomic_store(&pinsetter->drain_at, 0U);
     atomic_store(&pinsetter->rolls_lost, 0U);
+#if PINSETTER_CHECK_OVERLAP
+    atomic_flag_clear(&pinsetter->posting);
+#endif
     return pinsetter;
 }
 
@@ -78,7 +85,15 @@ static unsigned Pinsetter_Next(unsigned position)
     return ((position + 1U) == PINSETTER_SLOTS) ? 0U : (position + 1U);
 }
 
-bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
+#if PINSETTER_CHECK_OVERLAP
+void Pinsetter_HookPostUnderWay(Pinsetter *pinsetter)
+{
+    (void)atomic_flag_test_and_set(&pinsetter->posting);
+}
+#endif
+
+/* Puts the roll in the ring, or counts it lost if the ring is full. */
+static bool Pinsetter_Enqueue(Pinsetter *pinsetter, Pins pins)
 {
     const unsigned post_at = atomic_load_explicit(&pinsetter->post_at, memory_order_relaxed);
     const unsigned next = Pinsetter_Next(post_at);
@@ -94,6 +109,25 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
     pinsetter->rolls[post_at] = pins;
     atomic_store_explicit(&pinsetter->post_at, next, memory_order_release);
     return true;
+}
+
+/* In a debug build, a net under the one-producer rule: a post that finds another still under
+ * way, from a second interrupt handler or a nested interrupt on one core, would write the same
+ * slot. It catches overlapping posts, which is the failure itself, not who is posting, so it
+ * needs no port. atomic_flag is the one atomic C11 promises is lock-free. The flag is set on
+ * the way in and cleared on the one way out, so no early return can leave it set. */
+bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins)
+{
+#if PINSETTER_CHECK_OVERLAP
+    if (atomic_flag_test_and_set_explicit(&pinsetter->posting, memory_order_acquire)) {
+        Fault_Stop("pinsetter: two posts overlap; only one interrupt handler may post");
+    }
+#endif
+    const bool posted = Pinsetter_Enqueue(pinsetter, pins);
+#if PINSETTER_CHECK_OVERLAP
+    atomic_flag_clear_explicit(&pinsetter->posting, memory_order_release);
+#endif
+    return posted;
 }
 
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)

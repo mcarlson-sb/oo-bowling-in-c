@@ -38,7 +38,15 @@ Pinsetter *Pinsetter_Create(void);
  * so it is the caller's to keep. */
 void Pinsetter_Destroy(Pinsetter *pinsetter);
 
-/* Interrupt side. Posts the pins that fell in one roll. Returns false, posting nothing, if
+/* Interrupt side. Posts the pins that fell in one roll.
+ *
+ * One producer only: exactly one interrupt handler may post to a pinsetter, never the main
+ * loop, a listener, or a second handler, and never a nested interrupt while a post is under
+ * way. Two posts at once can write the same slot and lose a roll. A debug build stops the
+ * program (Fault_Stop) if it catches two posts overlapping; that is a net, not a proof, since
+ * posts that happen not to overlap aren't caught.
+ *
+ * Returns false, posting nothing, if
  * the mailbox is full: 21 rolls, a whole game's, are waiting that the main loop hasn't
  * drained.
  *
