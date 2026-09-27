@@ -176,18 +176,23 @@ TEST(CorrectionTest, should_refuse_a_correction_made_from_inside_a_listener)
 /* ---- A property: a corrected game tells its listeners what a fresh game would ----------- */
 
 
-TEST(CorrectionPropertyTest, should_leave_listeners_as_a_fresh_game_of_the_corrected_rolls_would)
+namespace {
+
+/* The property, for games made by `make_game`: the standard rule, or a caller's. */
+void CheckCorrectionsAgainstFreshGames(GameHandle (*make_game)(), unsigned seed)
 {
-    /* Random games (fixed seed, so it repeats), each corrected at a random roll. Whenever the
-     * game accepts the correction, its listener must end up exactly where a listener on a
-     * fresh game fed the corrected rolls from the start would be: the same frames, the same
-     * scores, with any reopened frame dropped. Whenever it rejects one, nothing
-     * may change. */
-    std::mt19937 random(20260926U);
+    /* Random games (fixed seed, so it repeats), each corrected at a random roll. A fresh game,
+     * fed the corrected rolls from the start, is the judge:
+     *   - The correction must be accepted exactly when the fresh game accepts every corrected
+     *     roll. (Without this, a correction wrongly rejected would pass.)
+     *   - When it is accepted, the listener must end up exactly where the fresh game's does:
+     *     the same frames, the same scores, with any reopened frame dropped.
+     *   - When it is rejected, nothing may change. */
+    std::mt19937 random(seed);
     int corrections_accepted = 0;
     int corrections_rejected = 0;
     for (int trial = 0; trial < 3000; trial++) {
-        GameHandle owner = MakeGame();
+        GameHandle owner = make_game();
         Game *game = owner.get();
         KeyedScoreboard scoreboard;
         ASSERT_TRUE(Game_OnFrameChanged(game, &KeyedScoreboard_FrameChanged, &scoreboard));
@@ -203,31 +208,51 @@ TEST(CorrectionPropertyTest, should_leave_listeners_as_a_fresh_game_of_the_corre
 
         const auto roll_number = static_cast<uint8_t>(1U + random() % rolls.size());
         const Pins corrected = static_cast<Pins>(random() % 11U);
-        const std::map<int, int> scores_before = scoreboard.scores;
-        const Score score_before = Game_Score(game);
-        if (Game_CorrectRoll(game, roll_number, corrected) != GAME_OK) {
-            /* A rejected correction changes nothing, and tells the listeners nothing new. */
-            corrections_rejected++;
-            ASSERT_EQ(scores_before, scoreboard.scores) << "trial " << trial;
-            ASSERT_EQ(score_before, Game_Score(game)) << "trial " << trial;
-            continue;
-        }
-        corrections_accepted++;
-        rolls[roll_number - 1U] = corrected;
+        std::vector<Pins> corrected_rolls = rolls;
+        corrected_rolls[roll_number - 1U] = corrected;
 
-        GameHandle fresh_owner = MakeGame();
+        /* The judge: does a fresh game accept every corrected roll? */
+        GameHandle fresh_owner = make_game();
         Game *fresh = fresh_owner.get();
         KeyedScoreboard fresh_scoreboard;
         ASSERT_TRUE(Game_OnFrameChanged(fresh, &KeyedScoreboard_FrameChanged, &fresh_scoreboard));
-        for (const Pins pins : rolls) {
-            ASSERT_EQ(GAME_OK, Game_Roll(fresh, pins));
+        bool fresh_accepts_all = true;
+        for (const Pins pins : corrected_rolls) {
+            fresh_accepts_all = fresh_accepts_all && (Game_Roll(fresh, pins) == GAME_OK);
         }
 
-        ASSERT_EQ(fresh_scoreboard.scores, scoreboard.scores) << "trial " << trial;
-        ASSERT_EQ(Game_Score(fresh), Game_Score(game)) << "trial " << trial;
+        const std::map<int, int> scores_before = scoreboard.scores;
+        const Score score_before = Game_Score(game);
+        const bool accepted = (Game_CorrectRoll(game, roll_number, corrected) == GAME_OK);
+        ASSERT_EQ(fresh_accepts_all, accepted) << "trial " << trial;
+
+        if (accepted) {
+            corrections_accepted++;
+            ASSERT_EQ(fresh_scoreboard.scores, scoreboard.scores) << "trial " << trial;
+            ASSERT_EQ(Game_Score(fresh), Game_Score(game)) << "trial " << trial;
+        } else {
+            corrections_rejected++;
+            ASSERT_EQ(scores_before, scoreboard.scores) << "trial " << trial;
+            ASSERT_EQ(score_before, Game_Score(game)) << "trial " << trial;
+        }
     }
-    EXPECT_GT(corrections_accepted, 500); /* both halves of the property were really */
+    EXPECT_GT(corrections_accepted, 500); /* every part of the property was really */
     EXPECT_GT(corrections_rejected, 500); /* exercised */
+}
+
+} // namespace
+
+TEST(CorrectionPropertyTest, should_leave_listeners_as_a_fresh_game_of_the_corrected_rolls_would)
+{
+    CheckCorrectionsAgainstFreshGames(&MakeGame, 20260926U);
+}
+
+TEST(CorrectionPropertyTest, should_hold_under_the_no_tap_rule_too)
+{
+    /* Every replay counts every roll again through the caller's rule. Under no-tap, a 9 on
+     * a full rack is a strike and a 9 anywhere else isn't, so a correction that moves a
+     * rack's boundary changes how later rolls count. The fresh game must agree anyway. */
+    CheckCorrectionsAgainstFreshGames([] { return MakeGameWithRule(&NinePinNoTap); }, 20260927U);
 }
 
 /* ---- After review ----------------------------------------------------------------------- */
