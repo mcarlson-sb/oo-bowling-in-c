@@ -71,7 +71,9 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins);
  *
  * Not from inside a frame-changed callback: there the game refuses the first waiting roll
  * with GAME_ERR_DURING_NOTIFICATION, like any roll from a callback, so the drain stops
- * with it still waiting. (With nothing waiting, there is nothing to refuse: GAME_OK.) */
+ * with it still waiting. (With nothing waiting, there is nothing to refuse: GAME_OK.) A drain
+ * from inside a drain, from a listener the outer drain is running, is refused at once with
+ * GAME_ERR_DURING_NOTIFICATION, and leaves the outer drain as it was. */
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game);
 
 /* Main-loop side. Throws away the oldest waiting roll: the one a drain stopped at, when the

@@ -70,9 +70,14 @@ static GameStatus Pinsetter_DrainWaiting(Pinsetter *pinsetter, Game *game)
 
 /* The drain keeps its own copy of the read position while Game_Roll runs the listeners, and
  * writes it back after each roll. So while it runs, a discard from a listener is refused:
- * written over, it would have reported success and changed nothing. */
+ * written over, it would have reported success and changed nothing. A drain from inside a
+ * drain is refused at once, and leaves the flag to the drain that set it: clearing it on the
+ * way out would let the next discard through. */
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 {
+    if (pinsetter->draining) {
+        return GAME_ERR_DURING_NOTIFICATION;
+    }
     pinsetter->draining = true;
     const GameStatus status = Pinsetter_DrainWaiting(pinsetter, game);
     pinsetter->draining = false;

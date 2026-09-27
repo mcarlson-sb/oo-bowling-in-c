@@ -406,6 +406,53 @@ TEST(PinsetterTest, should_refuse_a_discard_made_while_a_drain_is_running)
     EXPECT_EQ(13U, Game_Score(game));
 }
 
+namespace {
+
+/* A listener that, each time a frame completes, tries a nested drain and then a discard. */
+struct DrainsThenDiscards {
+    Game *game = nullptr;
+    Pinsetter *pinsetter = nullptr;
+    std::vector<GameStatus> drained;
+    std::vector<bool> discarded;
+};
+
+void DrainsThenDiscards_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                     bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    auto *listener = static_cast<DrainsThenDiscards *>(context);
+    listener->drained.push_back(Pinsetter_Drain(listener->pinsetter, listener->game));
+    listener->discarded.push_back(Pinsetter_DiscardOldest(listener->pinsetter));
+}
+
+} // namespace
+
+TEST(PinsetterTest, should_keep_refusing_a_discard_after_a_nested_drain_is_refused)
+{
+    /* A drain from inside a drain is refused at once, and must leave the outer drain's state
+     * alone: if it cleared it on the way out, the discard after it would be accepted, and then
+     * written over by the outer drain. */
+    GameHandle game_owner = MakeGame();
+    Game *game = game_owner.get();
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+    DrainsThenDiscards listener;
+    listener.game = game;
+    listener.pinsetter = pinsetter;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &DrainsThenDiscards_FrameChanged, &listener));
+    for (const Pins pins : {Pins{3U}, Pins{4U}, Pins{5U}, Pins{1U}}) {
+        EXPECT_TRUE(Pinsetter_Post(pinsetter, pins));
+    }
+
+    EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, game));
+
+    EXPECT_EQ((std::vector<GameStatus>(2U, GAME_ERR_DURING_NOTIFICATION)), listener.drained);
+    EXPECT_EQ((std::vector<bool>{false, false}), listener.discarded);
+    EXPECT_EQ(13U, Game_Score(game)); /* 3+4, then 5+1: every roll went in */
+}
+
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
 {
     /* A real thread plays the interrupt handler: it only posts, retrying when the mailbox is
