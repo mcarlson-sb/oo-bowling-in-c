@@ -29,6 +29,7 @@ endif()
 
 # ---- Library under test ---------------------------------------------------
 add_library(bowling STATIC
+    src/fault.c
     src/frame.c
     src/frame_context.c
     src/game.c

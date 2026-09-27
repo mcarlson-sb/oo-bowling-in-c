@@ -25,7 +25,12 @@ extern "C" {
 
 typedef struct Pinsetter Pinsetter;
 
-/* An empty pinsetter. NULL if none is free: they come from a fixed pool, like games. */
+/* An empty pinsetter, from a fixed pool. Never NULL: a lane's pinsetter is fixed when the
+ * system is built, so running out of them is a configuration error, and Pinsetter_Create
+ * stops the program (Fault_Stop, in every build) rather than return one.
+ *
+ * Every function below takes a pinsetter from Pinsetter_Create. None of them checks for
+ * NULL: that is a precondition, not a case they handle. */
 Pinsetter *Pinsetter_Create(void);
 
 /* Detach the interrupt handler before calling this: a post to a pinsetter already given back

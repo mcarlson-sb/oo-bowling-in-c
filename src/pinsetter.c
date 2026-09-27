@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "fault.h"
 #include "game_internal.h"
 #include "game_limits.h"
 #include "slot_pool.h"
@@ -51,7 +52,10 @@ Pinsetter *Pinsetter_Create(void)
 {
     uint8_t slot = 0U;
     if (!SlotPool_Acquire(&s_pool, &slot)) {
-        return NULL;
+        /* A configuration error, not a runtime condition: the system has more lanes than
+         * PINSETTER_POOL_SIZE. There is no safe pinsetter to hand back, so stop, in every
+         * build, at the moment the mistake is made. */
+        Fault_Stop("pinsetter: none free; PINSETTER_POOL_SIZE is smaller than the lanes");
     }
     Pinsetter *pinsetter = &s_pinsetters[slot];
     atomic_store(&pinsetter->post_at, 0U);

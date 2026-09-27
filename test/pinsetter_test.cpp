@@ -280,6 +280,22 @@ TEST(PinsetterTest, should_leave_a_roll_posted_in_the_middle_of_a_drain_for_the_
     EXPECT_EQ(16U, Game_Score(game)); /* then 6+3 */
 }
 
+TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_cant_be_created)
+{
+    /* A lane's pinsetter is fixed when the system is built, so running out of them is a
+     * configuration error, found the first time the system starts, and there is no safe
+     * pinsetter to hand back instead. Creation stops the program, in every build: this test
+     * runs in release too. It all happens in the child process the death test starts, so the
+     * pool this process uses is left as it was. */
+    EXPECT_DEATH(
+        {
+            (void)Pinsetter_Create();
+            (void)Pinsetter_Create();
+            (void)Pinsetter_Create(); /* the pool holds two */
+        },
+        "pinsetter");
+}
+
 namespace {
 
 /* A listener that drains the pinsetter the first time it hears anything. */
