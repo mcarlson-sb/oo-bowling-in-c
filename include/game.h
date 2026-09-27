@@ -37,8 +37,16 @@ typedef enum {
 
 /* How many pins a roll counts as, given how many were standing before it and how many it
  * knocked down. A caller supplies one to play a variant of the game; standard bowling
- * counts exactly the pins that fell. It must return no more than pins_standing; Game_Roll
- * rejects a roll whose count is out of range (GAME_ERR_RULE_OUT_OF_RANGE). */
+ * counts exactly the pins that fell.
+ *
+ * The contract a rule must keep:
+ *   - It returns no more than pins_standing. Game_Roll rejects a roll whose count is out of
+ *     range (GAME_ERR_RULE_OUT_OF_RANGE).
+ *   - It is a pure function of its two arguments: the same pins standing and pins down
+ *     always give the same count, with nothing read from anywhere else. Every correction
+ *     (Game_CorrectRoll) replays every roll of the game through the rule, so a rule that
+ *     depends on anything else can silently rewrite the game's history. Nothing checks this;
+ *     it is the caller's to keep. */
 typedef Pins (*PinCountRule)(Pins pins_standing, Pins pins_down);
 
 /* A standard game. */
