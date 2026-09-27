@@ -9,7 +9,10 @@ on:
 jobs:
   build-and-test:
     name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: that label moves to Ubuntu 26, with a newer GCC, from
+    # 2026-10-19. Warnings are errors, so a new compiler could fail the build with no change to
+    # the code. Moving to a newer image should be a change of its own.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -21,7 +24,7 @@ jobs:
           - name: ubsan
             flags: "-DOO_C_SANITIZE=ON"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ${{ matrix.flags }}
