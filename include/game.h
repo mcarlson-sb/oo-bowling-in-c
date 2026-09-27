@@ -25,7 +25,11 @@ typedef enum {
     GAME_ERR_NULL_GAME,
     /* The game's PinCountRule counted the roll as more pins than were standing. The roll
      * is rejected and the game is left unchanged. */
-    GAME_ERR_RULE_OUT_OF_RANGE
+    GAME_ERR_RULE_OUT_OF_RANGE,
+    /* Game_Roll was called from inside a frame-completed callback. Allowing it would tell
+     * listeners about frames out of order, so the roll is rejected and the game is left
+     * unchanged. Roll again once the callback has returned. */
+    GAME_ERR_ROLL_DURING_NOTIFICATION
 } GameStatus;
 
 /* How many pins a roll counts as, given how many were standing before it and how many it
@@ -45,7 +49,8 @@ void Game_Destroy(Game *game);
 
 /* Told each time a frame completes, after the roll that completed it: the frame's number (1
  * to 10) and its score. When one roll completes several frames, it is told about each,
- * oldest first. */
+ * oldest first. A callback may read the game (Game_Score sees the whole roll), but
+ * not roll: Game_Roll from inside a callback returns GAME_ERR_ROLL_DURING_NOTIFICATION. */
 typedef void (*FrameCompletedCallback)(void *context, uint8_t frame_number, Score frame_score);
 
 /* Adds a callback this game tells about completed frames; `context` is passed back to it

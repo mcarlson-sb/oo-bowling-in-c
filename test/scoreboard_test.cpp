@@ -194,3 +194,47 @@ TEST(ListenerReentryTest, should_let_a_listener_read_the_score_of_the_whole_roll
     EXPECT_EQ((std::vector<int>{24, 24}), live.totals_seen);
     EXPECT_EQ(24U, Game_Score(game));
 }
+
+namespace {
+
+/* A listener that tries to roll from inside its own notification, once. */
+struct RollsFromInside {
+    Game *game = nullptr;
+    bool tried = false;
+    GameStatus status = GAME_OK;
+};
+
+void RollsFromInside_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
+{
+    (void)frame_number;
+    (void)frame_score;
+    auto *listener = static_cast<RollsFromInside *>(context);
+    if (!listener->tried) {
+        listener->tried = true;
+        listener->status = Game_Roll(listener->game, 4U);
+    }
+}
+
+} // namespace
+
+TEST(ListenerReentryTest, should_refuse_a_roll_made_from_inside_a_listener)
+{
+    /* Allowed, a roll from inside a notification completed frame 2 and told the other
+     * listener about it before frame 1: out of order. Refusing it keeps the promise. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollsFromInside rolls_from_inside;
+    rolls_from_inside.game = game;
+    Scoreboard other;
+    ASSERT_TRUE(Game_OnFrameCompleted(game, &RollsFromInside_FrameCompleted, &rolls_from_inside));
+    ASSERT_TRUE(Game_OnFrameCompleted(game, &Scoreboard_FrameCompleted, &other));
+
+    RollAll(game, {5U, 5U, 3U}); /* the 3 completes frame 1, a spare (13) */
+
+    EXPECT_EQ(GAME_ERR_ROLL_DURING_NOTIFICATION, rolls_from_inside.status);
+    EXPECT_EQ((Frames{{1, 13}}), other.frames); /* the refused roll changed nothing */
+    EXPECT_EQ(13U, Game_Score(game));
+
+    RollAll(game, {4U}); /* the same roll, made normally, is fine */
+    EXPECT_EQ((Frames{{1, 13}, {2, 7}}), other.frames);
+}

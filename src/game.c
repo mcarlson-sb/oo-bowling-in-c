@@ -29,6 +29,7 @@ struct Game {
     uint8_t frames_reported; /* frames already told to the listeners */
     FrameCompletedListener listeners[GAME_MAX_LISTENERS];
     uint8_t listener_count;
+    bool notifying; /* true while the listeners are being told: see Game_Roll */
 };
 
 /* The games themselves, and the pool that tracks which are in use. The pool's bookkeeping
@@ -107,12 +108,14 @@ static void Game_TellListeners(const Game *game, uint8_t frame_number, Score fra
  * enough; no before-and-after copy of every frame's flag is needed. */
 static void Game_ReportCompletedFrames(Game *game)
 {
+    game->notifying = true;
     while ((game->frames_reported < game->frame_count) &&
            FrameContext_IsComplete(&game->frames[game->frames_reported])) {
         const FrameContext *frame = &game->frames[game->frames_reported];
         game->frames_reported++;
         Game_TellListeners(game, game->frames_reported, FrameContext_Score(frame));
     }
+    game->notifying = false;
 }
 
 /* Standard bowling: a roll counts as the pins it knocked down. */
@@ -141,6 +144,7 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     game->count_pins = count_pins;
     game->frames_reported = 0U;
     game->listener_count = 0U;
+    game->notifying = false;
     return game;
 }
 
@@ -170,7 +174,10 @@ GameStatus Game_Roll(Game *game, Pins pins)
     if (game == NULL) {
         return GAME_ERR_NULL_GAME;
     }
-    /* Both checks run before any frame sees the roll. Frames act on a roll as it passes
+    if (game->notifying) {
+        return GAME_ERR_ROLL_DURING_NOTIFICATION;
+    }
+    /* Every check runs before any frame sees the roll. Frames act on a roll as it passes
      * through them, and that can't be undone, so this is what leaves a rejected roll with
      * no effect. */
     if (Game_IsOver(game)) {
