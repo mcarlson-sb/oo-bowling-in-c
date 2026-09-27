@@ -14,6 +14,14 @@
 /* The most rolls a game can take: two in each of frames 1 to 9, and three in the tenth. */
 #define GAME_MAX_ROLLS 21U
 
+/* Every accepted roll, as the pins that fell. Plain values only, so a RollLog can be copied
+ * safely: saving one before an edit, and putting it back, is how a rejected edit is undone.
+ * (A Game or FrameContext can't be copied like that: each context points at its own state.) */
+typedef struct {
+    Pins pins[GAME_MAX_ROLLS];
+    uint8_t count;
+} RollLog;
+
 /* Games available at once. There is no heap, so games come from a fixed pool. */
 #define GAME_POOL_SIZE 2U
 
@@ -33,8 +41,7 @@ struct Game {
     FrameChangedListener listeners[GAME_MAX_LISTENERS];
     uint8_t listener_count;
     bool notifying; /* true while the listeners are being told: see Game_Roll */
-    Pins rolls[GAME_MAX_ROLLS]; /* each accepted roll, as the pins that fell: Game_CorrectRoll */
-    uint8_t roll_count;
+    RollLog log; /* see Game_CorrectRoll */
 };
 
 /* The games themselves, and the pool that tracks which are in use. The pool's bookkeeping
@@ -143,7 +150,7 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     game->frames_reported = 0U;
     game->listener_count = 0U;
     game->notifying = false;
-    game->roll_count = 0U;
+    game->log.count = 0U;
     return game;
 }
 
@@ -204,8 +211,8 @@ GameStatus Game_Roll(Game *game, Pins pins)
     }
     const GameStatus status = Game_Accept(game, pins);
     if (status == GAME_OK) {
-        game->rolls[game->roll_count] = pins;
-        game->roll_count++;
+        game->log.pins[game->log.count] = pins;
+        game->log.count++;
         Game_ReportCompletedFrames(game);
     }
     return status;
@@ -241,8 +248,8 @@ bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *contex
 static GameStatus Game_Replay(Game *game)
 {
     game->frame_count = 0U;
-    for (uint8_t i = 0U; i < game->roll_count; i++) {
-        const GameStatus status = Game_Accept(game, game->rolls[i]);
+    for (uint8_t i = 0U; i < game->log.count; i++) {
+        const GameStatus status = Game_Accept(game, game->log.pins[i]);
         if (status != GAME_OK) {
             return status;
         }
@@ -272,6 +279,28 @@ static void Game_ReportCorrection(Game *game, uint8_t was_reported)
     game->notifying = false;
 }
 
+/* Makes `edited` the game's roll log and rescores by replaying it. If some roll in it is
+ * impossible, the saved log is put back and replayed. Every roll in that one was accepted
+ * before, so it can't fail as long as the rule is pure (see PinCountRule). Returns the
+ * status of the first impossible roll, or GAME_OK. */
+static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
+{
+    const uint8_t was_reported = game->frames_reported;
+    const RollLog saved = game->log; /* plain values: safe to copy, unlike the frames */
+    game->log = *edited;
+
+    const GameStatus status = Game_Replay(game);
+    if (status == GAME_OK) {
+        Game_ReportCorrection(game, was_reported);
+    } else {
+        game->log = saved;
+        const GameStatus restored = Game_Replay(game);
+        assert(restored == GAME_OK);
+        (void)restored; /* used only by the assert, which NDEBUG removes */
+    }
+    return status;
+}
+
 GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
 {
     if (game == NULL) {
@@ -280,24 +309,10 @@ GameStatus Game_CorrectRoll(Game *game, uint8_t roll_number, Pins pins)
     if (game->notifying) {
         return GAME_ERR_ROLL_DURING_NOTIFICATION;
     }
-    if ((roll_number == 0U) || (roll_number > game->roll_count)) {
+    if ((roll_number == 0U) || (roll_number > game->log.count)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
-    const uint8_t was_reported = game->frames_reported;
-    const uint8_t index = (uint8_t)(roll_number - 1U);
-    const Pins was = game->rolls[index];
-    game->rolls[index] = pins;
-
-    const GameStatus status = Game_Replay(game);
-    if (status == GAME_OK) {
-        Game_ReportCorrection(game, was_reported);
-    } else {
-        /* The correction makes some roll impossible: put the log back as it was, and
-         * replay that. Every roll in it was accepted before, so this can't fail. */
-        game->rolls[index] = was;
-        const GameStatus restored = Game_Replay(game);
-        assert(restored == GAME_OK);
-        (void)restored; /* used only by the assert, which NDEBUG removes */
-    }
-    return status;
+    RollLog edited = game->log;
+    edited.pins[roll_number - 1U] = pins;
+    return Game_ApplyEditedLog(game, &edited);
 }
