@@ -162,8 +162,9 @@ void CorrectsFromInside_FrameChanged(void *context, uint8_t frame_number, Score 
 
 TEST(CorrectionTest, should_refuse_a_correction_made_from_inside_a_listener)
 {
-    /* The same hazard as a roll from inside a listener: a replay mid-notification would
-     * tell listeners about frames out of order, or twice. */
+    /* A replay mid-notification would tell listeners about frames out of order, or twice. A
+     * roll from inside a listener waits in the mailbox; an edit only ever arrives from the
+     * scorer, outside any notification, so none waits: it is refused. */
     GameHandle owner = MakeGame();
     Game *game = owner.get();
     CorrectsFromInside listener;
@@ -171,7 +172,7 @@ TEST(CorrectionTest, should_refuse_a_correction_made_from_inside_a_listener)
     ASSERT_TRUE(Game_OnFrameChanged(game, &CorrectsFromInside_FrameChanged, &listener));
 
     RollAll(game, {3U, 4U});
-    EXPECT_EQ(GAME_ERR_ROLL_DURING_NOTIFICATION, listener.status);
+    EXPECT_EQ(GAME_ERR_EDIT_DURING_NOTIFICATION, listener.status);
     EXPECT_EQ(7U, Game_Score(game)); /* the refused correction changed nothing */
 }
 
