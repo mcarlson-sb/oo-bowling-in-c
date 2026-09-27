@@ -1311,9 +1311,9 @@ against every test. The evidence is in the diff: **of `main`'s 20 library files,
 experiment changed only `game.h` and `game.c`**, the boundary. Phase 6 added six more, all at
 the boundary too: the pinsetter (`pinsetter.h`, `pinsetter.c` and its private
 `pinsetter_hooks.h`), the fail-stop (`fault.h`, `fault.c`), and a one-constant private header.
-The frame
-classes, the states, the context, `RollList` and `SlotPool` are untouched since `main`. Phase 2, the one attempt to push late
-binding *inward* ("tell, don't ask"), had no feature behind it and was declined.
+The frame classes, the states, the context, `RollList` and `SlotPool` are untouched since
+`main`. Phase 2, the one attempt to push late binding *inward* ("tell, don't ask"), had no
+feature behind it and was declined.
 
 The cost landed in exactly the same place. Every defect class the experiment found or
 guarded against sits at one of those boundaries, and the closed interior never had any of
@@ -1340,8 +1340,8 @@ feature that argued *against* objects inside the library, which fits the conclus
 one owner's code, the simplest design wins, and here that is data plus a function.
 
 What the experiment did **not** reach is Kay's OO proper: messages as first-class things,
-receivers that can decline, and binding that stays open while the program runs. Phase 6 came
-nearest: its messages are asynchronous and cross a wire as data. But they are one byte in a
-ring and four bytes on a wire, with no selector and no reply, so they are data, not objects. Each would
+receivers that can decline, and binding that stays open while the program runs. Each would
 have meant rebuilding part of a language runtime in C (message selectors, dispatch,
-`doesNotUnderstand`). No feature asked for that, so it wasn't built.
+`doesNotUnderstand`). No feature asked for that, so it wasn't built. Phase 6 came nearest: its
+messages are asynchronous and cross a wire as data. But they are one byte in a ring and four
+bytes on a wire, with no selector and no reply, so they are data, not objects.

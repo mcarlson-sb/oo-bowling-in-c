@@ -148,7 +148,8 @@ TEST(PinsetterTest, should_hold_a_whole_game_of_rolls_while_a_drain_is_stopped)
     GameHandle next_owner = MakeGame();
     Game *next = next_owner.get();
     EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, next));
-    EXPECT_EQ(190U, Game_Score(next)); /* ten spares, each with a 9 as its bonus */    EXPECT_TRUE(Pinsetter_Post(pinsetter, 0U)); /* drained, there is room again */
+    EXPECT_EQ(190U, Game_Score(next)); /* ten spares, each with a 9 as its bonus */
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 0U)); /* drained, there is room again */
 }
 
 TEST(PinsetterTest, should_count_the_rolls_lost_while_the_mailbox_was_full)

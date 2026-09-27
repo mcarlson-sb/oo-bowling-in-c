@@ -634,5 +634,5 @@ hook in `src/pinsetter_hooks.h`, it leaves a post under way, and checks that the
 stops the program, in the builds that have the check.
 
 Every test runs in four builds, debug, release (`NDEBUG`), UBSan and ThreadSanitizer (in CI,
-on Linux), with warnings as errors. `GameHandle` (a `std::unique_ptr` with `Game_Destroy` as its deleter) makes sure no
-test leaks a game from the pool into the next one.
+on Linux), with warnings as errors. `GameHandle` (a `std::unique_ptr` with `Game_Destroy` as
+its deleter) makes sure no test leaks a game from the pool into the next one.
