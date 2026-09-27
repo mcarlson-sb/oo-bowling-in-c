@@ -122,6 +122,28 @@ TEST(PinsetterTest, should_let_the_scorer_discard_a_roll_that_really_was_a_glitc
     EXPECT_FALSE(Pinsetter_DiscardOldest(pinsetter));
 }
 
+TEST(PinsetterTest, should_keep_rolls_made_after_the_game_is_over_for_the_next_game)
+{
+    /* The next bowler starts before the main loop has moved on to the next game. Their rolls
+     * are refused by the finished game, and wait, rather than being lost. */
+    GameHandle first_owner = MakeGame();
+    Game *first = first_owner.get();
+    for (int i = 0; i < 20; i++) {
+        EXPECT_EQ(GAME_OK, Game_Roll(first, 0U)); /* a whole game of gutter balls */
+    }
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 3U));
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 4U));
+    EXPECT_EQ(GAME_ERR_GAME_OVER, Pinsetter_Drain(pinsetter, first));
+
+    GameHandle next_owner = MakeGame();
+    Game *next = next_owner.get();
+    EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, next));
+    EXPECT_EQ(7U, Game_Score(next));
+}
+
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
 {
     /* A real thread plays the interrupt handler: it only posts, retrying while the mailbox
