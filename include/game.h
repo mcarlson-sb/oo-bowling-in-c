@@ -1,8 +1,8 @@
 #ifndef GAME_H
 #define GAME_H
 
-/* A bowling game. The representation is hidden: callers hold an opaque handle and act on
- * it only through these functions. */
+/* A game of ten-pin bowling, behind an opaque handle. Every error status leaves the game
+ * unchanged. */
 
 #include <stdbool.h>
 
@@ -16,127 +16,69 @@ typedef struct Game Game;
 
 typedef enum {
     GAME_OK = 0,
-    /* The tenth frame is complete, so the game is over. The roll is rejected and the game
-     * is left unchanged. */
-    GAME_ERR_GAME_OVER,
-    /* More pins than are standing. The roll is rejected and the game is left unchanged. */
-    GAME_ERR_INVALID_PINS,
-    /* The game handle is NULL, for example because Game_Create ran out of games. */
+    GAME_ERR_GAME_OVER,         /* the tenth frame is complete */
+    GAME_ERR_INVALID_PINS,      /* more pins than are standing */
     GAME_ERR_NULL_GAME,
-    /* The game's PinCountRule counted the roll as more pins than were standing. The roll
-     * is rejected and the game is left unchanged. */
-    GAME_ERR_RULE_OUT_OF_RANGE,
-    /* The game, or the pinsetter draining into it, was busy: Game_Roll, Game_CorrectRoll,
-     * Game_EditRolls or Pinsetter_Drain was called from inside a frame-changed callback or the
-     * game's PinCountRule, while another roll or edit was in progress, or Pinsetter_Drain from
-     * inside a drain. A change then would happen under the one in progress, and tell the
-     * listeners about frames out of order or twice, so it is rejected and nothing is changed.
-     * Call again once the callback, the rule or the drain has returned. */
+    GAME_ERR_RULE_OUT_OF_RANGE, /* the PinCountRule counted more pins than were standing */
+    /* Called from inside a frame-changed callback or the PinCountRule, while a roll or an
+     * edit is in progress; or Pinsetter_Drain called from inside a drain. */
     GAME_ERR_BUSY,
-    /* Game_CorrectRoll or Game_EditRolls was given a roll number the game hasn't had (rolls
-     * start at 1), or a range that runs past the last roll. Nothing is changed. */
-    GAME_ERR_NO_SUCH_ROLL,
-    /* Game_EditRolls would leave more rolls than any game can have (21). Nothing is
-     * changed. */
-    GAME_ERR_TOO_MANY_ROLLS
+    GAME_ERR_NO_SUCH_ROLL,      /* an edit's range isn't rolls the game has had */
+    GAME_ERR_TOO_MANY_ROLLS     /* an edit would leave more than 21 rolls */
 } GameStatus;
 
-/* How many pins a roll counts as, given how many were standing before it and how many it
- * knocked down. A caller supplies one to play a variant of the game; standard bowling
- * counts exactly the pins that fell.
- *
- * The contract a rule must keep:
- *   - It returns no more than pins_standing. Game_Roll rejects a roll whose count is out of
- *     range (GAME_ERR_RULE_OUT_OF_RANGE).
- *   - It is a pure function of its two arguments: the same pins standing and pins down
- *     always give the same count, with nothing read from anywhere else. Every correction
- *     (Game_CorrectRoll) replays every roll of the game through the rule, so a rule that
- *     depends on anything else can silently rewrite the game's history. Nothing checks this;
- *     it is the caller's to keep. One consequence is caught: when an edit is rejected, the
- *     game undoes it by replaying the rolls it had, and if an impure rule makes that replay
- *     fail too, there is no game left that is known to be right, so the program stops
- *     (Fault_Stop, in every build).
- *
- * Stack: a rule runs on top of the library's own frames. The most under it is during a
- * correction's replay: 432 bytes at -O2, 368 at -O0 (208 and 128 during Game_Roll). More at -O2
- * than at -O0 is not a typo: optimizing merges the edit into one large frame, while the replay
- * that calls the rule stays two calls further down. Those are 64-bit host numbers from GCC 16,
- * to show the scale; a target has to measure its own (KAY.md, "Worst-case stack depth", shows
- * how). */
+/* How many pins a roll counts as, given the pins standing and the pins that fell. Supplied to
+ * play a variant; the standard rule counts the pins that fell.
+ *   - It returns at most pins_standing, or the roll gets GAME_ERR_RULE_OUT_OF_RANGE.
+ *   - It is pure: every edit replays every roll through it. If a rejected edit can't be undone
+ *     because the rule now answers differently, the program stops (Fault_Stop).
+ * It runs on up to 432 bytes of the library's stack at -O2, where inlining makes the edit's frame
+ * large, and 368 at -O0 (64-bit host; measure on the target). */
 typedef Pins (*PinCountRule)(Pins pins_standing, Pins pins_down);
 
-/* A standard game. */
 Game *Game_Create(void);
 
-/* A game whose rolls are counted by `count_pins`. NULL if `count_pins` is NULL, or if no
- * game is free. */
+/* NULL if count_pins is NULL, or if no game is free. */
 Game *Game_CreateWithRule(PinCountRule count_pins);
 
-/* Gives the game back to the pool. NULL, or a pointer that isn't a game, is ignored. Two
- * misuses stop the program (Fault_Stop, in every build), at the misuse:
- *   - destroying a game while it is busy, from inside one of its own callbacks or its
- *     PinCountRule, which would free it under the call still running;
- *   - destroying a game twice. That is caught while its slot is still free. Once another game
- *     has the slot, a stale handle is that game's handle too, and can't be told apart. */
+/* NULL, or a pointer that isn't a game, is ignored. Stops the program (Fault_Stop) if the game
+ * is busy or already destroyed. A handle to a slot since reused by another game can't be
+ * detected. */
 void Game_Destroy(Game *game);
 
-/* Told when a frame changes: the frame's number (1 to 10), its score, and whether it is
- * complete.
- *   - After a roll, it is told about each frame the roll completed, oldest first.
- *   - After a correction (Game_CorrectRoll), it is told again about every complete frame,
- *     with its new score: a frame number it has heard before is an update.
- * A callback may read the game (Game_Score sees the whole roll), but not change it: a roll,
- * an edit or a drain from inside a callback returns GAME_ERR_BUSY.
- *
- * Stack: a callback runs on top of the library's own frames. The most under it is after a
- * correction: 272 bytes at -O2, 416 at -O0 (128 and 240 after Game_Roll). Those are 64-bit host
- * numbers from GCC 16, to show the scale; a target has to measure its own (KAY.md, "Worst-case
- * stack depth", shows how). */
+/* Told a frame's number (1 to 10), its score, and whether it is complete: after a roll, about
+ * each frame the roll completed, oldest first; after an edit, about every frame again, where a
+ * number heard before is an update and complete = false means reopened. A callback may read the
+ * game but not change it (GAME_ERR_BUSY). It runs on up to 272 bytes of the library's stack at
+ * -O2, 416 at -O0 (64-bit host; measure on the target). */
 typedef void (*FrameChangedCallback)(void *context, FrameNumber frame_number, Score frame_score,
                                      bool frame_complete);
 
-/* Adds a callback this game tells about changed frames; `context` is passed back to it
- * unchanged. A listener added mid-game is caught up at once: it, and only it, is told about
- * every frame already complete, oldest first, before this returns, with the game busy as for
- * any callback (it may read the game, not change it). From then on it hears what every
- * listener hears. Added before any frame is complete, it is told nothing yet.
- *
- * A game has room for two. Returns false, adding nothing, if both are taken, if `game` or
- * `callback` is NULL, or if the game is busy: called from inside a callback or the game's
- * PinCountRule, a new listener would join a telling already under way. */
+/* Adds a listener, and tells it, and only it, about every frame already complete. Room for two.
+ * False, adding nothing, if both are taken, if game or callback is NULL, or if the game is
+ * busy. */
 bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context);
 
 GameStatus Game_Roll(Game *game, Pins pins);
 
-/* One edit of a game's rolls: replace `rolls_removed` rolls, starting at roll number
- * `first_roll` (the first roll is 1), with the `new_count` rolls in `new_pins`. One edit covers
- * every fix: replacing a roll (one out, one in), inserting (none out), and deleting (none in).
- * Four values that always travel together, so they travel as one, by pointer. */
+/* Replaces rolls_removed rolls, from roll number first_roll (the first is 1), with the new_count
+ * rolls in new_pins: a replacement, an insertion (none removed) or a deletion (none new). */
 typedef struct {
     RollNumber first_roll;
     uint8_t rolls_removed;
-    const Pins *new_pins; /* may be NULL only when new_count is 0 */
+    const Pins *new_pins; /* NULL only when new_count is 0 */
     uint8_t new_count;
 } RollEdit;
 
-/* Corrects roll number `roll_number` (the first roll is 1) to `pins`, the pins that really
- * fell, and rescores the game by replaying every roll, each counted again by the game's
- * rule. The listeners are told the result (see FrameChangedCallback). Rejected, changing
- * nothing, if it would make any roll impossible (the status of that roll, such as
- * GAME_ERR_INVALID_PINS), if the roll hasn't been made (GAME_ERR_NO_SUCH_ROLL), or if called
- * from inside a callback (GAME_ERR_BUSY). */
+/* Game_EditRolls with one roll out and one in. */
 GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins);
 
-/* Applies `edit` (see RollEdit) to the game's rolls, and rescores the game.
- *
- * The edit is checked, and told to the listeners, only in its final state: they never hear
- * about a game in between. Rejected, changing nothing, if the edited game has an impossible
- * roll (that roll's status), if the range isn't rolls the game has had (so an edit can't add
- * rolls after the last one: that is Game_Roll's job), `new_pins` is NULL with rolls promised,
- * or `edit` itself is NULL (GAME_ERR_NO_SUCH_ROLL), if it would make more than 21 rolls
- * (GAME_ERR_TOO_MANY_ROLLS), or if called from inside a callback
- * (GAME_ERR_BUSY). */
+/* Applies the edit, and rescores by replaying every roll; the listeners hear only the final
+ * state. Rejected with the status of any roll it makes impossible, or with
+ * GAME_ERR_NO_SUCH_ROLL (also for a NULL edit), GAME_ERR_TOO_MANY_ROLLS or GAME_ERR_BUSY. */
 GameStatus Game_EditRolls(Game *game, const RollEdit *edit);
+
+/* The total of the complete frames; 0 for a NULL game. */
 Score Game_Score(const Game *game);
 
 #ifdef __cplusplus
