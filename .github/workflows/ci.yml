@@ -1,5 +1,5 @@
-# The same three builds the README describes, on every push and pull request: debug,
-# release (NDEBUG) and undefined-behavior checks. Warnings are errors in all of them.
+# The same builds the README describes, on every push and pull request: debug, release
+# (NDEBUG), undefined-behavior checks and data-race checks. Warnings are errors in all of them.
 name: CI
 
 on:
@@ -23,8 +23,16 @@ jobs:
             flags: "-DCMAKE_BUILD_TYPE=Release"
           - name: ubsan
             flags: "-DOO_C_SANITIZE=ON"
+          - name: tsan
+            flags: "-DOO_C_TSAN=ON"
     steps:
       - uses: actions/checkout@v7
+
+      # ThreadSanitizer can't map its shadow memory with the runner's default address-space
+      # randomization, and aborts before the first test.
+      - name: Allow ThreadSanitizer's memory layout
+        if: matrix.name == 'tsan'
+        run: sudo sysctl vm.mmap_rnd_bits=28
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ${{ matrix.flags }}

@@ -19,6 +19,14 @@ if(OO_C_SANITIZE)
     add_link_options(-fsanitize=undefined -fsanitize-trap=undefined)
 endif()
 
+# Data races between the pinsetter's interrupt side and the main loop. ThreadSanitizer needs
+# its runtime library, which MinGW doesn't ship, so this build runs in CI on Linux.
+option(OO_C_TSAN "Build with -fsanitize=thread" OFF)
+if(OO_C_TSAN)
+    add_compile_options(-fsanitize=thread -O1 -g)
+    add_link_options(-fsanitize=thread)
+endif()
+
 # ---- Library under test ---------------------------------------------------
 add_library(bowling STATIC
     src/frame.c
