@@ -71,6 +71,10 @@ Game *Game_Create(void);
  * game is free. */
 Game *Game_CreateWithRule(PinCountRule count_pins);
 
+/* Gives the game back to the pool. NULL, or a pointer that isn't a game, is ignored. Not from
+ * inside one of the game's own callbacks or its PinCountRule: destroying a game while it is
+ * busy frees it under the call still running, so the program stops (Fault_Stop, in every
+ * build) at the misuse. */
 void Game_Destroy(Game *game);
 
 /* Told when a frame changes: the frame's number (1 to 10), its score, and whether it is

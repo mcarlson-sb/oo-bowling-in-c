@@ -162,12 +162,20 @@ static bool Game_FindSlot(const Game *game, uint8_t *slot)
     return false;
 }
 
+/* A game destroyed while it is busy, from inside one of its own callbacks or its rule, would
+ * have its slot freed under the call still running. Only a misuse gets here. Ignoring it would
+ * be safe but silent: the slot would leak, and the failure would show up later, far away, as
+ * Game_Create returning NULL. So the program stops at the misuse, in every build. */
 void Game_Destroy(Game *game)
 {
     uint8_t slot = 0U;
-    if (Game_FindSlot(game, &slot)) {
-        SlotPool_Release(&s_pool, slot);
+    if (!Game_FindSlot(game, &slot)) {
+        return; /* NULL, or not one of ours */
     }
+    if (game->busy) {
+        Fault_Stop("game: destroyed while busy, from inside its own callback or rule");
+    }
+    SlotPool_Release(&s_pool, slot);
 }
 
 /* Checks a roll and, if it can happen, applies it to the frames. Tells no one: a caller that

@@ -405,3 +405,34 @@ TEST(LateListenerTest, should_let_a_listener_being_caught_up_read_the_game_but_n
     EXPECT_EQ((std::vector<GameStatus>{GAME_ERR_DURING_NOTIFICATION}), late.statuses);
     EXPECT_EQ(7U, Game_Score(game));
 }
+
+namespace {
+
+/* A listener that destroys its own game. */
+void DestroysItsGame_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                  bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    Game_Destroy(static_cast<Game *>(context));
+}
+
+} // namespace
+
+TEST(ListenerReentryDeathTest, should_stop_the_program_when_a_listener_destroys_its_game)
+{
+    /* Destroying a game from inside its own call frees its slot under the call still running,
+     * and only a misuse gets there. Ignoring it would be safe but silent: the slot would leak,
+     * and the failure would show up later, far away, as Game_Create returning NULL. So the
+     * program stops, in every build, at the misuse. It all happens in the death test's child
+     * process. */
+    EXPECT_DEATH(
+        {
+            Game *game = Game_Create();
+            (void)Game_OnFrameChanged(game, &DestroysItsGame_FrameChanged, game);
+            (void)Game_Roll(game, 3U);
+            (void)Game_Roll(game, 4U); /* frame 1 completes, and the listener destroys the game */
+        },
+        "busy");
+}
