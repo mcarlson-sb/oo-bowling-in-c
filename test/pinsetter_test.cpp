@@ -172,6 +172,27 @@ TEST(PinsetterTest, should_count_the_rolls_lost_while_the_mailbox_was_full)
     EXPECT_EQ(1U, Pinsetter_RollsLost(pinsetter));
 }
 
+TEST(PinsetterTest, should_count_lost_rolls_right_across_the_count_wrapping_around)
+{
+    /* The count is 16 bits and never cleared, so it wraps. The main loop's answer is a
+     * difference, and must stay right when the count passes 65,535 between two asks. */
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+    for (int i = 0; i < 21; i++) {
+        EXPECT_TRUE(Pinsetter_Post(pinsetter, 0U));
+    }
+
+    for (int i = 0; i < 65530; i++) {
+        (void)Pinsetter_Post(pinsetter, 0U);
+    }
+    EXPECT_EQ(65530U, Pinsetter_RollsLost(pinsetter));
+
+    for (int i = 0; i < 10; i++) { /* the count goes 65,535, then 0, and ends at 4 */
+        (void)Pinsetter_Post(pinsetter, 0U);
+    }
+    EXPECT_EQ(10U, Pinsetter_RollsLost(pinsetter));
+}
+
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
 {
     /* A real thread plays the interrupt handler: it only posts, retrying while the mailbox
