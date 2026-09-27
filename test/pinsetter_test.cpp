@@ -101,6 +101,27 @@ TEST(PinsetterTest, should_stop_at_an_impossible_roll_and_keep_it_until_the_scor
     EXPECT_EQ(13U, Game_Score(game)); /* 2 then 8, a spare with the 3 as its bonus */
 }
 
+TEST(PinsetterTest, should_let_the_scorer_discard_a_roll_that_really_was_a_glitch)
+{
+    /* 11 pins can't fall: this time the machine is wrong, not an earlier roll. The scorer
+     * throws the roll away, and the rolls behind it go in. With nothing waiting, there is
+     * nothing to discard. */
+    GameHandle game_owner = MakeGame();
+    Game *game = game_owner.get();
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 11U));
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 3U));
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 4U));
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Pinsetter_Drain(pinsetter, game));
+
+    EXPECT_TRUE(Pinsetter_DiscardOldest(pinsetter));
+    EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, game));
+    EXPECT_EQ(7U, Game_Score(game));
+    EXPECT_FALSE(Pinsetter_DiscardOldest(pinsetter));
+}
+
 TEST(PinsetterThreadTest, should_hand_every_roll_from_another_thread_to_the_game_in_order)
 {
     /* A real thread plays the interrupt handler: it only posts, retrying while the mailbox

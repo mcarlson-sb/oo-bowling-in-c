@@ -43,6 +43,10 @@ bool Pinsetter_Post(Pinsetter *pinsetter, Pins pins);
  * with Game_CorrectRoll, and the next drain carries on from it. */
 GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game);
 
+/* Main-loop side. Throws away the oldest waiting roll: the one a drain stopped at, when the
+ * scorer decides the machine got it wrong. Returns false if no roll is waiting. */
+bool Pinsetter_DiscardOldest(Pinsetter *pinsetter);
+
 #ifdef __cplusplus
 }
 #endif

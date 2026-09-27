@@ -77,3 +77,13 @@ GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
     }
     return GAME_OK;
 }
+
+bool Pinsetter_DiscardOldest(Pinsetter *pinsetter)
+{
+    const unsigned drained = atomic_load_explicit(&pinsetter->drained, memory_order_relaxed);
+    if (drained == atomic_load_explicit(&pinsetter->posted, memory_order_acquire)) {
+        return false; /* nothing waiting */
+    }
+    atomic_store_explicit(&pinsetter->drained, drained + 1U, memory_order_release);
+    return true;
+}
