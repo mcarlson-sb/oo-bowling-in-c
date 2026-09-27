@@ -1415,6 +1415,44 @@ release job alone failed, `src/pinsetter_isr.c:44:6: error: stack usage is 64 by
 | `src/slot_pool.c` / `.h` | 27 / 30 | 21 / 29 |
 | all of `src/*.c` | 990 | 979 |
 
+### A deep-dive review: four findings
+
+The user's deep-dive review of `kay-oo` found two confirmed bugs and two couplings that invite
+bugs. Each was test-driven: a failing test first, one behavior per commit. The findings, in
+`ENG-10.2`'s schema (the log is append-only; the engineer of record is the owner, per
+`ENG-9.3`):
+
+| Finding | `law_id` | `detected_at` | `severity` | `action` | `owner` | `resolution` | Fix |
+|---|---|---|---|---|---|---|---|
+| A listener added mid-game missed the frames already complete, then heard them all after a correction that changed nothing, which it couldn't tell from a real change | `ENG-2.6` | deep-dive review | confirmed bug | blocked | engineer of record | resolved | `e3e6476` (a listener added while the game is busy is refused), `0e368aa` (catch-up) |
+| A discard from inside a listener, during a drain, reported success and was written over by the drain | `ENG-3.7` | deep-dive review | confirmed bug | blocked | engineer of record | resolved | `e1e56e2`: `Pinsetter_DiscardOldest` refused while a drain runs |
+| `Game_Destroy` was the one change still allowed from inside a game's own call, and a double destroy freed a slot silently, someone else's once reused | `ENG-1.1` | deep-dive review | coupling that invites bugs | blocked | engineer of record | resolved | `f41b041` (destroy while busy stops), `5068693` (`SlotPool_Release` reports), `43ab318` and `df0eba2` (double destroy stops, for games and pinsetters) |
+| The re-entry guard lived in the listener registry, covered only callbacks, and left the rule unguarded | `ENG-2.6` | deep-dive review | coupling that invites bugs | blocked | engineer of record | resolved | `73bb2b0` (the flag moves to `Game`), `ba5f0de` (busy for the whole roll or edit; a rule reaching back is refused) |
+| A stale handle to a slot already reused is the new object's handle too, and can't be caught | `ENG-1.1` | deep-dive review | known limit | exception-granted (approver: the user, in the review) | engineer of record | exception-documented | Generation-checked handles would catch it, but are a bigger design change than this review wanted. The pools hold two objects, so a slot freed is the next one handed out: reuse is immediate, and a stale handle becomes live at once |
+
+**The user's decisions**, asked before each fix:
+- **A late listener: catch-up**, not refusal. It suits a scoreboard that restarts mid-game.
+  Only the new listener is told; the others hear nothing again, which they would take for
+  updates. The game is busy during the catch-up, and adding a listener while busy is refused,
+  since a catch-up there would report frames out of order.
+- **A destroy while busy stops the program.** The user's reason: ignoring it would be safe but
+  silent, leaking the slot so the failure shows up later as `Game_Create` returning `NULL`, far
+  from the mistake; stopping at the misuse finds it at once, and only a misuse can get there.
+- **A double destroy stops the program, but the pool doesn't decide that.** `SlotPool_Release`
+  returns whether the slot was in use, and `Game_Destroy` and `Pinsetter_Destroy` call
+  `Fault_Stop` with their own messages. `SlotPool` stays a generic helper, tested without death
+  tests. Destroying `NULL`, or a pointer that isn't one of the pool's, stays a no-op.
+- **Generation-checked handles: not now**, recorded above as a known limit.
+
+**What changed in the design.** The listener module now only keeps and tells listeners; the
+game owns the one question of whether it is in the middle of something, and asks it at every
+entry point that could change it. `Game_Destroy` checks the flag rather than setting it,
+because nothing runs inside a destroy. Two existing tests subscribed mid-game to watch only
+what an edit sends; with the catch-up they receive it first, so each now asserts it and clears
+it before the edit. Their assertions about the edit are unchanged. One mutation was misread on
+the way: a mutant that left a variable unused failed to build under `-Werror`, and `ctest` ran
+the old binary; the mutant was rewritten so it built, and then failed its test as it should.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on

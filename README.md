@@ -125,9 +125,12 @@ Behind them:
   `test/remote_scoreboard_test.cpp` sends each message down a wire as 4 bytes, and rebuilds
   the scoreboard from the bytes alone.
 
-  A listener may read the game, but not change it: a roll, an edit or a drain from inside a
-  listener is refused (`GAME_ERR_DURING_NOTIFICATION`), because the listeners would then
-  hear about frames out of order.
+  A listener may read the game, but not change it. The game is busy for the whole of a roll
+  or an edit, and the caller's code runs inside both, the rule and the listeners. So a roll,
+  an edit or a drain from inside either is refused (`GAME_ERR_DURING_NOTIFICATION`), adding a
+  listener returns `false`, and destroying the game stops the program. A listener added
+  mid-game is caught up at once: it, and only it, is told every frame already complete.
+  Destroying a game twice also stops the program.
 - The **pinsetter** (`include/pinsetter.h`) is the machine that counts the pins, and in
   firmware it reports each roll from an interrupt handler. It never touches a game: the
   interrupt side only posts the pins to the pinsetter's own mailbox, a lock-free ring with
@@ -141,7 +144,8 @@ Behind them:
   and a debug build stops the program if it catches two posts overlapping. Each drain takes
   only the rolls waiting when
   it starts, so the main loop's work per pass is bounded, and a drain from inside a listener
-  is refused. A post the full mailbox refuses is counted: `Pinsetter_RollsLost` returns the
+  is refused, as is a discard while a drain is running. Destroying a pinsetter twice stops the
+  program. A post the full mailbox refuses is counted: `Pinsetter_RollsLost` returns the
   total, and each reader takes its own difference. `test/pinsetter_test.cpp` covers both
   sides, with a real second thread and with a fake interrupt handler fired in the middle of a
   drain.
@@ -159,12 +163,12 @@ Behind them:
   - the game is over (`GAME_ERR_GAME_OVER`);
   - it knocks down more pins than are standing (`GAME_ERR_INVALID_PINS`);
   - the game's rule counts it as more pins than were standing (`GAME_ERR_RULE_OUT_OF_RANGE`);
-  - it is made from inside a listener (`GAME_ERR_DURING_NOTIFICATION`).
+  - it is made from inside a listener or the game's rule (`GAME_ERR_DURING_NOTIFICATION`).
 
   An edit is also rejected for rolls that haven't been made, including an edit that starts
   after the last roll (`GAME_ERR_NO_SUCH_ROLL`): adding a roll is `Game_Roll`'s job. It is
   also rejected if it would make more than 21 rolls (`GAME_ERR_TOO_MANY_ROLLS`), or if it is
-  made from inside a listener (`GAME_ERR_DURING_NOTIFICATION`).
+  made from inside a listener or the rule (`GAME_ERR_DURING_NOTIFICATION`).
 
 ## Why this is object-oriented
 

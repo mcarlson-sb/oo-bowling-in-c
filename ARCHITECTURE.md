@@ -72,16 +72,23 @@ holds its frames, and each has one job that used to be part of `game.c`:
 |  replaying the log, and reporting changed frames             |
 +--------------------------------------------------------------+
      |  FrameListeners_Add / _Tell         |  RollLog_Append / _At / _Edit
-     |  / _AreBeingTold                    |
+     |  / _TellNewest                      |
      v                                     v
 +-----------------------------+   +--------------------------------+
 |  FrameListeners  (value)    |   |  RollLog  (value)              |
 |  who to tell about changed  |   |  every roll, as the pins that  |
-|  frames, and whether they   |   |  fell; checks an edit's range  |
-|  are being told right now   |   |  and length, and splices it    |
+|  frames; it keeps and tells |   |  fell; checks an edit's range  |
+|  them, and nothing more     |   |  and length, and splices it    |
 |  src/frame_listeners.*      |   |  src/roll_log.*                |
 +-----------------------------+   +--------------------------------+
 ```
+
+**The re-entry guard is the game's.** `Game` has one `busy` flag, set for the whole of a roll
+(`Game_Roll`) and of an edit (`Game_EditRolls`, and so `Game_CorrectRoll`), and while a new
+listener is caught up. The caller's code runs inside all three: the rule while a roll is
+counted, the listeners while frames are told. While `busy` is set, a roll, an edit or a drain
+gets `GAME_ERR_DURING_NOTIFICATION`, adding a listener gets `false`, and `Game_Destroy` stops
+the program. Reading the game (`Game_Score`) is always allowed.
 
 `Game_ReportFrames` is the one bridge between them: it reads the frames and tells the
 listeners. It is the only function that touches both, and it owns `frames_reported`.
@@ -257,7 +264,8 @@ s_games[2]                                          2,096 bytes
 |  | count_pins      : PinCountRule      the caller's rule |  |
 |  | frames_reported : uint8_t           told to listeners |  |
 |  | listeners       : FrameListeners          40 bytes    |  |
-|  |   entries[2], count, telling    (callback, context)   |  |
+|  |   entries[2], count             (callback, context)   |  |
+|  | busy            : bool       a roll or edit under way |  |
 |  | log             : RollLog                 22 bytes    |  |
 |  |   pins[21], count                                     |  |
 |  +-------------------------------------------------------+  |
@@ -424,8 +432,10 @@ rejected roll changes nothing.
 Game_Roll(game, pins)
    |
    |-- game == NULL?                      --yes--> GAME_ERR_NULL_GAME
-   |-- called from inside a listener?     --yes--> GAME_ERR_DURING_NOTIFICATION
+   |-- game busy (inside a listener or   --yes--> GAME_ERR_DURING_NOTIFICATION
+   |   the rule)?
    |
+   |   busy = true, until the roll returns
    |  Game_Accept:
    |-- tenth frame complete?              --yes--> GAME_ERR_GAME_OVER
    |-- pins > pins standing?              --yes--> GAME_ERR_INVALID_PINS
@@ -464,9 +474,10 @@ tells each listener (up to two, set with `Game_OnFrameChanged`) about every fram
 completed, oldest first. A frame never completes before the one before it, so `Game` only
 keeps a count of frames already reported, and checks the frames just past it. Frames don't
 hold listeners, and no listener is called while a roll is half applied. A listener may read
-the game (`Game_Score` then sees the whole roll), but not change it: a roll from inside a
-listener would tell the listeners about frames out of order, so it is refused, as are an edit
-and a drain.
+the game (`Game_Score` then sees the whole roll), but not change it: the game is busy, so a
+roll, an edit or a drain from inside a listener, or from inside the rule, is refused. A
+listener added mid-game is caught up at once: it, and only it, is told every frame already
+complete, with the game busy as for any callback.
 KAY.md records why this won over frames telling the listeners themselves.
 
 **Editing rolls.** The game keeps every accepted roll in a log, as the pins that fell, so a
@@ -478,7 +489,7 @@ inserting and deleting are all the same edit. `Game_CorrectRoll` is one roll out
 Game_EditRolls(game, &edit)     edit: a RollEdit {first_roll, rolls_removed, new_pins, new_count}
    |
    |-- game == NULL?                        --yes--> GAME_ERR_NULL_GAME
-   |-- called from inside a listener?       --yes--> GAME_ERR_DURING_NOTIFICATION
+   |-- game busy (inside a listener or the rule)?  --yes--> GAME_ERR_DURING_NOTIFICATION
    |
    |  RollLog_Edit(&game->log, edit, &edited):
    |-- range not rolls the log has?         --yes--> GAME_ERR_NO_SUCH_ROLL
@@ -548,7 +559,9 @@ view before the position that announces them: ThreadSanitizer catches each of th
 weakened to relaxed (KAY.md, phase 6). A drain that stops leaves the roll where it is. The
 scorer then either corrects an earlier roll (`Game_CorrectRoll`), when the reported roll was
 right and the one before it miscounted, or throws the reported one away
-(`Pinsetter_DiscardOldest`); the next drain carries on. A drain takes at most the 21 rolls
+(`Pinsetter_DiscardOldest`, refused while a drain is running, since the drain would write its
+own copy of the read position back over it); the next drain carries on. A drain takes at most
+the 21 rolls
 waiting when it starts, so the main loop's work per pass is bounded. Rolls reported after the
 tenth frame
 wait the same way, for the next game. The ring holds a whole game's rolls, so a stopped drain
