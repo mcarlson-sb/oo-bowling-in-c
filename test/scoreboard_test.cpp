@@ -154,3 +154,43 @@ TEST_F(ScoreboardTest, should_refuse_a_null_callback_without_using_up_a_slot)
     RunningStats stats; /* the fixture's scoreboard has one slot; this takes the other */
     EXPECT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
 }
+
+/* ---- Calling back into the game from inside a listener ---------------------------------- */
+
+namespace {
+
+/* A scoreboard that also shows the game's running score each time it hears about a frame. */
+struct LiveTotal {
+    Game *game = nullptr;
+    std::vector<int> totals_seen;
+};
+
+void LiveTotal_FrameCompleted(void *context, uint8_t frame_number, Score frame_score)
+{
+    (void)frame_number;
+    (void)frame_score;
+    auto *live = static_cast<LiveTotal *>(context);
+    live->totals_seen.push_back(Game_Score(live->game));
+}
+
+} // namespace
+
+TEST(ListenerReentryTest, should_let_a_listener_read_the_score_of_the_whole_roll)
+{
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    LiveTotal live;
+    live.game = game;
+    ASSERT_TRUE(Game_OnFrameCompleted(game, &LiveTotal_FrameCompleted, &live));
+
+    for (int i = 0; i < 14; i++) {
+        EXPECT_EQ(GAME_OK, Game_Roll(game, 0U)); /* frames 1 to 7: gutter balls */
+    }
+    live.totals_seen.clear();
+
+    RollAll(game, {10U, 3U, 4U}); /* the 4 completes frame 8 (17) and frame 9 (7) */
+
+    /* Both notifications come after the whole roll, so both see its final score. */
+    EXPECT_EQ((std::vector<int>{24, 24}), live.totals_seen);
+    EXPECT_EQ(24U, Game_Score(game));
+}
