@@ -251,6 +251,51 @@ void FloodsTheMailbox_FrameChanged(void *context, uint8_t frame_number, Score fr
 
 } // namespace
 
+namespace {
+
+/* A listener that, the first time it hears anything, queues an impossible roll and then two
+ * good ones. */
+struct QueuesABadRoll {
+    Game *game = nullptr;
+    std::vector<GameStatus> statuses;
+};
+
+void QueuesABadRoll_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                 bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    auto *listener = static_cast<QueuesABadRoll *>(context);
+    if (listener->statuses.empty()) {
+        for (const Pins pins : {Pins{11U}, Pins{2U}, Pins{3U}}) {
+            listener->statuses.push_back(Game_Roll(listener->game, pins));
+        }
+    }
+}
+
+} // namespace
+
+TEST(ListenerReentryTest, should_drop_a_queued_roll_that_turns_out_impossible)
+{
+    /* A queued roll is judged when it is applied, like any roll. An impossible one changes
+     * nothing, as it wouldn't have if made directly, and the rolls after it still apply.
+     * Its sender was told GAME_QUEUED, and hears nothing more. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    QueuesABadRoll listener;
+    listener.game = game;
+    Scoreboard scoreboard;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &QueuesABadRoll_FrameChanged, &listener));
+    ASSERT_TRUE(Game_OnFrameChanged(game, &Scoreboard_FrameChanged, &scoreboard));
+
+    RollAll(game, {3U, 4U});
+
+    EXPECT_EQ((std::vector<GameStatus>(3U, GAME_QUEUED)), listener.statuses);
+    EXPECT_EQ((Frames{{1, 7}, {2, 5}}), scoreboard.frames);
+    EXPECT_EQ(12U, Game_Score(game));
+}
+
 TEST(ListenerReentryTest, should_refuse_to_queue_more_rolls_than_a_game_can_have)
 {
     GameHandle owner = MakeGame();
