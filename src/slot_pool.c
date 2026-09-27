@@ -12,10 +12,12 @@ bool SlotPool_Acquire(SlotPool *self, uint8_t *slot)
     return false;
 }
 
-void SlotPool_Release(SlotPool *self, uint8_t slot)
+bool SlotPool_Release(SlotPool *self, uint8_t slot)
 {
     if (slot >= self->size) {
-        return;
+        return false;
     }
+    const bool was_in_use = self->in_use[slot];
     self->in_use[slot] = false;
+    return was_in_use;
 }

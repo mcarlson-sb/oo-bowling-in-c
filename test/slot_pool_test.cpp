@@ -59,3 +59,14 @@ TEST_F(SlotPoolTest, should_ignore_releasing_a_slot_it_does_not_have)
 
     EXPECT_TRUE(guard[2]); /* nothing past the pool was written */
 }
+
+TEST_F(SlotPoolTest, should_report_whether_a_released_slot_was_in_use)
+{
+    /* So that the owner of the objects can tell a double release, a bug in its caller, from a
+     * real one, and act on it: the pool itself stays a generic helper. */
+    ASSERT_TRUE(SlotPool_Acquire(&pool, &slot));
+
+    EXPECT_TRUE(SlotPool_Release(&pool, slot));
+    EXPECT_FALSE(SlotPool_Release(&pool, slot)); /* already free */
+    EXPECT_FALSE(SlotPool_Release(&pool, 7U));   /* not a slot of this pool */
+}

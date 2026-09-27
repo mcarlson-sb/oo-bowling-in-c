@@ -23,7 +23,9 @@ typedef struct {
  * slot is in use. */
 bool SlotPool_Acquire(SlotPool *self, uint8_t *slot);
 
-/* Frees a slot so it can be handed out again. A slot number outside the pool is ignored. */
-void SlotPool_Release(SlotPool *self, uint8_t slot);
+/* Frees a slot so it can be handed out again. Returns whether it was in use: false for a slot
+ * already free, which is a double release by the caller, or for a number outside the pool,
+ * which is ignored. The pool doesn't decide what a double release means; its owner does. */
+bool SlotPool_Release(SlotPool *self, uint8_t slot);
 
 #endif /* SLOT_POOL_H */
