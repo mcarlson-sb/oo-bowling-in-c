@@ -71,6 +71,11 @@ static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
     return result;
 }
 
+static inline FrameNumber FrameNumber_FromIndex(uint8_t index)
+{
+    return (FrameNumber)(index + 1U);
+}
+
 static inline bool Game_AllFramesCompleteBefore(const Game *game, uint8_t index)
 {
     for (uint8_t i = 0U; i < index; i++) {
@@ -90,7 +95,7 @@ static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t were_tol
     const uint8_t frames =
         (were_told_complete > game->frame_count) ? were_told_complete : game->frame_count;
     for (uint8_t i = first; i < frames; i++) {
-        const FrameNumber frame_number = (FrameNumber)(i + 1U);
+        const FrameNumber frame_number = FrameNumber_FromIndex(i);
         if ((i < game->frame_count) && FrameContext_IsComplete(&game->frames[i])) {
             assert(Game_AllFramesCompleteBefore(game, i));
             FrameListeners_Tell(&game->listeners, frame_number,
@@ -230,7 +235,7 @@ static void Game_CatchUpNewestListener(Game *game)
 {
     game->busy = true;
     for (uint8_t i = 0U; i < game->frames_told_complete; i++) {
-        FrameListeners_TellNewest(&game->listeners, (FrameNumber)(i + 1U),
+        FrameListeners_TellNewest(&game->listeners, FrameNumber_FromIndex(i),
                                   FrameContext_Score(&game->frames[i]), true);
     }
     game->busy = false;
