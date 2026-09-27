@@ -49,3 +49,11 @@ TEST_F(ScoreboardTest, should_tell_the_scoreboard_when_a_frame_completes)
     RollAll({3U, 4U});
     EXPECT_EQ((Frames{{1, 7}}), scoreboard.frames);
 }
+
+TEST_F(ScoreboardTest, should_tell_the_scoreboard_nothing_for_a_roll_that_completes_no_frame)
+{
+    RollAll({3U});        /* frame 1 needs a second roll */
+    RollAll({4U, 10U});   /* frame 1 completes; the strike in frame 2 doesn't */
+    RollAll({2U});        /* the strike has one of its two bonus rolls */
+    EXPECT_EQ((Frames{{1, 7}}), scoreboard.frames);
+}
