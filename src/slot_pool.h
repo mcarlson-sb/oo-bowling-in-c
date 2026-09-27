@@ -12,13 +12,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* A pool over `size` flags, all of which must start false. Built in place, with a static
+ * initializer: { in_use, size }. */
 typedef struct {
     bool *in_use;
     uint8_t size;
 } SlotPool;
-
-/* A pool over `size` flags, all of which must start false. */
-SlotPool SlotPool_Make(bool *in_use, uint8_t size);
 
 /* Takes a free slot and writes its number to *slot. Returns false, writing nothing, if every
  * slot is in use. */

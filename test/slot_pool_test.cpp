@@ -9,7 +9,7 @@ extern "C" {
 class SlotPoolTest : public ::testing::Test {
 protected:
     bool in_use[2] = {false, false};
-    SlotPool pool = SlotPool_Make(in_use, 2U);
+    SlotPool pool = {in_use, 2U};
     uint8_t slot = 0xFFU;
 };
 
@@ -52,7 +52,7 @@ TEST_F(SlotPoolTest, should_hand_out_a_released_slot_again)
 TEST_F(SlotPoolTest, should_ignore_releasing_a_slot_it_does_not_have)
 {
     bool guard[3] = {false, false, false}; /* in_use, plus one flag just past its end */
-    SlotPool small = SlotPool_Make(guard, 2U);
+    SlotPool small = {guard, 2U};
 
     guard[2] = true;
     SlotPool_Release(&small, 2U);
