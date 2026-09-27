@@ -9,9 +9,6 @@ void RollLog_Init(RollLog *self)
     self->count = 0U;
 }
 
-/* The bounds check stays in every build: a roll past a whole game's is never written. Debug
- * builds also stop at the assert, so whatever sent it gets found. (The game never accepts more
- * rolls than a game has, so only a bug gets here.) */
 void RollLog_Append(RollLog *self, Pins pins)
 {
     assert(self->count < GAME_MAX_ROLLS);
@@ -27,8 +24,6 @@ uint8_t RollLog_Count(const RollLog *self)
     return self->count;
 }
 
-/* Reading a roll not yet made is a bug in the caller: it stops debug builds and reads as 0
- * in release, never as stale memory. */
 Pins RollLog_At(const RollLog *self, uint8_t index)
 {
     assert(index < self->count);
@@ -38,8 +33,6 @@ Pins RollLog_At(const RollLog *self, uint8_t index)
     return self->pins[index];
 }
 
-/* Whether `edit`'s range is rolls this log has: it starts at one of them, and the rolls it
- * removes don't run past the last. */
 static bool RollLog_HasRange(const RollLog *self, const RollEdit *edit)
 {
     const uint8_t first = (uint8_t)(edit->first_roll - 1U); /* index of the first roll replaced */
@@ -50,17 +43,17 @@ static bool RollLog_HasRange(const RollLog *self, const RollEdit *edit)
 GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edited)
 {
     if (edit == NULL) {
-        return GAME_ERR_NO_SUCH_ROLL; /* no edit at all: like new rolls promised, but none given */
+        return GAME_ERR_NO_SUCH_ROLL;
     }
     if (!RollLog_HasRange(self, edit)) {
-        return GAME_ERR_NO_SUCH_ROLL; /* an edit starts at a roll the game has had */
+        return GAME_ERR_NO_SUCH_ROLL;
     }
     if ((edit->new_pins == NULL) && (edit->new_count > 0U)) {
-        return GAME_ERR_NO_SUCH_ROLL; /* new rolls promised, but none given */
+        return GAME_ERR_NO_SUCH_ROLL;
     }
     const unsigned new_length = ((unsigned)self->count - edit->rolls_removed) + edit->new_count;
     if (new_length > GAME_MAX_ROLLS) {
-        return GAME_ERR_TOO_MANY_ROLLS; /* no game has that many, and the log has no room */
+        return GAME_ERR_TOO_MANY_ROLLS;
     }
 
     const uint8_t first = (uint8_t)(edit->first_roll - 1U); /* index of the first roll replaced */

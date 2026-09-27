@@ -1,10 +1,7 @@
 #ifndef ROLL_LIST_H
 #define ROLL_LIST_H
 
-/* A short list of rolls: a frame's own rolls, or its bonus rolls. A value type that owns its
- * array and its count together, so nothing else has to keep the two in step.
- *
- * Private to the library: lives in src/, not include/. */
+/* A frame's own rolls, or its bonus rolls. */
 
 #include <stdbool.h>
 #include <stdint.h>

@@ -21,8 +21,6 @@ Pins RollList_Sum(const RollList *self)
     return sum;
 }
 
-/* The bounds check stays in every build: a roll that doesn't fit is never written. Debug
- * builds also stop at the assert, so whatever sent it gets found. */
 void RollList_Add(RollList *self, Pins pins)
 {
     assert(!RollList_IsFull(self));
@@ -33,8 +31,6 @@ void RollList_Add(RollList *self, Pins pins)
     self->count++;
 }
 
-/* Reading a roll not yet made is a bug in the caller: it stops debug builds and reads as 0
- * in release, never as stale memory. */
 Pins RollList_At(const RollList *self, uint8_t index)
 {
     assert(index < self->count);
