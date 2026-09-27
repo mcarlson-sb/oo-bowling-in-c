@@ -66,8 +66,8 @@ The release build reaches 100% of lines and every branch except that last guard.
 
 ## What the code does
 
-The public API is five functions in `include/game.h`: `Game_Create`, `Game_CreateWithRule`,
-`Game_Roll`, `Game_Score` and `Game_Destroy`. Behind them:
+The public API is six functions in `include/game.h`: `Game_Create`, `Game_CreateWithRule`,
+`Game_OnFrameCompleted`, `Game_Roll`, `Game_Score` and `Game_Destroy`. Behind them:
 
 - A **`Game`** holds up to ten frames. Each roll goes to the frames in order until one keeps
   it. If none does, a new frame is started with it.
@@ -75,6 +75,9 @@ The public API is five functions in `include/game.h`: `Game_Create`, `Game_Creat
   as. `Game_Create` uses the standard rule: the pins that fell. `Game_CreateWithRule` takes a
   rule from the caller, so a variant of the game can be played without the library knowing
   it. `test/nine_pin_no_tap_test.cpp` plays nine-pin no-tap that way.
+- After each roll, the game tells up to two **listeners**, set with `Game_OnFrameCompleted`,
+  about every frame the roll completed: its number and score, oldest first.
+  `test/scoreboard_test.cpp` drives a live scoreboard and running stats that way.
 - Each frame is a **`FrameContext`** that holds the frame's current **state**:
   - **`RegularFrame`**: where every frame starts. On a first-roll 10 it becomes a strike
     state. When its rolls add up to 10 it becomes a spare state.
@@ -168,10 +171,12 @@ the `.c` file:
 - `struct FrameStateFactory`: `frame_context.h` only forward-declares it.
 
 **The tests follow the same line.**
-- `test/game_test.cpp` and `test/nine_pin_no_tap_test.cpp` include only `game.h`, as a real
-  caller would. They are black-box tests of the public API.
-- `test/roll_list_test.cpp` and `test/slot_pool_test.cpp` are white-box tests of private
-  types. They are the only tests granted `src/`, and `CMakeLists.txt` says why.
+- `test/game_test.cpp`, `test/nine_pin_no_tap_test.cpp` and `test/scoreboard_test.cpp` use only
+  `game.h` (through `test/test_support.h`), as a real caller would. They are black-box tests
+  of the public API.
+- `test/frame_test.cpp`, `test/roll_list_test.cpp` and `test/slot_pool_test.cpp` are white-box
+  tests of private types. They are the only tests granted `src/`, and `CMakeLists.txt` says
+  why.
 
 ## Design patterns
 
@@ -218,6 +223,7 @@ The factory table's layout is hidden: `frame_context.h` only forward-declares it
 |---|---|---|
 | **Object Pool** | `Game_Create` and `Game_Destroy` over `s_games[2]`, with the in-use bookkeeping in `SlotPool` (`src/slot_pool.c`) | Memory is fixed at compile time. Running out is reported (`NULL`), never undefined |
 | **Opaque handle** | `Game` | Callers depend only on the API, never on the layout |
+| **Observer** | `Game_OnFrameCompleted`: a callback and a context pointer, two listener slots | Subscribers learn about completed frames without polling, and `Game` doesn't know who they are |
 | **Strategy** | `PinCountRule`, given to `Game_CreateWithRule` | The caller decides how a roll is counted, at run time, without the library containing the variant |
 | **Result object** | `RollResult { consumed, pins }` | Says directly whether a frame kept a roll, with no special "magic" values |
 
@@ -287,8 +293,11 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `test/game_test.cpp` | Host tests through the public API: scoring, end of game, game storage, tenth frame, input validation, `NULL` handles |
 | `KAY.md` | The log of the Kay-style OO experiment on the `kay-oo` branch |
 | `test/nine_pin_no_tap_test.cpp` | A client that plays nine-pin no-tap by supplying its own `PinCountRule`, plus checks on rules that misbehave |
+| `test/scoreboard_test.cpp` | Clients that subscribe to completed frames: a live scoreboard and running stats |
+| `test/test_support.h` | What the black-box tests share: `GameHandle`, `RollAll` and the client-side no-tap rule |
 | `test/roll_list_test.cpp` | Tests of `RollList`, including its bounds checks in debug and release builds |
 | `test/slot_pool_test.cpp` | Tests of `SlotPool` |
+| `test/frame_test.cpp` | A debug-build check that `Frame_Roll` enforces the `roll()` contract |
 
 The git history is a test-driven sequence, with one test per commit. Stepping through it
 shows the design growing a test at a time.

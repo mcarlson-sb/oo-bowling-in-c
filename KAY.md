@@ -92,7 +92,8 @@ be a closure. It's much closer to a first-class function than to anything Kay de
 ### Costs
 
 - **Size:** the library grew by 22 lines of code, about 40 with comments (`src/` 901 → 923,
-  `include/` 55 → 70). The client test is 85 lines.
+  `include/` 55 → 70). The client test is 85 lines. A `Game` grew by 8 bytes (the rule
+  pointer), from 968 to 976, which ARCHITECTURE.md only caught up with in phase 3.
 - **Indirection:** one more call through a function pointer per roll.
 - **Compile-time checking lost.** Before, the compiler could see every way a roll was
   counted. Now a count can come from anywhere, and its range became a run-time check:
@@ -225,3 +226,139 @@ could detect it after the fact by comparing frames' `complete` flags before and 
 roll, but that's asking again. So phase 3 may pull in the "frames tell" direction on its own:
 a frame, or its context, telling an observer that it completed. Phase 2 declined to force
 that shape; if phase 3 needs it, the test will say so.
+
+---
+
+## Phase 3: a live scoreboard, then a second subscriber
+
+**Feature.** First, one observer told when a frame completes, using the simplest thing that
+works. Then a second, independent subscriber, running stats. A message or event abstraction
+is allowed only now, and only if the duplication between the two calls for it.
+
+### What the tests pulled in
+
+| Commit | Tag | What |
+|---|---|---|
+| `Live scoreboard: tell one callback when a frame completes` | make-change | `Game_OnFrameCompleted(game, callback, context)`. After each roll, `Game` reports every newly completed frame's number and score |
+| `...a roll that completes no frame tells nothing` | make-change | Passed without new code |
+| `...one roll that completes two frames tells both, oldest first` | make-change | Passed without new code; a mutation check proved it can fail |
+| `...the tenth frame is told only after its fill balls` | make-change | Passed without new code |
+| `...setting a callback on a NULL game is ignored` | clean-up | Test-first. The guard had been written early and taken out again, because no test asked for it |
+| `Refactor: the frame-completed callback becomes a one-slot listener list` | make-easy | No behavior change; makes room for a second subscriber |
+| `Running stats: a second, independent subscriber hears every completed frame too` | make-change | Two slots, and adding appends |
+| `Running stats: a subscriber past the two slots is refused` | make-change | Closes the out-of-bounds write the previous step left open |
+| `Running stats: under no-tap, it averages counted scores` | make-change | Carried over from phase 1's review. Passed without new code |
+| `Refuse a NULL frame-completed callback` | clean-up | Stops a null listener wasting a slot, so the reporting loop needs no `NULL` check |
+| `Refactor: shared test support for the black-box tests` | clean-up | `GameHandle`, `RollAll` and the no-tap rule had been copied into two or three test files each |
+
+Two carry-over tests from phase 1 came first:
+- 5 then 4 is **not** a spare under the client's first-ball rule.
+- A stricter client rule, "any ball that leaves one pin clears the rack", **does** make it a
+  spare, with no library change. The rule at the door covers both common no-tap variants.
+
+### Diff in `Game`, or frames telling: what the tests said
+
+All four required tests were written before choosing either design:
+- one frame completes;
+- a roll completes nothing;
+- **one roll completes two frames**: a strike in frame 8, then 3 and 4 in frame 9;
+- the tenth frame's fill balls.
+
+Both designs were judged against all of them.
+
+| | Diff in `Game` | Frames tell |
+|---|---|---|
+| Passes all four tests? | Yes | **Yes, by reasoning; not built** |
+| Order for the double completion | `Game` reports in frame order | Also correct: the roll already travels oldest first, so frame 8 would announce before frame 9 |
+| Where the observer lives | `Game` only | Every one of the ten contexts |
+| When a listener is called | After the roll has gone all the way through | Mid-roll: frame 8 would announce before frame 9 has seen the 4 |
+| Code touched | `game.c` | `frame_context`, and the path from `Frame_Complete` to it |
+
+**The double-completion test didn't decide it.** The guess going in was that frames telling
+would have to work to get the order right across the chain. It wouldn't: the order comes
+free. Both designs pass, and what separates them is **coupling and timing**. Diff in `Game`
+won: no frame holds an observer, and no listener can look at a half-applied roll. The
+timing point is reasoning, not a test. A listener that reads the game from inside its
+callback would show it, but no feature here needs such a listener.
+
+"Diff" ended up even simpler than comparing every frame's flag before and after. A frame
+never completes before the one before it, so `Game` keeps a single count of frames already
+reported, and checks only the frames just past it. The double-completion test pins down that
+bowling fact: with `while` mutated to `if`, it, and only it, failed.
+
+### Did an event abstraction appear?
+
+**No, and the duplication didn't call for one.** Both subscribers need the same thing (a
+frame's number and its score), through the same signature. The only duplication was
+*calling* two subscribers in place of one, and a loop over a two-slot array removed it. An
+event type or message struct (a tag plus a payload) would earn its place only with a second
+*kind* of event, and no test asks for one.
+
+### The carried-over question: counted pins or the pins that fell?
+
+Under no-tap, notifications carry **counted** values: a first-ball 9 scores as a strike. The
+stats subscriber averages frame scores, and a league average is score-based, so counted values
+are exactly what it needs. The test (9, 3, 4 gives frames of 17 and 7) passed without new
+code. **No pressure yet to move the rule past the door.** A pinfall statistic (the pins that
+actually fell) would be the first. No such subscriber is in this feature.
+
+### Kay's three properties
+
+| Property | Moved? | Evidence |
+|---|---|---|
+| **Messaging** | Yes, the most so far | For the first time, `Game` sends information to receivers it knows nothing about. It holds a function and an opaque `void *`, never the scoreboard or the stats. Each receiver decides what the news means. It is still a synchronous call with one fixed signature, though |
+| **Hiding of state-process** | Yes | Listeners receive a frame number and a score, never a frame. Their own state (`Scoreboard`, `RunningStats`) stays theirs: *local retention* of state, in client objects `Game` can't see into |
+| **Late binding** | Yes | Who hears about completed frames is bound at run time, per game, by the caller. The library has no idea a scoreboard or stats keeper exists |
+
+### Costs
+
+- **Size:** the library grew by 41 lines of code, 63 with comments (`src/` 923 → 973,
+  `include/` 70 → 83). A `Game` grew by 48 bytes, to 1,024 (compiler-checked).
+- **Indirection:** after a roll, one indirect call per listener per completed frame.
+- **Compile-time checking lost:**
+  - The `void *context` must be cast back by the subscriber. A wrong cast compiles cleanly and
+    is undefined behavior.
+  - This is the first place C makes us **hand-build part of a language runtime**. The
+    `(callback, void *context)` pair is a closure put together by hand, because C function
+    pointers carry no environment. Noted, not generalized.
+- **Fit with no heap:** the subscriber set is fixed at two slots, so "subscribe" can now fail,
+  and the API had to report that (`bool`).
+- **What was held back:**
+  - An early `NULL` guard, written ahead of its test, was taken out and re-added test-first.
+  - The first two-slot version left a third subscription writing past the array for one
+    commit, and the next test closed it.
+
+### The strongest argument that this still isn't Kay OO
+
+A callback is a **procedure pointer with one fixed signature**, not a message:
+- There is exactly one kind of notification, and a receiver can't decline it, answer it, or
+  be sent anything else.
+- It's synchronous, so `Game` waits while each listener runs.
+- The receiver has no identity `Game` could address. It's a `(function, void *)` pair that C
+  forced us to assemble by hand.
+- The set of receivers is capped at two by the no-heap design.
+
+Messaging moved further than in any phase so far, but it's a narrow, typed pipe, not Kay's
+open-ended conversation between objects.
+
+### Would a `switch` be simpler?
+
+**Not here, because what varies is the receiver, and the library can't know its receivers.**
+- A `switch` needs every case in the library, and the scoreboard and stats live in the
+  caller's code.
+- If the only listeners were the library's own (say, a built-in statistics module), plain
+  direct calls would be simpler than callbacks.
+
+The callback earns its place only because the subscribers belong to the caller.
+
+### A note for phase 4
+
+Phase 4, a receiver that can decline a message it doesn't understand (`doesNotUnderstand`),
+is optional, "only if features 1 to 3 leave a real need". So far nothing does:
+- There is one notification, and every listener wants it.
+- There is one rule, and every game needs one.
+
+A need would first appear with a second kind of notification that some listeners don't care
+about. Even then, the simplest answer is probably a separate subscription per kind, not a
+generic receiver that can decline. The phase 4 review should confirm that before anything is
+built.

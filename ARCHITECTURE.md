@@ -23,7 +23,8 @@ Each layer talks only to the one below it. Only the top layer is visible to call
 ```
    caller (any C code)
         |
-        |  Game_Create  Game_CreateWithRule  Game_Roll  Game_Score  Game_Destroy
+        |  Game_Create  Game_CreateWithRule  Game_Destroy
+        |  Game_OnFrameCompleted  Game_Roll  Game_Score
         v
 +--------------------------------------------------------------+
 |  Game                                   include/game.h       |  public
@@ -172,9 +173,9 @@ the whole game is laid out at compile time. Sizes are from the compiler on a 64-
 (checked with `_Static_assert`); a 32-bit MCU, with 4-byte pointers, is smaller.
 
 ```
-s_games[2]                                          1,936 bytes
+s_games[2]                                          2,048 bytes
 +-------------------------------------------------------------+
-| Game [0]                                        968 bytes   |
+| Game [0]                                        1,024 bytes |
 |  +-------------------------------------------------------+  |
 |  | frames[10]  : FrameContext                 10 x 96    |  |
 |  |  +-------------------------------------------------+  |  |
@@ -188,7 +189,11 @@ s_games[2]                                          1,936 bytes
 |  |  |  tenth_strike  : TenthStrikeFrame 16            |  |  |
 |  |  +-------------------------------------------------+  |  |
 |  |  ... 9 more                                           |  |
-|  | frame_count : uint8_t                                 |  |
+|  | frame_count     : uint8_t                             |  |
+|  | count_pins      : PinCountRule      the caller's rule |  |
+|  | frames_reported : uint8_t           told to listeners |  |
+|  | listeners[2]    : FrameCompletedListener              |  |
+|  | listener_count  : uint8_t                             |  |
 |  +-------------------------------------------------------+  |
 | Game [1]                                                    |
 +-------------------------------------------------------------+
@@ -361,6 +366,9 @@ Game_ApplyPinsToFrames: offer the counted roll to each frame, oldest first
 nobody kept it?  --yes--> Game_AddNewFrame: start a new frame with this roll
    |
    v
+Game_ReportCompletedFrames: tell each listener about every frame this roll completed,
+   |   oldest first (Game_OnFrameCompleted)
+   v
 GAME_OK
 ```
 
@@ -371,6 +379,13 @@ roll (records it as a bonus) and *passes it on*.
 every frame sees the same value. In nine-pin no-tap a first-ball 9 counts as a strike, so an
 earlier strike collecting its bonus must also receive a 10, not a 9. The frames never know
 that a rule exists.
+
+**Telling listeners, after the roll.** Once a roll has gone all the way through, `Game`
+tells each listener (up to two, set with `Game_OnFrameCompleted`) about every frame the roll
+completed, oldest first. A frame never completes before the one before it, so `Game` only
+keeps a count of frames already reported, and checks the frames just past it. Frames don't
+hold listeners, and no listener is called while a roll is half applied. KAY.md records why
+this won over frames telling the listeners themselves.
 
 **Worked example: rolls 10, 3, 4.** `RollResult` is what each frame hands back.
 
@@ -423,6 +438,15 @@ test/game_test.cpp  (black box)            white box: private types, from src/
 `test/nine_pin_no_tap_test.cpp` is a black-box test too: a client that plays nine-pin no-tap
 by passing its own `PinCountRule` to `Game_CreateWithRule`, plus two checks on rules that
 misbehave (one that counts too many pins, and none at all).
+
+`test/scoreboard_test.cpp` is black-box as well: a live scoreboard and a running-stats keeper
+subscribe with `Game_OnFrameCompleted`. It covers one frame, nothing completed, one roll
+completing two frames, the tenth frame's fill balls, a full set of listeners, and stats
+under no-tap. The black-box tests share `test/test_support.h`: `GameHandle`, `RollAll`, and
+the client-side no-tap rule.
+
+`test/frame_test.cpp` is white-box too: a debug-build death test that `Frame_Roll` enforces the
+`roll()` contract (a context is never NULL).
 
 Every test runs in three builds, debug, release (`NDEBUG`) and UBSan, with warnings as
 errors. `GameHandle` (a `std::unique_ptr` with `Game_Destroy` as its deleter) makes sure no
