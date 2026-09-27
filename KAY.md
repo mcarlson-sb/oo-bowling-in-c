@@ -1263,13 +1263,16 @@ target, with 4-byte pointers, it should be less, but that is argued, not measure
 
 | Candidate | Why not |
 |---|---|
-| `SlotPool_Make`, dead code (`ENG-3.6`) | Its only callers are `slot_pool_test.cpp`. Removing it means changing that test, which isn't a test moving with its code |
+| `SlotPool_Make`, dead code (`ENG-3.6`) | Its only callers were `slot_pool_test.cpp`, and removing it meant changing that test. **Done in the second round**, with the user's approval to change the test |
 | `Game_EditRolls`'s five parameters, Long Parameter List (`ENG-3.1`) | Not in the clean-up, because changing the public signature changes the tests. **Decided after it, by the user:** `RollEdit` became public, in `game.h`, and the API is `Game_EditRolls(Game *game, const RollEdit *edit)`: two parameters, the edit by `const` pointer, with no copy. An API change, with no change in behavior; the tests build their edits with a small `MakeEdit` helper, because C++17 has no designated initializers for a C struct |
 | Splitting `game.h` by client (interface segregation) | No client benefits. The pinsetter uses `Game`, `GameStatus` and `Game_Roll`; the two new modules use `GameStatus` or `FrameChangedCallback`; the tests use everything, through one `test_support.h`, which would have to change. The `frame_context.h` / `frame_transition.h` split on `main` hid calls from a client that must not make them; nothing here is like that |
 | Dependency inversion for the pinsetter (a roll sink in place of `Game_Roll`) | One sink exists, and none is planned: Speculative generality (`PRD-1.1`), and an indirect call on the drain path |
 | The frames group as its own module | It is what a `Game` *is*: the frames and the rule that feeds them. Taking it out would leave `Game` forwarding every call, the constitution's Ravioli (`ENG-3.9`). Simplicity wins; recorded |
 | The two pool lookups (`Game_FindSlot`, `Pinsetter_Destroy`) | Duplicate code (`ENG-3.9`), but a shared version needs `void *` and an element size, or pointer subtraction: types lost, and MISRA's pointer-arithmetic rules in play, for two five-line loops |
 | Moving roll validation into the frames (tell, don't ask) | Declined in phase 2, and the clean-up didn't make it more natural: `Game_Accept` still asks the latest frame how many pins are standing, and no step here moved that. Not raised as a change |
+| Duplicate guard clauses (`NULL` and "during notification" at the top of `Game_Roll` and `Game_EditRolls`) | Two places. By the rule of three, wait for a third before extracting (the user's review) |
+| `RollLog_Edit`'s cyclomatic complexity, 9 | Under `ENG-3.1`'s limit of 10, after its range check was named (the user's review) |
+| `const` on the `Destroy` functions | Destroying is mutating: the handle's slot goes back to the pool (the user's review) |
 
 ### Where principle and simplicity disagreed
 
@@ -1343,6 +1346,73 @@ P1 as well as a first P2, because my script's revert command was invalid, and on
 on the probe's array being set but never read, not on stack. The P2 above was rerun alone,
 with the array read back.
 
+### A second round (kay-cleanup-b)
+
+Five items from the user's review, each scored 3 or higher, each its own commit with a
+`Constitutional:` footer. Behavior doesn't change.
+
+| Commit | Serves | Constitutional |
+|---|---|---|
+| `RollLog bounds: Append and At check their bounds, as RollList does` | Consistency with `RollList` | `ENG-3.9`, `ENG-3.7` |
+| `Game_ReportAfterRoll and Game_ReportAfterEdit: the report walk's two modes get names` | Bewildering Boolean, as an argument list | `ENG-3.5`, `ENG-3.1`, `ENG-1.3` |
+| `Pinsetter: the interrupt side gets its own file, and its own stack limit` | A tight stack tripwire on the interrupt path | `ENG-1.3`, `ENG-2.4` |
+| `Delete SlotPool_Make: every pool is built in place` | Dead code | `ENG-3.6` |
+
+The fourth item, worst-case stack depth, was a measurement, not a commit: it is in the debt
+section below.
+
+**RollLog's bounds.** `RollLog_Append` wrote past the end and `RollLog_At` read stale memory if a
+caller broke the contract. They now use `RollList`'s pattern: an assert that stops a debug
+build, and a bounds check that stays in release. A new white-box test file,
+`test/roll_log_test.cpp`, mirrors `roll_list_test.cpp`. Each of the four checks is guarded by
+exactly one test: dropping it fails that test, and only it.
+
+**The report walk's two modes.** `Game_Roll` passed `frames_reported` twice and an edit passed
+`(0, was_reported)`; now each calls an entry point that says why its walk starts where it does.
+At `-O2` nothing moved (`Game_Roll` 128 bytes, `Game_EditRolls` 192, both before and after, on
+GCC 16; the 80 quoted in the review was probably CI's GCC 13). At `-O0`, where nothing is
+inlined, each wrapper is its own 48-byte frame under the listener callbacks.
+
+**The interrupt side's own file.** `src/pinsetter_isr.c` is exactly what an interrupt handler
+runs: `Pinsetter_Post`, `Pinsetter_Enqueue`, and the overlap check's test hook. The main-loop
+side and the pool stay in `src/pinsetter.c`, and the two share the struct through
+`src/pinsetter_ring.h`, which nothing else includes. `Pinsetter_Next` is `static inline` there,
+so the interrupt path gained no call; its frames are the same in every build before and after.
+
+The split alone couldn't tighten the limit. GCC's limit is per file, and one limit for all four
+builds can't be below the file's largest frame at `-O0`, where `Pinsetter_Enqueue` isn't inlined.
+So, on the user's decision, the file's limit is set per build type, from CI's GCC 13 (the gate),
+with GCC 16 (which builds here too) also passing:
+
+| Build | Largest frame, GCC 13 (CI) | GCC 16 (here) | Limit |
+|---|---|---|---|
+| release | `Pinsetter_Post` 8 | 8 | **32** |
+| ThreadSanitizer | `Pinsetter_Post` 80 | 96 | 128 |
+| `-O0`: debug, UBSan, coverage | `Pinsetter_Enqueue` 96 | 128 | 160 |
+
+Measured on CI in run [36295991241](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36295991241),
+on a throwaway branch since deleted. The main-loop file now takes the general 320. **Proof that
+the release limit bites:** a throwaway commit put a 32-byte array in `Pinsetter_Post`, and in run
+[36296153375](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36296153375) the
+release job alone failed, `src/pinsetter_isr.c:44:6: error: stack usage is 64 bytes
+[-Werror=stack-usage=]`, while the other four jobs stayed green. This replaces the single
+160-byte limit on `pinsetter.c` described in the previous section.
+
+**SlotPool_Make.** Its only callers were its own test. The test now builds its pools the way
+`game.c` and `pinsetter.c` do, with a static initializer, and the function is gone.
+
+**Numbers for this round** (lines, with code lines in brackets):
+
+| File | Before | After |
+|---|---|---|
+| `src/game.c` | 286 (217) | 295 (225): the two named report entry points |
+| `src/pinsetter.c` | 166 (115) | 82 (63): the main-loop side and the pool |
+| `src/pinsetter_isr.c` | none | 56 (40): the interrupt side |
+| `src/pinsetter_ring.h` | none | 60 (28): the struct and what both sides share |
+| `src/roll_log.c` | 64 (54) | 78 (63): the bounds checks |
+| `src/slot_pool.c` / `.h` | 27 / 30 | 21 / 29 |
+| all of `src/*.c` | 990 | 979 |
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on
@@ -1353,7 +1423,33 @@ purpose. Phase 6 ended at 344 again, 36% of the library's `.c` files. After the 
 creating frames; the roll log, with an edit's checks and splice, and replay; the listener
 registry, with its re-entry flag; and reporting changed frames. After: the pool; the checks;
 the way along the frames; creating frames; replay; and reporting. Two reasons left: how the
-listeners are kept, and how the log is kept and edited.
+listeners are kept, and how the log is kept and edited. After the second round, `game.c` is
+295 lines (225 of code), 30% of 979: nine lines more, for the report walk's two named entry
+points.
+
+**Worst-case stack depth** (the second round's item 4; a measurement, not a change). The
+per-function limits don't catch a deep chain of reasonable frames, so the frames were summed
+along every call chain, from GCC's `-fstack-usage` and `-fcallgraph-info`, with each function
+pointer mapped to what it can reach (the frame states' `roll` and `pins_standing`, the context's
+factory, the rule, and the listeners). GCC 16, 64-bit host, bytes:
+
+| Entry point | Deepest chain, `-O0` | Deepest chain, `-O2` | Base under a listener callback, `-O0` / `-O2` |
+|---|---|---|---|
+| `Game_CorrectRoll` | 944 | 736 | 416 / 272 |
+| `Game_EditRolls`, through `ApplyEditedLog`, `Replay` and `Accept` to the frame states | 864 | 656 | 336 / 192 |
+| `Pinsetter_Drain`, through `Game_Roll` | 816 | 592 | 352 / 208 |
+| `Game_Roll` | 704 | 512 | 240 / 128 |
+
+The deepest chain is always the same one: a state change during a replay, `Frame_Roll` to
+`RegularFrame_Roll` to the context's factory to `SpareFrame_Init` to `Frame_InitSpare` to
+`RollList_Add`. At `-O2` most of its links are 8-byte forwarding frames; the big frames are
+`Game_EditRolls` (192: the saved and edited logs, with the replay inlined), `Game_Roll` (128),
+and `Frame_Roll`, `Game_Accept` and `Frame_InitSpare` (80 each). **A listener callback never
+runs on top of the deepest chain:** the listeners are told only after the replay returns, so the
+worst case is the larger of the deepest chain and the callback's base plus its own code. The
+same holds for a caller's `PinCountRule`, which runs inside `Game_Accept`. Judgment: not worth
+reducing on host numbers, with no single frame standing out beyond `Game_EditRolls`'s. A real
+budget has to be measured on the target (`ENG-1.3`).
 
 ---
 

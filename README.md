@@ -61,9 +61,9 @@ Any function with a cyclomatic complexity over 10, more than 50 lines or more th
 parameters fails it. lizard doesn't measure cognitive complexity, so that limit is unchecked.
 
 Every build also fails on any library function whose stack frame is over a limit
-(`-Wstack-usage`, in `CMakeLists.txt`): 160 bytes in `src/pinsetter.c`, the interrupt path,
-and 320 everywhere else. They are host numbers, a tripwire for regressions rather than a
-target's budget.
+(`-Wstack-usage`, in `CMakeLists.txt`): 320 bytes, except in `src/pinsetter_isr.c`, the
+interrupt side, whose limit is set per build type (32 in release, 128 under ThreadSanitizer, 160
+at `-O0`). They are host numbers, a tripwire for regressions rather than a target's budget.
 
 ### Coverage
 
@@ -359,7 +359,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | File | Role |
 |---|---|
 | `include/game.h`, `src/game.c` | The public API and the `Game` object: the opaque handle, the pool, the roll chain, the listeners and the mailbox for rolls made from inside them |
-| `include/pinsetter.h`, `src/pinsetter.c` | The pinsetter: a lock-free ring of 21 rolls between the interrupt handler that posts them and the main loop that drains them into a game |
+| `include/pinsetter.h`, `src/pinsetter.c`, `src/pinsetter_isr.c`, `src/pinsetter_ring.h` | The pinsetter: a lock-free ring of 21 rolls between the interrupt handler that posts them (`pinsetter_isr.c`, all an interrupt handler runs) and the main loop that drains them into a game (`pinsetter.c`, with the pool); `pinsetter_ring.h` is the struct they share |
 | `src/game_limits.h` | `GAME_MAX_ROLLS`, shared by the game's roll log and the pinsetter's mailbox |
 | `src/frame_listeners.h/.c` | `FrameListeners`, the value type a game keeps its listeners in, with the flag that refuses changes from inside one |
 | `src/roll_log.h/.c` | `RollLog`, the value type a game keeps every roll in, with an edit's checks and splice |

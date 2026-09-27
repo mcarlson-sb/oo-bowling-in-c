@@ -97,8 +97,13 @@ across.
         v                                        v
 +--------------------------------------------------------------+
 |  Pinsetter                              include/pinsetter.h  |  public
-|  lock-free ring of 21 rolls             src/pinsetter.c      |
-|  one writer per position, pool of 2                          |
+|  lock-free ring of 21 rolls, one writer per position         |
+|  +--------------------------+  +---------------------------+ |
+|  | interrupt side           |  | main-loop side, and the   | |
+|  | src/pinsetter_isr.c      |  | pool of 2                 | |
+|  | Post, Enqueue            |  | src/pinsetter.c           | |
+|  +--------------------------+  +---------------------------+ |
+|  the ring they share: src/pinsetter_ring.h                   |
 +--------------------------------------------------------------+
         |  Game_Roll, on the main loop's thread, oldest first
         v
@@ -141,10 +146,13 @@ PRIVATE  src/
   slot_pool.h                    (standard headers only)
   game_limits.h                  (GAME_MAX_ROLLS; no includes)
   pinsetter_hooks.h --> pinsetter.h  (the overlap check's switch, and a test hook)
+  pinsetter_ring.h  --> bowling_types.h, game_limits.h, pinsetter.h, pinsetter_hooks.h
+                        (the struct both pinsetter files share; nothing else includes it)
 
 Source files that include a header from another module:
   game.c           --> frame_context.h, frame_listeners.h, roll_log.h, slot_pool.h
-  pinsetter.c      --> fault.h, game_limits.h, pinsetter_hooks.h, slot_pool.h
+  pinsetter.c      --> fault.h, pinsetter_hooks.h, pinsetter_ring.h, slot_pool.h
+  pinsetter_isr.c  --> fault.h, pinsetter_hooks.h, pinsetter_ring.h
   frame_context.c  --> frame_transition.h
   regular_frame.c  --> frame_transition.h (the one state that switches states)
 ```
@@ -152,9 +160,10 @@ Source files that include a header from another module:
 Includes only point from `src/` to `include/`, never the other way: no public header
 mentions a private one.
 
-`struct Game` is defined only in `game.c`, `struct Pinsetter` only in `pinsetter.c`, and
-`struct FrameStateFactory` only in `frame_context.c`: nothing outside those files needs their
-layout. The other structs are in
+`struct Game` is defined only in `game.c`, and `struct FrameStateFactory` only in
+`frame_context.c`: nothing outside those files needs their layout. `struct Pinsetter` is in
+`pinsetter_ring.h`, because its two sides live in two files, so that the interrupt side can have
+a stack limit of its own; only those two files include it. The other structs are in
 headers because another struct holds them by value (section 4).
 
 ---
