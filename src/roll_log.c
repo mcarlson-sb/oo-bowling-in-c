@@ -1,5 +1,6 @@
 #include "roll_log.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 void RollLog_Init(RollLog *self)
@@ -23,14 +24,21 @@ Pins RollLog_At(const RollLog *self, uint8_t index)
     return self->pins[index];
 }
 
+/* Whether `edit`'s range is rolls this log has: it starts at one of them, and the rolls it
+ * removes don't run past the last. */
+static bool RollLog_HasRange(const RollLog *self, const RollEdit *edit)
+{
+    const uint8_t first = (uint8_t)(edit->first_roll - 1U); /* index of the first roll replaced */
+    return (edit->first_roll != 0U) && (edit->first_roll <= self->count) &&
+           ((first + edit->rolls_removed) <= self->count);
+}
+
 GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edited)
 {
     if (edit == NULL) {
         return GAME_ERR_NO_SUCH_ROLL; /* no edit at all: like new rolls promised, but none given */
     }
-    const uint8_t first = (uint8_t)(edit->first_roll - 1U); /* index of the first roll replaced */
-    if ((edit->first_roll == 0U) || (edit->first_roll > self->count) ||
-        ((first + edit->rolls_removed) > self->count)) {
+    if (!RollLog_HasRange(self, edit)) {
         return GAME_ERR_NO_SUCH_ROLL; /* an edit starts at a roll the game has had */
     }
     if ((edit->new_pins == NULL) && (edit->new_count > 0U)) {
@@ -41,6 +49,7 @@ GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edit
         return GAME_ERR_TOO_MANY_ROLLS; /* no game has that many, and the log has no room */
     }
 
+    const uint8_t first = (uint8_t)(edit->first_roll - 1U); /* index of the first roll replaced */
     edited->count = 0U;
     for (uint8_t i = 0U; i < first; i++) {
         edited->pins[edited->count++] = self->pins[i];
