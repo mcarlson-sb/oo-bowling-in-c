@@ -1,5 +1,7 @@
-/* The pinsetter's interrupt side: everything an interrupt handler runs, and nothing else. Its
- * own file so that its stack limit can be tight (see CMakeLists.txt). */
+/* The pinsetter's interrupt side: everything an interrupt handler runs. Its own file so that
+ * its stack limit can be tight (see CMakeLists.txt). One thing here is not for an interrupt
+ * handler: the overlap check's test hook, which sets the flag Pinsetter_Post's check tests, and
+ * is compiled only when that check is. */
 #include "pinsetter.h"
 
 #include <stdatomic.h>
