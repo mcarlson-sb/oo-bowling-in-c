@@ -49,7 +49,16 @@ ctest --test-dir build-tsan --output-on-failure
 ```
 
 Warnings are errors in the library and the tests alike. GitHub Actions runs all four builds
-(`.github/workflows/ci.yml`) on every push and pull request.
+(`.github/workflows/ci.yml`) on every push and pull request, and a fifth job that holds the
+library's source to the constitution's complexity limits (`ENG-3.1`) with
+[lizard](https://github.com/terryyin/lizard):
+
+```sh
+lizard -C 10 -L 50 -a 4 -w src include
+```
+
+Any function with a cyclomatic complexity over 10, more than 50 lines or more than 4
+parameters fails it. lizard doesn't measure cognitive complexity, so that limit is unchecked.
 
 ### Coverage
 

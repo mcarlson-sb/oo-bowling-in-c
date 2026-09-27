@@ -42,3 +42,15 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  # ENG-3.1's complexity limits, on the library's source: cyclomatic complexity at most 10,
+  # functions at most 50 lines, at most 4 parameters. Any function over any limit fails the job.
+  # lizard doesn't measure cognitive complexity, so ENG-3.1's limit of 7 on it stays unchecked.
+  complexity:
+    name: complexity
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check ENG-3.1's limits with lizard
+        run: pipx run --spec lizard==1.24.0 lizard -C 10 -L 50 -a 4 -w src include
