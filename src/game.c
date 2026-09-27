@@ -79,20 +79,12 @@ static void Game_AddNewFrame(Game *game, Pins pins)
 }
 
 /* Offers the roll to each frame, oldest first, until one keeps it (Chain of Responsibility).
- *
- * Only the latest frame can keep a roll: every earlier frame is complete or collecting
- * bonus rolls, and both pass the roll on. So in practice the roll is kept, if at all, on
- * the last pass through the loop, and the guard below is never false. Coverage reports it
- * as a branch never taken; that is expected. It stays as a defense: if a future state
- * broke that rule, the guard would stop a kept roll from also reaching later frames and
- * being counted twice. */
+ * A frame that passes it on hands it to the next; a frame that keeps it ends the chain. */
 static RollResult Game_ApplyPinsToFrames(Game *game, Pins pins)
 {
     RollResult result = RollResult_Passed(pins);
-    for (uint8_t i = 0U; i < game->frame_count; i++) {
-        if (!result.consumed) {
-            result = FrameContext_Roll(&game->frames[i], result.pins);
-        }
+    for (uint8_t i = 0U; (i < game->frame_count) && !result.consumed; i++) {
+        result = FrameContext_Roll(&game->frames[i], result.pins);
     }
     return result;
 }

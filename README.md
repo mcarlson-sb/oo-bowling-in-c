@@ -61,9 +61,9 @@ else is a real gap:
 |---|---|---|
 | `roll_list.c`: the bounds checks' `return` lines and their branches | debug | In a debug build the `assert` just above stops the program first. The death tests do reach it, but each runs in a child process that `abort()` ends before `gcov` can save its data. The release build covers these lines |
 | `game.c`, `frame.c`: an `assert` failing | debug | An assert's failure path is never taken in a passing run. Where a death test does take it, `abort()` ends the process before `gcov` saves the data |
-| `game.c`: the `if (!result.consumed)` guard in `Game_ApplyPinsToFrames` | both | Deliberately unreachable. Only the latest frame can keep a roll; the guard is a defense in case that rule is ever broken. Its comment explains |
+| `game.c`: the loop condition in `Game_ApplyPinsToFrames` stopping early | both | A frame keeps a roll only when it is the latest frame, so the chain never stops with frames still to go. The same bowling fact the frame-reporting count relies on |
 
-The release build reaches 100% of lines and every branch except that last guard.
+The release build reaches 100% of lines and every branch except that loop condition.
 
 ## What the code does
 
