@@ -71,9 +71,11 @@ else is a real gap:
 |---|---|---|
 | `roll_list.c`: the bounds checks' `return` lines and their branches | debug | In a debug build the `assert` just above stops the program first. The death tests do reach it, but each runs in a child process that `abort()` ends before `gcov` can save its data. The release build covers these lines |
 | `game.c`, `frame.c`: an `assert` failing | debug | An assert's failure path is never taken in a passing run. Where a death test does take it, `abort()` ends the process before `gcov` saves the data |
+| `fault.c`, and the call to `Fault_Stop` in `Pinsetter_Create` | both | Only the death test reaches them, and `abort()` ends its child process before `gcov` saves the data. A fail-stop stays in release builds, so this gap is in both |
 | `game.c`: the loop condition in `Game_ApplyPinsToFrames` stopping early | both | A frame keeps a roll only when it is the latest frame, so the chain never stops with frames still to go. The same bowling fact the frame-reporting count relies on |
 
-The release build reaches 100% of lines and every branch except that loop condition.
+The release build reaches 100% of lines and every branch except that loop condition and the
+fail-stop.
 
 ## What the code does
 
@@ -119,7 +121,9 @@ Behind them:
   `Game_Roll`. A roll the game rejects is never thrown away, because it is often the right
   one, made to look impossible by an earlier miscount. Draining stops there, returns the
   roll's status and leaves it waiting, until the scorer corrects the earlier roll or discards
-  the reported one (`Pinsetter_DiscardOldest`). Each drain takes only the rolls waiting when
+  the reported one (`Pinsetter_DiscardOldest`). A pinsetter is never `NULL`: running out of
+  them is a configuration error, so `Pinsetter_Create` stops the program (`Fault_Stop`, in
+  every build) rather than return one. Each drain takes only the rolls waiting when
   it starts, so the main loop's work per pass is bounded, and a drain from inside a listener
   is refused. A post the full mailbox refuses is counted: `Pinsetter_RollsLost` returns the
   total, and each reader takes its own difference. `test/pinsetter_test.cpp` covers both
@@ -345,6 +349,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `include/pinsetter.h`, `src/pinsetter.c` | The pinsetter: a lock-free ring of 21 rolls between the interrupt handler that posts them and the main loop that drains them into a game |
 | `src/game_limits.h` | `GAME_MAX_ROLLS`, shared by the game's roll log and the pinsetter's mailbox |
 | `src/game_internal.h` | `Game_IsNotifying`, which the pinsetter asks before draining; private to the library |
+| `include/fault.h`, `src/fault.c` | `Fault_Stop`, the fail-stop for an error with no safe way on, such as more lanes than pinsetters. The host version writes the reason and calls `abort()`; a target build defines its own, and the linker then leaves this one out |
 | `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |
 | `src/frame.h/.c` | Abstract base `Frame`: its vtable, shared fields and methods, and `RollResult` |
 | `src/roll_list.h/.c` | `RollList`, the value type a frame keeps its rolls and bonus rolls in |
@@ -358,7 +363,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `test/nine_pin_no_tap_test.cpp` | A client that plays nine-pin no-tap by supplying its own `PinCountRule`, plus checks on rules that misbehave |
 | `test/scoreboard_test.cpp` | Clients that subscribe to changed frames: a live scoreboard and running stats |
 | `test/correction_test.cpp` | A scorer correcting and editing rolls: rescoring, the rule applied again on replay, rejected edits, listeners told only the final state, and property tests against a fresh game under both rules |
-| `test/pinsetter_test.cpp` | The pinsetter: rolls posted and drained in order, a drain stopped at an impossible roll and resolved, a whole game waiting, lost rolls counted (two readers, and the count wrapping), a fake interrupt in the middle of a drain, a drain refused from inside a listener, `NULL` handles, and a real second thread (run under ThreadSanitizer in CI) |
+| `test/pinsetter_test.cpp` | The pinsetter: rolls posted and drained in order, a drain stopped at an impossible roll and resolved, a whole game waiting, lost rolls counted (two readers, and the count wrapping), a fake interrupt in the middle of a drain, a drain refused from inside a listener, creation stopping when the pool is used up (in every build), and a real second thread (run under ThreadSanitizer in CI) |
 | `test/remote_scoreboard_test.cpp` | A listener that writes each message into a byte buffer, and a decoder that rebuilds the scoreboard from the bytes alone |
 | `test/test_support.h` | What the black-box tests share: `GameHandle`, `RollAll`, `RunningStats` and the client-side no-tap rule |
 | `test/roll_list_test.cpp` | Tests of `RollList`, including its bounds checks in debug and release builds |

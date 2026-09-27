@@ -751,8 +751,10 @@ it would need no change to `game.h` or `game.c`.
 | `...two readers can each hear about every lost roll` | make-change | After review: `Pinsetter_RollsLost` was a query that changed state |
 | `...a drain takes only the rolls waiting when it starts` | make-change | After review: a bound on each drain |
 | `...refuse a drain from inside a listener` | make-change | After review. `Game_IsNotifying`, in a new private header, `game_internal.h` |
-| `...accept a NULL pinsetter, as every Game_* function accepts a NULL game` | make-change | After review |
+| `...accept a NULL pinsetter, as every Game_* function accepts a NULL game` | make-change | After review. Reversed three commits later |
 | `pinsetter.h: two contracts the caller keeps, a glitch's slot and detaching before destroy` | clean-up | After review. Comments only |
+| `Revert "Pinsetter: accept a NULL pinsetter, ..."` | clean-up | The user reversed the decision |
+| `...stop the program when a pinsetter can't be created, in every build` | make-change | `Fault_Stop`, in a new public header, `fault.h`, with the host version in `src/fault.c` |
 
 From the remote scoreboard on, every commit message names a mutation that fails the commit's
 test. In every case but one (the remote scoreboard, below), it fails only that test.
@@ -856,7 +858,7 @@ is marked:
 | **The 21-roll promise has an edge** | It holds while every waiting roll is a real roll of one game. A glitch waiting to be discarded takes a slot too, and so would a roll of the game before, still unresolved. Then 21 more rolls make 22, and the last is refused (and counted) | **Argued**. After review, the user accepted it: documented in `pinsetter.h`, not sized for, because the count makes it visible |
 | **A drain had no fixed bound** (`ENG-7.4`, bounded waits) | `Pinsetter_Drain` read the post position again on each pass, so it also took rolls that arrived while it ran. An interrupt handler posting faster than the game applies rolls could keep it draining. After review it reads the position once, at the start: a drain applies at most 21 rolls, and later ones wait for the next | **Tested** (the fake-interrupt test now expects the next drain, and fails if the position is read on every pass) |
 | **Draining from inside a listener** | `Game_Roll` returned `GAME_QUEUED`, which the drain treated as accepted, and the roll went into the game's mailbox, where an impossible one is dropped: around the user's stop-and-keep policy. After review it is refused with `GAME_ERR_EDIT_DURING_NOTIFICATION`, and drains nothing | **Tested** (a glitch waiting in the pinsetter vanished before the guard; it is still there after) |
-| **`NULL`, and lifetime** | The `Pinsetter_*` functions crashed on `NULL`, unlike every `Game_*` function. After review they accept it the same way. Destroying a pinsetter while its interrupt handler can still post lands the post in the next pinsetter created: the pool can't see that, so `pinsetter.h` makes it the caller's contract | `NULL`: **tested**. Lifetime: **argued**, and documented |
+| **`NULL`, and lifetime** | The `Pinsetter_*` functions crashed on `NULL`, unlike every `Game_*` function. `NULL` could only come from `Pinsetter_Create` running out of its pool. After review, `Pinsetter_Create` stops the program instead, in every build, and "never `NULL`" is a documented precondition of the rest. Destroying a pinsetter while its interrupt handler can still post lands the post in the next pinsetter created: the pool can't see that, so `pinsetter.h` makes it the caller's contract | Creation stopping: **tested**, in every build. Never `NULL` after that: **argued**, a precondition. Lifetime: **argued**, and documented |
 
 **ThreadSanitizer, one mutant at a time.** Each mutant ran alone, in its own commit and its
 own CI run, on a throwaway branch that has since been deleted. The thread test runs its five
@@ -947,9 +949,13 @@ objects.
   - **That the interrupt side stays bounded.** Nothing stops a later change adding a loop or
     a call to `Pinsetter_Post`. Only review does.
   - **A pinsetter's lifetime.** Detaching the interrupt handler before `Pinsetter_Destroy`
-    is the caller's contract, in `pinsetter.h`; nothing checks it. (The drain's bound, a
-    drain from inside a listener, and `NULL` were on this list until the review's follow-up
-    made each one tested.)
+    is the caller's contract, in `pinsetter.h`; nothing checks it. (The drain's bound and a
+    drain from inside a listener were on this list until the review's follow-up made each
+    one tested.)
+  - **Never `NULL`.** A precondition of every function but `Pinsetter_Create`: nothing checks
+    it, on purpose, because the only way to get `NULL` now stops the program first.
+  - **That a target's `Fault_Stop` never returns.** `_Noreturn` is a promise the compiler
+    trusts, not one it checks: one that returned would carry on with no pinsetter.
 - **A test was weakened silently.** Making the mailbox 21 rolls left the thread test posting
   one game into a 22-slot ring. It never wrapped or filled again, though its comment said it
   did, and every build stayed green. Only reasoning found it, and a mutant (a ring that never
@@ -1017,7 +1023,34 @@ The four items the review left to the user, each now settled:
 | A drain with no fixed bound | Bound it: a firmware main loop needs bounded work per pass (`ENG-7.4`) | `Pinsetter_Drain` reads the post position once, at the start. A roll posted mid-drain goes in on the next drain. Its own commit, because it is a policy change | The fake-interrupt test changed to match. Reading the position on every pass again fails it, and only it |
 | Draining from inside a listener | Refuse it, with the status edits get | `Pinsetter_Drain` returns `GAME_ERR_EDIT_DURING_NOTIFICATION` there. To ask the game, the pinsetter uses `Game_IsNotifying` from a private header, so the public API doesn't grow | A glitch waiting in the pinsetter vanished before the guard, and is still there after. Removing the guard fails that test, and only it |
 | A glitch in one of the 21 slots | Accept it and document it | A paragraph on `Pinsetter_Post` in `pinsetter.h` | Argued; the lost-roll count makes it visible |
-| `NULL` and lifetime | Accept `NULL` as every `Game_*` function does; make lifetime the caller's contract | Every `Pinsetter_*` function accepts `NULL` (`Pinsetter_Drain` returns `GAME_ERR_NULL_GAME`, its comment widened). One line on `Pinsetter_Destroy`: detach the interrupt handler first | A test calls each with `NULL`; it crashed before. Removing the guard in `Pinsetter_Post` crashes it, and only it |
+| `NULL` and lifetime | First: accept `NULL` as every `Game_*` function does. Then reversed (below): stop at creation. Lifetime is the caller's contract | `Pinsetter_Create` calls `Fault_Stop` when its pool is used up; the other functions take a pinsetter as a precondition. One line on `Pinsetter_Destroy`: detach the interrupt handler first | A death test uses up the pool, in every build. Removing the check fails it in all three builds; making it an assert fails it in release only |
+
+**A decision reversed: guards for `NULL`, then a stop at creation.** The first answer to
+`NULL` was consistency: accept it quietly, as every `Game_*` function does. It was committed
+and pushed, and the user then reversed it, before anything else was built on it. The
+reasoning:
+- `NULL` reaches a pinsetter function only when `Pinsetter_Create` runs out of its pool. A
+  game can reasonably run out at runtime, when a league runs more games than the pool holds,
+  so `GAME_ERR_NULL_GAME` stays. A lane's pinsetter can't: the lanes are fixed when the system
+  is built, so running out is a configuration error.
+- Quiet guards put that error where it hurts. An interrupt handler posting into a pinsetter
+  that was never created lost every roll, with no one told: the very failure this phase made
+  visible. And every post paid a comparison for it.
+- A **Null Object** would do the same, more elegantly: a static pinsetter whose every call
+  does nothing harmful. The code already has a good one, the standard rule
+  `Game_CountPinsDown`, which models "no variant" as a rule that changes nothing, so
+  `Game_Accept` has no special case. But a null pinsetter would lose rolls exactly as silently,
+  and would add an indirect call to the interrupt path.
+- So creation stops the program, at the moment the mistake is made. Not with `assert`, which
+  a release build removes, leaving no safe value to return: with `Fault_Stop`, a fail-stop
+  that stays in every build. `fault.h` declares it. The host version writes the reason and
+  calls `abort()`; a target replaces it at link time by defining its own. A probe checked
+  that: a program with its own `Fault_Stop`, linked against `libbowling.a`, ran its own, with
+  no duplicate symbol.
+
+The quiet guards were my recommendation, reached for consistency; the reversal is the user's.
+In the log, three commits stand for it: the guards, their revert, and the stop. The first
+two cancel out.
 
 Two small things these left behind, noted and not changed:
 - `GAME_ERR_EDIT_DURING_NOTIFICATION` now also answers a drain, which isn't an edit. Its

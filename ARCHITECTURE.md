@@ -95,6 +95,7 @@ PUBLIC   include/
   pinsetter.h
   |-- bowling_types.h
   '-- game.h
+  fault.h                        (no includes; a target may supply Fault_Stop)
 
 PRIVATE  src/
   frame_context.h
@@ -115,7 +116,7 @@ PRIVATE  src/
 
 Source files that include a header from another module:
   game.c           --> frame_context.h, game_internal.h, game_limits.h, slot_pool.h
-  pinsetter.c      --> game_internal.h, game_limits.h, slot_pool.h
+  pinsetter.c      --> fault.h, game_internal.h, game_limits.h, slot_pool.h
   frame_context.c  --> frame_transition.h
   regular_frame.c  --> frame_transition.h (the one state that switches states)
 ```
@@ -499,7 +500,6 @@ true
 
 main loop: Pinsetter_Drain(pinsetter, game)
    |
-   |-- pinsetter == NULL?             --yes--> GAME_ERR_NULL_GAME
    |-- called from inside a listener? --yes--> GAME_ERR_EDIT_DURING_NOTIFICATION
    |
    |   end = post_at (acquire), read once: rolls posted from now on wait for the next drain
@@ -597,7 +597,8 @@ deterministic, the test itself playing the interrupt handler between main-loop c
 fired from inside a listener, in the middle of a drain. It covers order, a correction made
 while rolls wait, a drain stopped at an impossible roll and resolved both ways, rolls waiting
 for the next game, a whole game waiting, the lost-roll count (two readers, and its wrap), a
-drain refused from inside a listener, and `NULL` handles. One test runs
+drain refused from inside a listener, and creation stopping the program (a death test that
+runs in every build) when the pool is used up. One test runs
 a real second thread through five games, wrapping and filling the ring; CI runs it under
 ThreadSanitizer.
 
