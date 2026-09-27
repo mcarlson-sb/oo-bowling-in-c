@@ -1,28 +1,6 @@
 /* Host tests for the Game API, one behavior per test. A frame scores 0 until it is
  * complete, so a strike or spare adds nothing until its bonus rolls are in. */
-#include <gtest/gtest.h>
-
-#include <initializer_list>
-#include <memory>
-
-#include "game.h"
-
-/* Games come from a fixed pool that outlives each test. Holding every game in a handle that
- * destroys it means a test can't leak a pool slot into later tests, however it ends. */
-using GameHandle = std::unique_ptr<Game, decltype(&Game_Destroy)>;
-
-static GameHandle MakeGame()
-{
-    return GameHandle(Game_Create(), &Game_Destroy);
-}
-
-/* Setup rolls: each must be accepted, or the test is not testing what it says it is. */
-static void RollAll(Game *game, std::initializer_list<Pins> rolls)
-{
-    for (const Pins pins : rolls) {
-        EXPECT_EQ(GAME_OK, Game_Roll(game, pins)) << "setup roll of " << +pins << " was rejected";
-    }
-}
+#include "test_support.h"
 
 static void RollMany(Game *game, int count, Pins pins)
 {

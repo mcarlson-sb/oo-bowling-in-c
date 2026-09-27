@@ -1,17 +1,11 @@
 /* A client that keeps a live scoreboard: it is told each time a frame completes, with the
  * frame's number and score. */
-#include <gtest/gtest.h>
-
-#include <initializer_list>
-#include <memory>
 #include <utility>
 #include <vector>
 
-#include "game.h"
+#include "test_support.h"
 
 namespace {
-
-using GameHandle = std::unique_ptr<Game, decltype(&Game_Destroy)>;
 
 /* The scoreboard: every completed frame it has been told about, in the order it heard. */
 struct Scoreboard {
@@ -26,17 +20,13 @@ void Scoreboard_FrameCompleted(void *context, uint8_t frame_number, Score frame_
 
 class ScoreboardTest : public ::testing::Test {
 protected:
-    GameHandle owner{Game_Create(), &Game_Destroy};
+    GameHandle owner = MakeGame();
     Game *game = owner.get();
     Scoreboard scoreboard;
 
-    void SetUp() override { Game_OnFrameCompleted(game, &Scoreboard_FrameCompleted, &scoreboard); }
-
-    void RollAll(std::initializer_list<Pins> rolls)
+    void SetUp() override
     {
-        for (const Pins pins : rolls) {
-            EXPECT_EQ(GAME_OK, Game_Roll(game, pins)) << "setup roll of " << +pins;
-        }
+        ASSERT_TRUE(Game_OnFrameCompleted(game, &Scoreboard_FrameCompleted, &scoreboard));
     }
 };
 
@@ -46,15 +36,15 @@ using Frames = std::vector<std::pair<int, int>>;
 
 TEST_F(ScoreboardTest, should_tell_the_scoreboard_when_a_frame_completes)
 {
-    RollAll({3U, 4U});
+    RollAll(game, {3U, 4U});
     EXPECT_EQ((Frames{{1, 7}}), scoreboard.frames);
 }
 
 TEST_F(ScoreboardTest, should_tell_the_scoreboard_nothing_for_a_roll_that_completes_no_frame)
 {
-    RollAll({3U});        /* frame 1 needs a second roll */
-    RollAll({4U, 10U});   /* frame 1 completes; the strike in frame 2 doesn't */
-    RollAll({2U});        /* the strike has one of its two bonus rolls */
+    RollAll(game, {3U});        /* frame 1 needs a second roll */
+    RollAll(game, {4U, 10U});   /* frame 1 completes; the strike in frame 2 doesn't */
+    RollAll(game, {2U});        /* the strike has one of its two bonus rolls */
     EXPECT_EQ((Frames{{1, 7}}), scoreboard.frames);
 }
 
@@ -65,24 +55,24 @@ TEST_F(ScoreboardTest, should_tell_the_scoreboard_about_two_frames_one_roll_comp
     }
     scoreboard.frames.clear();
 
-    RollAll({10U, 3U}); /* frame 8: a strike; frame 9: a 3. Nothing is complete yet */
+    RollAll(game, {10U, 3U}); /* frame 8: a strike; frame 9: a 3. Nothing is complete yet */
     EXPECT_EQ((Frames{}), scoreboard.frames);
 
-    RollAll({4U}); /* the 4 is frame 8's second bonus and frame 9's second roll */
+    RollAll(game, {4U}); /* the 4 is frame 8's second bonus and frame 9's second roll */
     EXPECT_EQ((Frames{{8, 17}, {9, 7}}), scoreboard.frames);
 }
 
-TEST_F(ScoreboardTest, should_tell_the_scoreboard_the_tenth_frame_completes_only_after_its_fill_balls)
+TEST_F(ScoreboardTest, should_tell_the_scoreboard_about_the_tenth_frame_only_after_its_fill_balls)
 {
     for (int i = 0; i < 18; i++) {
         EXPECT_EQ(GAME_OK, Game_Roll(game, 0U)); /* frames 1 to 9: gutter balls */
     }
     scoreboard.frames.clear();
 
-    RollAll({10U, 3U}); /* a strike and one fill ball: not complete */
+    RollAll(game, {10U, 3U}); /* a strike and one fill ball: not complete */
     EXPECT_EQ((Frames{}), scoreboard.frames);
 
-    RollAll({4U}); /* the second fill ball */
+    RollAll(game, {4U}); /* the second fill ball */
     EXPECT_EQ((Frames{{10, 17}}), scoreboard.frames);
 }
 
@@ -119,7 +109,7 @@ TEST_F(ScoreboardTest, should_tell_a_second_independent_subscriber_too)
     RunningStats stats;
     Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats);
 
-    RollAll({3U, 4U, 10U, 5U, 5U, 1U});
+    RollAll(game, {3U, 4U, 10U, 5U, 5U, 1U});
 
     EXPECT_EQ((Frames{{1, 7}, {2, 20}, {3, 11}}), scoreboard.frames);
     EXPECT_EQ(3, stats.frames);
@@ -133,29 +123,18 @@ TEST_F(ScoreboardTest, should_refuse_a_subscriber_once_every_slot_is_taken)
     ASSERT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
     EXPECT_FALSE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &one_too_many));
 
-    RollAll({3U, 4U});
+    RollAll(game, {3U, 4U});
     EXPECT_EQ(1, stats.frames);
     EXPECT_EQ(0, one_too_many.frames);
 }
 
 /* ---- What running stats needs under a caller's rule ------------------------------------- */
 
-namespace {
-
-/* Nine-pin no-tap, as the client in nine_pin_no_tap_test.cpp writes it. */
-Pins NinePinNoTap(Pins pins_standing, Pins pins_down)
-{
-    const bool nine_on_a_full_rack = (pins_standing == 10U) && (pins_down == 9U);
-    return nine_on_a_full_rack ? static_cast<Pins>(10U) : pins_down;
-}
-
-} // namespace
-
 TEST(RunningStatsNoTapTest, should_average_the_counted_scores_under_no_tap)
 {
     /* A league average is built from scores, and under no-tap a first-ball 9 scores as a
      * strike. So counted values, the ones the notification carries, are what stats needs. */
-    GameHandle owner{Game_CreateWithRule(&NinePinNoTap), &Game_Destroy};
+    GameHandle owner = MakeGameWithRule(&NinePinNoTap);
     Game *game = owner.get();
     RunningStats stats;
     ASSERT_TRUE(Game_OnFrameCompleted(game, &RunningStats_FrameCompleted, &stats));
