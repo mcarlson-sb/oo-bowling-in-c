@@ -237,3 +237,18 @@ TEST_F(GameTest, should_ignore_destroying_a_null_game)
     RollAll(game, {3U, 4U});
     EXPECT_EQ(7U, Game_Score(game));
 }
+
+TEST(GameDeathTest, should_stop_the_program_when_a_game_is_destroyed_twice)
+{
+    /* A second destroy of the same game is a bug in the caller. Caught while its slot is still
+     * free, it stops the program, in every build; once the slot is reused by another game, the
+     * stale handle can't be told from that game's (see KAY.md's known limits). It all happens in
+     * the death test's child process. */
+    EXPECT_DEATH(
+        {
+            Game *game = Game_Create();
+            Game_Destroy(game);
+            Game_Destroy(game);
+        },
+        "twice");
+}

@@ -175,7 +175,10 @@ void Game_Destroy(Game *game)
     if (game->busy) {
         Fault_Stop("game: destroyed while busy, from inside its own callback or rule");
     }
-    SlotPool_Release(&s_pool, slot);
+    if (!SlotPool_Release(&s_pool, slot)) {
+        /* Its slot was already free: this game was destroyed before. */
+        Fault_Stop("game: destroyed twice");
+    }
 }
 
 /* Checks a roll and, if it can happen, applies it to the frames. Tells no one: a caller that

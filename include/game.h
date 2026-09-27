@@ -71,10 +71,12 @@ Game *Game_Create(void);
  * game is free. */
 Game *Game_CreateWithRule(PinCountRule count_pins);
 
-/* Gives the game back to the pool. NULL, or a pointer that isn't a game, is ignored. Not from
- * inside one of the game's own callbacks or its PinCountRule: destroying a game while it is
- * busy frees it under the call still running, so the program stops (Fault_Stop, in every
- * build) at the misuse. */
+/* Gives the game back to the pool. NULL, or a pointer that isn't a game, is ignored. Two
+ * misuses stop the program (Fault_Stop, in every build), at the misuse:
+ *   - destroying a game while it is busy, from inside one of its own callbacks or its
+ *     PinCountRule, which would free it under the call still running;
+ *   - destroying a game twice. That is caught while its slot is still free. Once another game
+ *     has the slot, a stale handle is that game's handle too, and can't be told apart. */
 void Game_Destroy(Game *game);
 
 /* Told when a frame changes: the frame's number (1 to 10), its score, and whether it is
