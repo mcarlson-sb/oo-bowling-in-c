@@ -7,7 +7,6 @@
 #include <stdint.h>
 
 #include "bowling_types.h"
-#include "game.h"
 #include "game_limits.h"
 
 typedef struct {
@@ -24,10 +23,5 @@ uint8_t RollLog_Count(const RollLog *self);
 
 /* Past the last roll: stops a debug build, reads as 0 in release. */
 Pins RollLog_At(const RollLog *self, uint8_t index);
-
-/* Writes this log with the edit applied to `edited`, or, writing nothing, returns
- * GAME_ERR_NO_SUCH_ROLL (a NULL edit, a range outside the log, or new_pins missing) or
- * GAME_ERR_TOO_MANY_ROLLS. */
-GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edited);
 
 #endif /* ROLL_LOG_H */

@@ -5,6 +5,7 @@
 
 #include "fault.h"
 #include "frame_reporter.h"
+#include "roll_edit.h"
 #include "roll_log.h"
 #include "scorecard.h"
 #include "slot_pool.h"
@@ -183,7 +184,7 @@ GameStatus Game_EditRolls(Game *game, const RollEdit *edit)
         return status;
     }
     RollLog edited;
-    status = RollLog_Edit(&game->log, edit, &edited);
+    status = RollEdit_Apply(edit, &game->log, &edited);
     if (status == GAME_OK) {
         game->busy = true;
         status = Game_ApplyEditedLog(game, &edited);
