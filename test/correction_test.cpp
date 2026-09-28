@@ -393,6 +393,20 @@ TEST(EditRollsTest, should_reject_an_edit_that_would_make_more_rolls_than_a_game
     EXPECT_EQ(33U, Game_Score(game));
 }
 
+TEST(EditRollsTest, should_reject_an_edit_that_removes_rolls_past_the_last)
+{
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollAll(game, {3U, 4U, 5U});
+    const Pins new_pins[] = {2U};
+    const RollEdit past_the_end = MakeEdit(2U, 3U, new_pins, 1U); /* rolls 2 to 4; there are 3 */
+
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, &past_the_end));
+    EXPECT_EQ(7U, Game_Score(game));
+    RollAll(game, {4U}); /* the game is still where it was */
+    EXPECT_EQ(16U, Game_Score(game));
+}
+
 TEST(EditRollsTest, should_reject_an_edit_that_starts_past_the_last_roll)
 {
     /* That would be a second way to roll: a forgotten last roll is a Game_Roll. */
