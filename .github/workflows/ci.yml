@@ -44,8 +44,9 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   # ENG-3.1's complexity limits, on the library's source: cyclomatic complexity at most 10,
-  # functions at most 50 lines, at most 4 parameters. Any function over any limit fails the job.
-  # lizard doesn't measure cognitive complexity, so ENG-3.1's limit of 7 on it stays unchecked.
+  # functions at most 50 lines, at most 4 parameters (lizard), and cognitive complexity at most
+  # 7 (clang-tidy, which also reads the inline functions in the headers). Any function over any
+  # limit fails the job.
   complexity:
     name: complexity
     runs-on: ubuntu-24.04
@@ -54,3 +55,11 @@ jobs:
 
       - name: Check ENG-3.1's limits with lizard
         run: pipx run --spec lizard==1.24.0 lizard -C 10 -L 50 -a 4 -w src include
+
+      - name: Check ENG-3.1's cognitive-complexity limit with clang-tidy
+        run: >-
+          pipx run --spec clang-tidy==18.1.8 clang-tidy
+          -checks='-*,readability-function-cognitive-complexity'
+          -config='{CheckOptions: {readability-function-cognitive-complexity.Threshold: 7}}'
+          -header-filter='(src|include)/.*' -warnings-as-errors='*'
+          src/*.c -- -std=c11 -Iinclude -Isrc
