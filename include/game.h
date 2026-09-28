@@ -32,7 +32,7 @@ typedef enum {
  *   - It returns at most pins_standing, or the roll gets GAME_ERR_RULE_OUT_OF_RANGE.
  *   - It is pure: every edit replays every roll through it. If a rejected edit can't be undone
  *     because the rule now answers differently, the program stops (Fault_Stop).
- * It runs on up to 432 bytes of the library's stack at -O2, where inlining makes the edit's frame
+ * It runs on up to 416 bytes of the library's stack at -O2, where inlining makes the edit's frame
  * large, and 368 at -O0 (64-bit host; measure on the target). */
 typedef Pins (*PinCountRule)(Pins pins_standing, Pins pins_down);
 
@@ -50,7 +50,7 @@ void Game_Destroy(Game *game);
  * each frame the roll completed, oldest first; after an edit, about every frame again, where a
  * number heard before is an update and complete = false means reopened. A callback may read the
  * game but not change it (GAME_ERR_BUSY). It runs on up to 272 bytes of the library's stack at
- * -O2, 416 at -O0 (64-bit host; measure on the target). */
+ * -O2, 432 at -O0 (64-bit host; measure on the target). */
 typedef void (*FrameChangedCallback)(void *context, FrameNumber frame_number, Score frame_score,
                                      bool frame_complete);
 
