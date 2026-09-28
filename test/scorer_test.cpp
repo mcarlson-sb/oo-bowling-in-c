@@ -40,3 +40,11 @@ TEST(TenPinScorerTest, should_add_up_open_frames)
     RollMany(&scorer, 20, 1U);
     EXPECT_EQ(20U, Scorer_Score(&scorer));
 }
+
+TEST(TenPinScorerTest, should_add_a_spares_next_ball_as_its_bonus)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {5U, 5U, 3U});
+    RollMany(&scorer, 17, 0U);
+    EXPECT_EQ(16U, Scorer_Score(&scorer)); /* 5 + 5 + 3, then 3 */
+}
