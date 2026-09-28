@@ -122,6 +122,9 @@ option(OO_C_COVERAGE "Instrument the library for gcov coverage" OFF)
 if(OO_C_COVERAGE)
     target_compile_options(bowling PRIVATE --coverage -O0)
     target_link_options(bowling_tests PRIVATE --coverage)
+    # A death test's child aborts before gcov saves its data. This Fault_Stop saves it first;
+    # defined in the test executable, it keeps the library's fault.c out of the link.
+    target_sources(bowling_tests PRIVATE test/coverage_fault_stop.c)
 
     find_program(GCOV_EXECUTABLE gcov REQUIRED)
     # Where CMake puts the library's object files, and so gcov's data files.
@@ -132,6 +135,7 @@ if(OO_C_COVERAGE)
         get_filename_component(name ${source} NAME)
         list(APPEND COVERAGE_DATA ${name}.gcda)
     endforeach()
+    list(REMOVE_ITEM COVERAGE_DATA fault.c.gcda) # not linked: see coverage_fault_stop.c
 
     add_custom_target(coverage
         COMMAND ${CMAKE_COMMAND} -E rm -f ${COVERAGE_DATA}

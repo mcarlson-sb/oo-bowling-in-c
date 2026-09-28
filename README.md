@@ -93,14 +93,14 @@ else is a real gap:
 
 | Where | Build | Why it isn't covered |
 |---|---|---|
-| `roll_list.c`: the bounds checks' `return` lines and their branches | debug | In a debug build the `assert` just above stops the program first. The death tests do reach it, but each runs in a child process that `abort()` ends before `gcov` can save its data. The release build covers these lines |
-| `scorecard.c`, `frame_reporter.h`, `frame.c`: an `assert` failing | debug | An assert's failure path is never taken in a passing run. Where a death test does take it, `abort()` ends the process before `gcov` saves the data |
-| `fault.c`, and the calls to `Fault_Stop` in `Pinsetter_Create` and `Game_ApplyEditedLog` | both | Only the death test reaches them, and `abort()` ends its child process before `gcov` saves the data. A fail-stop stays in release builds, so this gap is in both |
+| `roll_list.c`, `roll_log.c`: the bounds checks' `return` lines and their branches | debug | In a debug build the `assert` just above stops the program first. The death tests do reach it, but a failed `assert` aborts before `gcov` can save its data. The release build covers these lines |
+| Every `assert` failing, and the `false` of `Scorecard_AllFramesCompleteBefore`, which only an `assert` asks | debug | An assert's failure path is never taken in a passing run, and a death test that takes it aborts before `gcov` saves the data |
+| `fault.c` | coverage builds | Not linked in them. `test/coverage_fault_stop.c` replaces `Fault_Stop` with one that saves `gcov`'s data before `abort()`, so every call to it is covered; every other build links `fault.c` |
 | `scorecard.c`: the loop condition in `Scorecard_ApplyPinsToFrames` stopping early | both | A frame keeps a roll only when it is the latest frame, so the chain never stops with frames still to go. The same bowling fact the frame-reporting count relies on |
 | `frame_listeners.h`: the `return` in `FrameListeners_TellNewest` when there are no listeners | both | The game only catches up a listener it has just added, so the list is never empty there. In a debug build the `assert` just above stops first. `test/frame_listeners_test.cpp` drives both builds' behavior, but its own inlined copy of the function isn't instrumented |
 
-The release build reaches 100% of lines and every branch except that loop condition, that
-guard and the fail-stop.
+The release build reaches every line but that guard's, and every branch but that guard's and
+that loop condition's.
 
 ## What the code does
 
