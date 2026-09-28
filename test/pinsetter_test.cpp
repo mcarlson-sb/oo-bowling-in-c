@@ -270,6 +270,23 @@ TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_cant_be_create
         "pinsetter");
 }
 
+TEST(PinsetterTest, should_ignore_destroying_null_or_a_pointer_that_is_not_a_pinsetter)
+{
+    GameHandle game_owner = MakeGame();
+    Game *game = game_owner.get();
+    PinsetterHandle owner = MakePinsetter();
+    Pinsetter *pinsetter = owner.get();
+    Pins not_a_pinsetter[4] = {};
+
+    Pinsetter_Destroy(nullptr);
+    Pinsetter_Destroy(reinterpret_cast<Pinsetter *>(not_a_pinsetter));
+
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 3U));
+    EXPECT_TRUE(Pinsetter_Post(pinsetter, 4U));
+    EXPECT_EQ(GAME_OK, Pinsetter_Drain(pinsetter, game));
+    EXPECT_EQ(7U, Game_Score(game));
+}
+
 TEST(PinsetterDeathTest, should_stop_the_program_when_a_pinsetter_is_destroyed_twice)
 {
     EXPECT_DEATH(
