@@ -276,6 +276,39 @@ TEST(NoTapScorerTest, should_score_a_first_ball_nine_as_a_strike)
     EXPECT_EQ(24U, Scorer_Score(&scorer)); /* (10 + 3 + 4) + (3 + 4) */
 }
 
+namespace {
+
+Scorer MakeNoTapScorer()
+{
+    Scorer scorer;
+    Scorer_InitWithRule(&scorer, SCORER_TEN_PIN, SCORER_COUNT_NO_TAP);
+    return scorer;
+}
+
+} // namespace
+
+TEST(NoTapScorerTest, should_count_a_no_tap_strike_as_ten_in_an_earlier_strikes_bonus)
+{
+    Scorer scorer = MakeNoTapScorer();
+    RollAll(&scorer, {10U, 9U, 3U, 4U});
+    EXPECT_EQ(47U, Scorer_Score(&scorer)); /* (10 + 10 + 3) + (10 + 3 + 4) + (3 + 4) */
+}
+
+TEST(NoTapScorerTest, should_count_no_tap_strikes_in_the_tenth_frames_fill_balls)
+{
+    Scorer scorer = MakeNoTapScorer();
+    RollMany(&scorer, 18, 0U);
+    RollAll(&scorer, {10U, 9U, 9U}); /* in standard bowling the second 9 would be too many pins */
+    EXPECT_EQ(30U, Scorer_Score(&scorer));
+}
+
+TEST(NoTapScorerTest, should_not_count_5_then_4_as_a_spare_under_a_first_ball_rule)
+{
+    Scorer scorer = MakeNoTapScorer();
+    RollAll(&scorer, {5U, 4U, 3U});
+    EXPECT_EQ(9U, Scorer_Score(&scorer)); /* an open 5 + 4; the 3 starts frame 2 */
+}
+
 /* ---- Pinned by mutation testing: each fails against a mutant that survived -------------- */
 
 TEST(TenPinScorerTest, should_give_a_fill_ball_a_fresh_rack_of_ten_after_one_clears_it)
