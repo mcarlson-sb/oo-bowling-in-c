@@ -12,7 +12,7 @@
 typedef struct {
     bool *in_use;
     uint8_t size;
-    const void *objects;
+    void *objects;
     size_t object_size;
 } SlotPool;
 
@@ -26,5 +26,14 @@ bool SlotPool_Find(const SlotPool *self, const void *object, uint8_t *slot);
 /* Whether the slot was in use: false for a double release, or a slot outside the pool. What
  * a double release means is the owner's to decide. */
 bool SlotPool_Release(SlotPool *self, uint8_t slot);
+
+/* A free object, now taken, or NULL if every one is taken. */
+void *SlotPool_Take(SlotPool *self);
+
+/* Whether `object` is one of the pool's, taken or not. */
+bool SlotPool_Holds(const SlotPool *self, const void *object);
+
+/* Whether `object` was taken: false for one already returned, or not the pool's. */
+bool SlotPool_Return(SlotPool *self, const void *object);
 
 #endif /* SLOT_POOL_H */

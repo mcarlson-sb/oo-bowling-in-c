@@ -33,3 +33,30 @@ bool SlotPool_Release(SlotPool *self, uint8_t slot)
     self->in_use[slot] = false;
     return was_in_use;
 }
+
+static void *SlotPool_ObjectAt(const SlotPool *self, uint8_t slot)
+{
+    unsigned char *start = (unsigned char *)self->objects;
+    return &start[(size_t)slot * self->object_size];
+}
+
+void *SlotPool_Take(SlotPool *self)
+{
+    uint8_t slot = 0U;
+    if (!SlotPool_Acquire(self, &slot)) {
+        return NULL;
+    }
+    return SlotPool_ObjectAt(self, slot);
+}
+
+bool SlotPool_Holds(const SlotPool *self, const void *object)
+{
+    uint8_t slot = 0U;
+    return SlotPool_Find(self, object, &slot);
+}
+
+bool SlotPool_Return(SlotPool *self, const void *object)
+{
+    uint8_t slot = 0U;
+    return SlotPool_Find(self, object, &slot) && SlotPool_Release(self, slot);
+}
