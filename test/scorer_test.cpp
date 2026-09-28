@@ -265,3 +265,13 @@ TEST(TenPinScorerEditTest, should_reject_an_edit_that_leaves_more_balls_than_a_g
     EXPECT_EQ(GAME_ERR_TOO_MANY_ROLLS, Scorer_Edit(&scorer, &edit, &events));
     EXPECT_EQ(300U, Scorer_Score(&scorer));
 }
+
+/* ---- A counting rule as data, not a callback ------------------------------------------- */
+
+TEST(NoTapScorerTest, should_score_a_first_ball_nine_as_a_strike)
+{
+    Scorer scorer;
+    Scorer_InitWithRule(&scorer, SCORER_TEN_PIN, SCORER_COUNT_NO_TAP);
+    RollAll(&scorer, {9U, 3U, 4U});
+    EXPECT_EQ(24U, Scorer_Score(&scorer)); /* (10 + 3 + 4) + (3 + 4) */
+}

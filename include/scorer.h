@@ -29,6 +29,14 @@ typedef enum {
     SCORER_TEN_PIN = 0
 } ScorerVariant;
 
+/* How a ball counts, given the pins standing and the pins that fell: a closed set, chosen by
+ * data, where kay-oo took a caller's function. */
+typedef enum {
+    SCORER_COUNT_PINS_DOWN = 0,
+    /* A ball that leaves one pin standing from a full rack counts as clearing it. */
+    SCORER_COUNT_NO_TAP
+} CountRule;
+
 /* A frame's number (1 to 10), its score, and whether it is complete. */
 typedef struct {
     FrameNumber frame_number;
@@ -44,11 +52,15 @@ typedef struct {
 
 typedef struct {
     ScorerVariant variant;
+    CountRule rule;
     Pins balls[SCORER_MAX_BALLS]; /* as they fell */
     uint8_t ball_count;
 } Scorer;
 
+/* Counting the pins that fell. */
 void Scorer_Init(Scorer *self, ScorerVariant variant);
+
+void Scorer_InitWithRule(Scorer *self, ScorerVariant variant, CountRule rule);
 
 GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events);
 

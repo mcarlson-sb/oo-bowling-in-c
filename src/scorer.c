@@ -41,6 +41,7 @@ typedef enum {
 typedef struct {
     FrameShape frames[SCORER_MAX_FRAMES];
     uint8_t frame_count; /* started */
+    Pins counted[SCORER_MAX_BALLS]; /* each ball, as its rule counts it */
     Pins standing;
     LanePhase phase;
     uint8_t fill_balls_left;
@@ -135,6 +136,19 @@ static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index
     }
 }
 
+static Pins Scorer_Count(const Scorer *self, Pins standing, Pins pins)
+{
+    switch (self->rule) {
+    case SCORER_COUNT_NO_TAP:
+        return ((standing == Scorer_Rules(self)->pins_per_rack) && ((pins + 1U) == standing))
+                   ? standing
+                   : pins;
+    case SCORER_COUNT_PINS_DOWN:
+    default:
+        return pins;
+    }
+}
+
 static void Lane_Walk(Lane *lane, const Scorer *self)
 {
     const VariantRules *rules = Scorer_Rules(self);
@@ -143,7 +157,8 @@ static void Lane_Walk(Lane *lane, const Scorer *self)
     lane->phase = LANE_TAKING_FRAMES;
     lane->fill_balls_left = 0U;
     for (uint8_t i = 0U; i < self->ball_count; i++) {
-        Lane_Throw(lane, rules, i, self->balls[i]);
+        lane->counted[i] = Scorer_Count(self, lane->standing, self->balls[i]);
+        Lane_Throw(lane, rules, i, lane->counted[i]);
     }
 }
 
@@ -159,19 +174,25 @@ static bool Scorer_IsFrameComplete(const Scorer *self, const FrameShape *frame)
            (self->ball_count >= (uint8_t)(frame->first_ball + FrameShape_BallsScored(frame)));
 }
 
-static Score Scorer_FrameScore(const Scorer *self, const FrameShape *frame)
+static Score Lane_FrameScore(const Lane *lane, const FrameShape *frame)
 {
     Score score = 0U;
     const uint8_t end = (uint8_t)(frame->first_ball + FrameShape_BallsScored(frame));
     for (uint8_t i = frame->first_ball; i < end; i++) {
-        score = (Score)(score + self->balls[i]);
+        score = (Score)(score + lane->counted[i]);
     }
     return score;
 }
 
 void Scorer_Init(Scorer *self, ScorerVariant variant)
 {
+    Scorer_InitWithRule(self, variant, SCORER_COUNT_PINS_DOWN);
+}
+
+void Scorer_InitWithRule(Scorer *self, ScorerVariant variant, CountRule rule)
+{
     self->variant = variant;
+    self->rule = rule;
     self->ball_count = 0U;
 }
 
@@ -186,6 +207,13 @@ static uint8_t Scorer_CompleteFrames(const Scorer *self, const Lane *lane)
         complete++;
     }
     return complete;
+}
+
+static uint8_t Scorer_CompleteFrameCount(const Scorer *self)
+{
+    Lane lane;
+    Lane_Walk(&lane, self);
+    return Scorer_CompleteFrames(self, &lane);
 }
 
 static void FrameEvents_Add(FrameEvents *events, uint8_t index, Score score, bool complete)
@@ -215,7 +243,7 @@ GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events)
     Lane_Walk(&lane, self);
     const uint8_t now_complete = Scorer_CompleteFrames(self, &lane);
     for (uint8_t i = were_complete; i < now_complete; i++) {
-        FrameEvents_Add(events, i, Scorer_FrameScore(self, &lane.frames[i]), true);
+        FrameEvents_Add(events, i, Lane_FrameScore(&lane, &lane.frames[i]), true);
     }
     return GAME_OK;
 }
@@ -227,7 +255,7 @@ Score Scorer_Score(const Scorer *self)
     Score score = 0U;
     for (uint8_t i = 0U; i < lane.frame_count; i++) {
         if (Scorer_IsFrameComplete(self, &lane.frames[i])) {
-            score = (Score)(score + Scorer_FrameScore(self, &lane.frames[i]));
+            score = (Score)(score + Lane_FrameScore(&lane, &lane.frames[i]));
         }
     }
     return score;
@@ -292,7 +320,7 @@ static Pins Scorer_EditedBall(const Scorer *self, const RollEdit *edit, uint8_t 
 static GameStatus Scorer_ReplayEdited(const Scorer *self, const RollEdit *edit, Scorer *edited)
 {
     FrameEvents ignored;
-    Scorer_Init(edited, self->variant);
+    Scorer_InitWithRule(edited, self->variant, self->rule);
     const uint8_t count = (uint8_t)Scorer_BallsAfterEdit(self, edit);
     for (uint8_t i = 0U; i < count; i++) {
         const GameStatus status = Scorer_Roll(edited, Scorer_EditedBall(self, edit, i), &ignored);
@@ -313,7 +341,7 @@ static void Scorer_ReportAll(const Scorer *self, uint8_t were_complete, FrameEve
     const uint8_t frames = (were_complete > now_complete) ? were_complete : now_complete;
     for (uint8_t i = 0U; i < frames; i++) {
         if (i < now_complete) {
-            FrameEvents_Add(events, i, Scorer_FrameScore(self, &lane.frames[i]), true);
+            FrameEvents_Add(events, i, Lane_FrameScore(&lane, &lane.frames[i]), true);
         } else {
             FrameEvents_Add(events, i, 0U, false);
         }
@@ -327,14 +355,12 @@ GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events)
     if (checked != GAME_OK) {
         return checked;
     }
+    const uint8_t were_complete = Scorer_CompleteFrameCount(self);
     Scorer edited;
     const GameStatus replayed = Scorer_ReplayEdited(self, edit, &edited);
     if (replayed != GAME_OK) {
         return replayed; /* self was never touched: nothing to undo */
     }
-    Lane before;
-    Lane_Walk(&before, self);
-    const uint8_t were_complete = Scorer_CompleteFrames(self, &before);
     *self = edited; /* a plain value, so a copy is the whole game */
     Scorer_ReportAll(self, were_complete, events);
     return GAME_OK;
