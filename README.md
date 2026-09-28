@@ -58,7 +58,17 @@ lizard -C 10 -L 50 -a 4 -w src include
 ```
 
 Any function with a cyclomatic complexity over 10, more than 50 lines or more than 4
-parameters fails it. lizard doesn't measure cognitive complexity, so that limit is unchecked.
+parameters fails it. The same job checks cognitive complexity, which lizard doesn't measure,
+with clang-tidy 18.1.8 (the wheel `pipx` installs), at most 7:
+
+```sh
+clang-tidy -checks='-*,readability-function-cognitive-complexity' \
+  -config='{CheckOptions: {readability-function-cognitive-complexity.Threshold: 7}}' \
+  -header-filter='(src|include)/.*' -warnings-as-errors='*' src/*.c -- -std=c11 -Iinclude -Isrc
+```
+
+Measure on Linux, as CI does: glibc's `assert` expands to a `?:`, which counts, and MinGW's
+doesn't, so a Windows run can read lower.
 
 Every build also fails on any library function whose stack frame is over a limit
 (`-Wstack-usage`, in `CMakeLists.txt`): 320 bytes, except in `src/pinsetter_isr.c`, the

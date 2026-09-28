@@ -1534,6 +1534,38 @@ of the contract a caller sizes a callback's stack by.
 `game.c`'s code grew by the assert's predicate and `FrameNumber_FromIndex`. The tests' code
 didn't change.
 
+### The cognitive-complexity gate
+
+A code-quality snapshot of the repository (a C port of an analysis tool the user supplied, kept
+out of git) found six things. Three were small and fixed at once: an unreachable guard now
+asserted (`e326b75`), a `const` `self` (`77d6350`), and README's public headers (`45e53d8`). The
+user took the other three one at a time, last first. The last was that `ENG-3.1` limits
+cognitive complexity to 7, and nothing checked it.
+
+**Measured first.** clang-tidy 18.1.8's `readability-function-cognitive-complexity`, at a
+threshold of 0, over `src/*.c` and the headers' inline functions, found two functions over 7:
+`Pinsetter_Destroy` at 9, nested by the destroy-while-draining fix (`b4fecda`), and
+`RollLog_Edit` at 8, the snapshot's fourth finding. The user chose to fix both before adding
+the gate, so it would go in green, rather than add it with an exception:
+- `Pinsetter_Destroy` took `Game_Destroy`'s shape: `Pinsetter_FindSlot`, then the two checks,
+  with no nesting (3 and 3).
+- `RollLog_Edit` became `RollLog_CheckEdit` (5) and `RollLog_Splice` (3) under a two-line
+  `RollLog_Edit` (1). Its lizard CCN, 9 before, one under that gate, is now at most 6.
+
+**The gate went red on its first CI run, on a function the local measure had passed.**
+`Game_ReportFrames` scored 7 on Windows and 10 on CI. glibc's `assert` expands to a `?:`, which
+clang-tidy counts, and the invariant's assert sat three levels deep; MinGW's `assert` has no
+conditional. The assert moved to after the loop, where one check covers the walk
+(`Game_AllFramesCompleteBefore(game, game->frames_told_complete)`): a complete frame after an
+incomplete one would leave `frames_told_complete` past the gap. A mutant inverting the
+predicate still failed 71 of 110 debug tests. The lesson is the one the stack gate taught: the
+gate's platform is the measure, so measure on Linux.
+
+**Proven to bite.** A throwaway branch added a function nested four deep: cognitive 10,
+CCN 5, four parameters. lizard passed it, and the clang-tidy step failed the complexity job
+with "cognitive complexity of 10 (threshold 7)"; every other job passed (run 36362415447). The
+branch was deleted.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on
