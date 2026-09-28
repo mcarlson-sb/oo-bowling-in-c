@@ -32,17 +32,29 @@ static bool Scorecard_NextFrameIsTenth(const Scorecard *self)
     return self->frame_count == (SCORECARD_FRAMES - 1U);
 }
 
-static void Scorecard_AddNewFrame(Scorecard *self, Pins pins)
+/* The next frame, started as the tenth or as any other; not yet counted. */
+static FrameContext *Scorecard_StartNextFrame(Scorecard *self)
 {
-    FrameContext *new_frame = &self->frames[self->frame_count];
+    FrameContext *next = &self->frames[self->frame_count];
     if (Scorecard_NextFrameIsTenth(self)) {
-        FrameContext_InitTenth(new_frame);
+        FrameContext_InitTenth(next);
     } else {
-        FrameContext_Init(new_frame);
+        FrameContext_Init(next);
     }
-    const RollResult result = FrameContext_Roll(new_frame, pins);
+    return next;
+}
+
+/* A new frame always keeps its first roll. */
+static void Scorecard_GiveFirstRoll(FrameContext *frame, Pins pins)
+{
+    const RollResult result = FrameContext_Roll(frame, pins);
     assert(result.consumed);
     (void)result;
+}
+
+static void Scorecard_AddNewFrame(Scorecard *self, Pins pins)
+{
+    Scorecard_GiveFirstRoll(Scorecard_StartNextFrame(self), pins);
     self->frame_count++;
 }
 
