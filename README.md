@@ -178,8 +178,9 @@ Behind them:
 
   An edit is also rejected for rolls that haven't been made, including an edit that starts
   after the last roll (`GAME_ERR_NO_SUCH_ROLL`): adding a roll is `Game_Roll`'s job. It is
-  also rejected if it would make more than 21 rolls (`GAME_ERR_TOO_MANY_ROLLS`), or if it is
-  made from inside a listener or the rule (`GAME_ERR_BUSY`).
+  rejected if it is malformed, a `NULL` edit or one that promises new rolls but gives no pins
+  (`GAME_ERR_INVALID_EDIT`), if it would make more than 21 rolls (`GAME_ERR_TOO_MANY_ROLLS`),
+  or if it is made from inside a listener or the rule (`GAME_ERR_BUSY`).
 
 ## Follow one roll
 

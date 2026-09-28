@@ -1723,6 +1723,18 @@ repeating `Game_ReplayWith`'s one line, and wasn't taken. The deepest `-O0` chai
 `game.h` doesn't state, grew from 1,024 to 1,168 bytes, from those frames and
 `Scorecard_GiveFirstRoll`'s.
 
+### An edit's statuses, made as honest as its rules
+
+With `RollEdit_Check` reading as named rules (`RollEdit_StartsAtARoll`,
+`RollEdit_RemovesOnlyExistingRolls`, `RollEdit_PromisesRollsWithoutPins`), a review noticed its
+statuses didn't match them: a `NULL` edit, a range outside the log, and new rolls promised
+without pins all returned `GAME_ERR_NO_SUCH_ROLL`, though only the range is "no such roll", and
+a caller couldn't tell a bad range from a malformed edit. A public API change, so the user's
+call: **the user chose `GAME_ERR_INVALID_EDIT`** for the two malformed cases, appended to
+`GameStatus` so no value is renumbered. Test first: the two tests for them changed their
+expected status and failed until `RollEdit_Check` returned it. The checks keep their order, so
+an edit that is both out of range and missing its pins still reports the range.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on

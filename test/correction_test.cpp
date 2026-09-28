@@ -434,7 +434,7 @@ TEST(EditRollsTest, should_refuse_new_rolls_given_as_a_null_pointer)
     RollAll(game, {3U, 4U});
 
     const RollEdit edit = MakeEdit(1U, 1U, nullptr, 1U);
-    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, &edit));
+    EXPECT_EQ(GAME_ERR_INVALID_EDIT, Game_EditRolls(game, &edit));
     EXPECT_EQ(7U, Game_Score(game));
 }
 
@@ -444,7 +444,7 @@ TEST(EditRollsTest, should_refuse_an_edit_given_as_a_null_pointer)
     Game *game = owner.get();
     RollAll(game, {3U, 4U});
 
-    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Game_EditRolls(game, nullptr));
+    EXPECT_EQ(GAME_ERR_INVALID_EDIT, Game_EditRolls(game, nullptr));
     EXPECT_EQ(7U, Game_Score(game));
     RollAll(game, {3U, 4U}); /* the game is still where it was */
     EXPECT_EQ(14U, Game_Score(game));

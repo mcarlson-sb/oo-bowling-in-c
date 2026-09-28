@@ -24,7 +24,8 @@ typedef enum {
      * edit is in progress; or Pinsetter_Drain called from inside a drain. */
     GAME_ERR_BUSY,
     GAME_ERR_NO_SUCH_ROLL,      /* an edit's range isn't rolls the game has had */
-    GAME_ERR_TOO_MANY_ROLLS     /* an edit would leave more than 21 rolls */
+    GAME_ERR_TOO_MANY_ROLLS,    /* an edit would leave more than 21 rolls */
+    GAME_ERR_INVALID_EDIT       /* a NULL edit, or one that promises rolls but gives no pins */
 } GameStatus;
 
 /* How many pins a roll counts as, given the pins standing and the pins that fell. Supplied to
@@ -75,7 +76,7 @@ GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins);
 
 /* Applies the edit, and rescores by replaying every roll; the listeners hear only the final
  * state. Rejected with the status of any roll it makes impossible, or with
- * GAME_ERR_NO_SUCH_ROLL (also for a NULL edit), GAME_ERR_TOO_MANY_ROLLS or GAME_ERR_BUSY. */
+ * GAME_ERR_INVALID_EDIT, GAME_ERR_NO_SUCH_ROLL, GAME_ERR_TOO_MANY_ROLLS or GAME_ERR_BUSY. */
 GameStatus Game_EditRolls(Game *game, const RollEdit *edit);
 
 /* The total of the complete frames; 0 for a NULL game. */

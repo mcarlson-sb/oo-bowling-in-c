@@ -529,8 +529,10 @@ Game_EditRolls(game, &edit)     edit: a RollEdit {first_roll, rolls_removed, new
    |-- game busy (inside a listener or the rule)?  --yes--> GAME_ERR_BUSY
    |
    |  RollEdit_Apply(edit, &game->log, &edited):
+   |-- NULL edit?                           --yes--> GAME_ERR_INVALID_EDIT
    |-- range not rolls the log has?         --yes--> GAME_ERR_NO_SUCH_ROLL
-   |   (starts after the last roll, or new rolls promised, but NULL)
+   |   (starts after the last roll)
+   |-- new rolls promised, but no pins?     --yes--> GAME_ERR_INVALID_EDIT
    |-- more than 21 rolls after the edit?   --yes--> GAME_ERR_TOO_MANY_ROLLS
    |   edited = the rolls before the range, the new rolls, the rolls after it
    v

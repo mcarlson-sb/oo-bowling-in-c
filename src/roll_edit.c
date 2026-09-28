@@ -41,13 +41,13 @@ static unsigned RollEdit_ResultingRollCount(const RollEdit *edit, const RollLog 
 static GameStatus RollEdit_Check(const RollEdit *edit, const RollLog *log)
 {
     if (edit == NULL) {
-        return GAME_ERR_NO_SUCH_ROLL;
+        return GAME_ERR_INVALID_EDIT;
     }
     if (!RollEdit_IsWithinLog(edit, log)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
     if (RollEdit_PromisesRollsWithoutPins(edit)) {
-        return GAME_ERR_NO_SUCH_ROLL;
+        return GAME_ERR_INVALID_EDIT;
     }
     if (RollEdit_ResultingRollCount(edit, log) > GAME_MAX_ROLLS) {
         return GAME_ERR_TOO_MANY_ROLLS;

@@ -8,8 +8,8 @@
 #include "roll_log.h"
 
 /* Writes `log` with `edit` applied to `edited`, or, writing nothing, returns
- * GAME_ERR_NO_SUCH_ROLL (a NULL edit, a range outside the log, or new_pins missing) or
- * GAME_ERR_TOO_MANY_ROLLS. */
+ * GAME_ERR_INVALID_EDIT (a NULL edit, or new_pins missing), GAME_ERR_NO_SUCH_ROLL (a range
+ * outside the log) or GAME_ERR_TOO_MANY_ROLLS. */
 GameStatus RollEdit_Apply(const RollEdit *edit, const RollLog *log, RollLog *edited);
 
 #endif /* ROLL_EDIT_H */
