@@ -1601,6 +1601,11 @@ and both copies are gone. The clean-up's "considered and not done" table had set
 MISRA's pointer-arithmetic rules; those are advisory, the lookup indexes rather than adds (Rule
 18.4's advice), and that call was mine, not the user's.
 
+**And the guard, at its third copy.** The kay-cleanup review had the `NULL`-and-busy guard
+at the top of `Game_Roll` and `Game_EditRolls` wait for a third copy (the rule of three). The
+deep-dive fixes had since added it, in `Game_OnFrameChanged`, so all three now ask
+`Game_CheckCanChange`. `game.h`'s stack figures are unchanged.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on
