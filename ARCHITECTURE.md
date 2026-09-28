@@ -68,9 +68,8 @@ Each layer talks only to the one below it. Only the top layer is visible to call
   FrameNumber wherever a roll or a frame is numbered from 1.
 ```
 
-**Inside `Game`: three value types.** `Game` holds each by value, and each has one job that
-used to be part of `game.c`. What is left in `game.c` is the pool, a roll's checks and the
-caller's rule, the busy guard, and replaying the log after an edit:
+**Inside `Game`: three value types**, each held by value. `game.c` itself holds the pool, a
+roll's checks and the caller's rule, the busy guard, and replaying the log after an edit:
 
 ```
 +--------------------------------------------------------------+
@@ -489,10 +488,9 @@ GAME_OK
 This is Chain of Responsibility, with a twist: a strike or spare frame both *acts on* a
 roll (records it as a bonus) and *passes it on*.
 
-**Why the rule is applied at the door.** Counting a roll once, before any frame sees it, means
-every frame sees the same value. In nine-pin no-tap a first-ball 9 counts as a strike, so an
-earlier strike collecting its bonus must also receive a 10, not a 9. The frames never know
-that a rule exists.
+**The rule is applied once, at the door.** `Game_Accept` counts a roll with the game's
+`PinCountRule` before any frame sees it, so every frame, including an earlier strike taking
+it as a bonus, sees the same counted value. The frames never know a rule exists.
 
 **Telling listeners, after the roll.** Once a roll has gone all the way through, the game's
 `FrameReporter` tells each listener (up to two, set with `Game_OnFrameChanged`) about every
@@ -504,11 +502,9 @@ the game (`Game_Score` then sees the whole roll), but not change it: the game is
 roll, an edit or a drain from inside a listener, or from inside the rule, is refused. A
 listener added mid-game is caught up at once: it, and only it, is told every frame already
 complete, with the game busy as for any callback.
-KAY.md records why this won over frames telling the listeners themselves.
 
-**Editing rolls.** The game keeps every accepted roll in a log, as the pins that fell, so a
-roll is a thing the game can go back to, not just a call that changed some state and was
-gone. One operation, `Game_EditRolls`, replaces a range of rolls with new ones: replacing,
+**Editing rolls.** The game keeps every accepted roll in a log, as the pins that fell. One
+operation, `Game_EditRolls`, replaces a range of rolls with new ones: replacing,
 inserting and deleting are all the same edit. `Game_CorrectRoll` is one roll out and one in.
 
 ```
@@ -539,17 +535,11 @@ FrameReporter_AfterEdit, from the first frame: tell each frame again, the final 
 GAME_OK
 ```
 
-Three design points from the tests:
-- **One edit, not a sequence of them.** A tenth frame entered as 10, 0, 0 that was really
-  9, 0 needs two changes. Done as two calls, one order is rejected and the other briefly shows
-  the listeners a tenth frame waiting for a fill ball, a game that never existed. As one edit
-  it is checked, and told, only in its final state.
-- **Copy the value, never the object.** Undoing a rejected edit copies the log back: 22 bytes
-  of plain values. Copying a `Game` would not work. Each `FrameContext` points at one of its
-  own state slots, so a copied game's pointers would still point into the original.
-- **The log keeps the pins that fell,** not what they were counted as, because replaying
-  applies the rule again. Under nine-pin no-tap a first-ball 9 counts as a strike. If an edit
-  turns it into a second ball, it has to be counted again, from the 9, as a spare.
+An edit:
+- **is checked, and told, only in its final state,** however many rolls it replaces;
+- **is undone by copying the log back** (22 bytes of plain values), never the game: each
+  `FrameContext` points at one of its own state slots, so a copy would point into the original;
+- **replays the pins that fell,** which the log keeps, so the rule counts every roll again.
 
 **Rolls from the pinsetter.** The interrupt handler and the main loop share one ring, and
 each writes only its own position, so neither needs a lock:
@@ -580,20 +570,17 @@ main loop: Pinsetter_Drain(pinsetter, game)
    '-- and round again
 ```
 
-Release on publish and acquire on consume are what put the roll's bytes in the other side's
-view before the position that announces them: ThreadSanitizer catches each of the four
-weakened to relaxed (KAY.md, phase 6). A drain that stops leaves the roll where it is. The
-scorer then either corrects an earlier roll (`Game_CorrectRoll`), when the reported roll was
-right and the one before it miscounted, or throws the reported one away
-(`Pinsetter_DiscardOldest`, refused while a drain is running, since the drain would write its
-own copy of the read position back over it); the next drain carries on. A drain takes at most
-the 21 rolls
-waiting when it starts, so the main loop's work per pass is bounded. Rolls reported after the
-tenth frame
-wait the same way, for the next game. The ring holds a whole game's rolls, so a stopped drain
-can't cost the interrupt handler a roll of the game; a static assert ties its size to
-`GAME_MAX_ROLLS`. The lost-roll count is only read, never cleared, so any number of readers
-can watch it, each taking its own difference.
+Each side publishes its position with a release store after touching the roll, and reads the
+other's with an acquire load before touching one, so a roll's bytes are always visible before
+the position that announces them.
+
+A drain that stops leaves the roll waiting. The scorer then corrects an earlier roll
+(`Game_CorrectRoll`), or throws the waiting one away (`Pinsetter_DiscardOldest`, refused while
+a drain is running); the next drain carries on. A drain takes only the rolls waiting when it
+starts, at most 21, and rolls reported after the tenth frame wait the same way, for the next
+game. The ring holds a whole game's rolls, a static assert tying its size to
+`GAME_MAX_ROLLS`. The lost-roll count is never cleared, so each reader takes its own
+difference.
 
 **Worked example: rolls 10, 3, 4.** `RollResult` is what each frame hands back.
 
@@ -625,62 +612,27 @@ accepted and an 8 would be rejected.
 ## 9. The tests
 
 ```
-test/game_test.cpp  (black box)            white box: private types, from src/
-  includes: game.h only
-  +-----------------------------+          +------------------------------+
-  | scoring                     |          | roll_list_test.cpp           |
-  | end of game                 |          |  empty, add, sum, full       |
-  | game storage (the pool)     |          |  bounds:                     |
-  | tenth frame                 |          |   debug:   stops (assert)    |
-  | input validation            |          |   release: refused, reads 0  |
-  | NULL handles                |          +------------------------------+
-  +-----------------------------+          | slot_pool_test.cpp           |
-            |                              |  acquire, distinct, full,    |
-            |                              |  release and reuse, release  |
-            |                              |  of a slot it doesn't have   |
-            |                              +------------------------------+
-            v                                            v
-   public API only, like a real caller       each private type, directly
+black box: include/ only, like a caller          white box: one private type, directly
+  game_test.cpp               scoring, the pool,   roll_list_test.cpp          RollList
+                              the tenth frame,     roll_log_test.cpp           RollLog
+                              input, NULL          slot_pool_test.cpp          SlotPool
+  nine_pin_no_tap_test.cpp    a caller's rule      frame_listeners_test.cpp    FrameListeners
+  scoreboard_test.cpp         listeners            frame_test.cpp              Frame's roll()
+  correction_test.cpp         edits                                            contract
+  pinsetter_test.cpp          the pinsetter        pinsetter_overlap_test.cpp  the one-producer
+  remote_scoreboard_test.cpp  a listener over a                                check, through
+                              wire                                             pinsetter_hooks.h
+     sharing test/test_support.h: GameHandle, RollAll, the client-side rules
 ```
 
-`test/nine_pin_no_tap_test.cpp` is a black-box test too: a client that plays nine-pin no-tap
-by passing its own `PinCountRule` to `Game_CreateWithRule`, plus two checks on rules that
-misbehave (one that counts too many pins, and none at all).
-
-`test/scoreboard_test.cpp` is black-box as well: a live scoreboard and a running-stats keeper
-subscribe with `Game_OnFrameChanged`. It covers one frame, nothing completed, one roll
-completing two frames, the tenth frame's fill balls, a full set of listeners, and stats
-under no-tap. The black-box tests share `test/test_support.h`: `GameHandle`, `RollAll`, and
-the client-side no-tap rule.
-
-`test/correction_test.cpp` is black-box too: a scorer correcting and editing rolls. It covers
-rescoring, the rule counted again on replay, edits rejected for making a roll impossible or
-the game too long, listeners told only the final state (including rescored and reopened
-frames), and the edits the game refuses. Four property tests finish it. For single-roll
-corrections and for random range edits, each under both the standard and no-tap rules,
-3,000 random games are judged against a fresh game fed the edited rolls. The edit must be
-accepted exactly when the fresh game accepts; if accepted, the listeners must match the
-fresh game's; if rejected, nothing may change.
-
-`test/pinsetter_test.cpp` is black-box: the pinsetter's two sides. Most of it is
-deterministic, the test itself playing the interrupt handler between main-loop calls, or,
-fired from inside a listener, in the middle of a drain. It covers order, a correction made
-while rolls wait, a drain stopped at an impossible roll and resolved both ways, rolls waiting
-for the next game, a whole game waiting, the lost-roll count (two readers, and its wrap), a
-drain refused from inside a listener, and creation stopping the program (a death test that
-runs in every build) when the pool is used up. One test runs
-a real second thread through five games, wrapping and filling the ring; CI runs it under
-ThreadSanitizer.
-
-`test/remote_scoreboard_test.cpp` is black-box too: a listener writes each message into a
-byte buffer, and a decoder with only the bytes rebuilds the scoreboard, through a correction
-that reopens a frame.
-
-`test/frame_test.cpp` is white-box too: a debug-build death test that `Frame_Roll` enforces the
-`roll()` contract (a context is never NULL). So is `test/pinsetter_overlap_test.cpp`: through a
-hook in `src/pinsetter_hooks.h`, it leaves a post under way, and checks that the next post
-stops the program, in the builds that have the check.
-
-Every test runs in four builds, debug, release (`NDEBUG`), UBSan and ThreadSanitizer (in CI,
-on Linux), with warnings as errors. `GameHandle` (a `std::unique_ptr` with `Game_Destroy` as
-its deleter) makes sure no test leaks a game from the pool into the next one.
+- **Death tests** cover every fail-stop (`Fault_Stop`, in every build) and every debug
+  `assert` on a caller's bug. Where a debug build stops and a release build refuses, as for
+  the bounds of `RollList` and `RollLog`, each build has its own test.
+- **Property tests** in `correction_test.cpp` judge random corrections and edits, under the
+  standard rule and under no-tap, against a fresh game fed the edited rolls.
+- **One test uses a real second thread**, as the pinsetter's interrupt side, through five games;
+  CI runs it under ThreadSanitizer. The other pinsetter tests play the interrupt side
+  themselves, between main-loop calls or from inside a listener.
+- **Every test runs in four builds**: debug, release (`NDEBUG`), UBSan and ThreadSanitizer (in
+  CI, on Linux), with warnings as errors. `GameHandle`, a `std::unique_ptr` with `Game_Destroy`
+  as its deleter, keeps any test from leaking a game into the next.
