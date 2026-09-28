@@ -239,7 +239,7 @@ Four refinements on top of those:
 
 ## Public and private headers
 
-Only three headers are in `include/`, because that folder is the library's public API: only
+Only four headers are in `include/`, because that folder is the library's public API: only
 what code *using* the library needs.
 
 | Header | Why it's public |
@@ -247,6 +247,7 @@ what code *using* the library needs.
 | `include/game.h` | The API: `Game_Create`, `Game_CreateWithRule`, `Game_Roll`, `Game_EditRolls`, `Game_CorrectRoll`, `Game_OnFrameChanged`, `Game_Score`, `Game_Destroy`, `GameStatus`, `PinCountRule`, `FrameChangedCallback`, `RollEdit` and the opaque `Game` |
 | `include/pinsetter.h` | The pinsetter's two sides: `Pinsetter_Post` for the interrupt handler, and `Pinsetter_Drain`, `Pinsetter_DiscardOldest` and `Pinsetter_RollsLost` for the main loop, around the opaque `Pinsetter` |
 | `include/bowling_types.h` | `game.h`'s signatures use `Pins` and `Score`, and a public header must compile on its own |
+| `include/fault.h` | `Fault_Stop`, the fail-stop: the library's host version prints the reason and aborts, and a target build replaces it at link time with its own, for example to log and wait for the watchdog |
 
 Everything else is in `src/` and is private.
 
