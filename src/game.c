@@ -68,6 +68,17 @@ void Game_Destroy(Game *game)
     }
 }
 
+static GameStatus Game_CheckCanChange(const Game *game)
+{
+    if (game == NULL) {
+        return GAME_ERR_NULL_GAME;
+    }
+    if (game->busy) {
+        return GAME_ERR_BUSY;
+    }
+    return GAME_OK;
+}
+
 /* Tells no one. Every check comes before any frame sees the roll: frames can't undo one. */
 static GameStatus Game_Accept(Game *game, Pins pins)
 {
@@ -91,11 +102,9 @@ static GameStatus Game_Accept(Game *game, Pins pins)
  * from there would land under the one in progress, and tell frames out of order. */
 GameStatus Game_Roll(Game *game, Pins pins)
 {
-    if (game == NULL) {
-        return GAME_ERR_NULL_GAME;
-    }
-    if (game->busy) {
-        return GAME_ERR_BUSY;
+    const GameStatus can_change = Game_CheckCanChange(game);
+    if (can_change != GAME_OK) {
+        return can_change;
     }
     game->busy = true;
     const GameStatus status = Game_Accept(game, pins);
@@ -117,7 +126,7 @@ Score Game_Score(const Game *game)
 
 bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context)
 {
-    if ((game == NULL) || game->busy) {
+    if (Game_CheckCanChange(game) != GAME_OK) {
         return false;
     }
     if (!FrameReporter_Add(&game->reporter, callback, context)) {
@@ -171,14 +180,12 @@ GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins)
 
 GameStatus Game_EditRolls(Game *game, const RollEdit *edit)
 {
-    if (game == NULL) {
-        return GAME_ERR_NULL_GAME;
-    }
-    if (game->busy) {
-        return GAME_ERR_BUSY;
+    GameStatus status = Game_CheckCanChange(game);
+    if (status != GAME_OK) {
+        return status;
     }
     RollLog edited;
-    GameStatus status = RollLog_Edit(&game->log, edit, &edited);
+    status = RollLog_Edit(&game->log, edit, &edited);
     if (status == GAME_OK) {
         game->busy = true;
         status = Game_ApplyEditedLog(game, &edited);
