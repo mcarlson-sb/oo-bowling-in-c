@@ -359,3 +359,17 @@ TEST(TenPinScorerQueryTest, should_report_each_frame_as_unknown_until_it_is_comp
     EXPECT_TRUE(first.complete);
     EXPECT_EQ(17U, first.score);
 }
+
+TEST(TenPinScorerQueryTest, should_report_the_pins_standing_and_when_the_game_is_over)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    EXPECT_EQ(10U, Scorer_PinsStanding(&scorer));
+    RollAll(&scorer, {6U});
+    EXPECT_EQ(4U, Scorer_PinsStanding(&scorer));
+    RollAll(&scorer, {4U});
+    EXPECT_EQ(10U, Scorer_PinsStanding(&scorer)); /* a new frame, a fresh rack */
+    RollMany(&scorer, 17, 0U);
+    EXPECT_FALSE(Scorer_IsOver(&scorer));
+    RollAll(&scorer, {0U});
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+}

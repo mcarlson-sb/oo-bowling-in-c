@@ -386,3 +386,17 @@ ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index)
     }
     return result;
 }
+
+Pins Scorer_PinsStanding(const Scorer *self)
+{
+    Lane lane;
+    Lane_Walk(&lane, self);
+    return lane.standing;
+}
+
+bool Scorer_IsOver(const Scorer *self)
+{
+    Lane lane;
+    Lane_Walk(&lane, self);
+    return lane.phase == LANE_OVER;
+}

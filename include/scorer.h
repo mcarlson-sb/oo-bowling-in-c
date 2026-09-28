@@ -79,6 +79,12 @@ GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events);
 /* The total of the complete frames. */
 Score Scorer_Score(const Scorer *self);
 
+/* The pins standing for the next ball. */
+Pins Scorer_PinsStanding(const Scorer *self);
+
+/* True once the last frame, and its fill balls, are done. */
+bool Scorer_IsOver(const Scorer *self);
+
 /* Frames started so far: a frame starts with its first ball. */
 uint8_t Scorer_FrameCount(const Scorer *self);
 
