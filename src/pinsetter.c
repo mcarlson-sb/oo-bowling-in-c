@@ -16,12 +16,9 @@ static Pinsetter s_pinsetters[PINSETTER_POOL_SIZE];
 static bool s_in_use[PINSETTER_POOL_SIZE];
 static SlotPool s_pool = { s_in_use, PINSETTER_POOL_SIZE, s_pinsetters, sizeof(Pinsetter) };
 
-Pinsetter *Pinsetter_Create(void)
+/* An empty ring, nothing lost, no drain or post under way. */
+static void Pinsetter_Reset(Pinsetter *pinsetter)
 {
-    Pinsetter *pinsetter = SlotPool_Take(&s_pool);
-    if (pinsetter == NULL) {
-        Fault_Stop("pinsetter: none free; PINSETTER_POOL_SIZE is smaller than the lanes");
-    }
     atomic_store(&pinsetter->post_at, 0U);
     atomic_store(&pinsetter->drain_at, 0U);
     atomic_store(&pinsetter->rolls_lost, 0U);
@@ -29,6 +26,15 @@ Pinsetter *Pinsetter_Create(void)
 #if PINSETTER_CHECK_OVERLAP
     atomic_flag_clear(&pinsetter->posting);
 #endif
+}
+
+Pinsetter *Pinsetter_Create(void)
+{
+    Pinsetter *pinsetter = SlotPool_Take(&s_pool);
+    if (pinsetter == NULL) {
+        Fault_Stop("pinsetter: none free; PINSETTER_POOL_SIZE is smaller than the lanes");
+    }
+    Pinsetter_Reset(pinsetter);
     return pinsetter;
 }
 
