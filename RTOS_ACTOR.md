@@ -164,3 +164,61 @@ That number can't be the ENG-1.3 stack contract. Decided with the user:
   its own (`pthread_attr_setstack`), scanned after the integration tests. It measures real use,
   but only for the paths the tests take, so it can confirm the contract, never set it.
 - On a real target `uxTaskGetStackHighWaterMark` works, and would be the third check.
+
+## Mutation testing (Mull), before the strangle
+
+Mull 0.34.1 for LLVM 18, in WSL Ubuntu 24.04 (Mull has no Windows release). `tools/mutation.sh`
+builds the library through Mull's clang plugin and runs the whole test binary once per mutant;
+`tools/mull.yml` keeps the mutants in `src/`. Two modes, because some code only runs in one kind
+of build: `debug` (asserts on) and `release` (`NDEBUG`), which reaches the guards that stand
+behind an `assert`.
+
+### The baseline, at 4fa38df (kay-oo's legacy code plus the ten-pin core)
+
+| Mode | Mutants | Killed | Timed out | Survived | Score |
+|---|---|---|---|---|---|
+| debug | 497 | 435 | 31 | 31 | 93.8% |
+| release | 491 | 432 | 34 | 25 | 94.9% |
+
+A mutant that times out is detected: a mutant that loops forever is caught. The release run
+kills the six debug survivors that stand behind an `assert` (`roll_list.c`, `roll_log.c`) or
+exist only for one (`Scorecard_AllFramesCompleteBefore`).
+
+### What the survivors were
+
+Six were real gaps. Each now has a test that fails against its mutant:
+
+| Where | Mutant | Test added |
+|---|---|---|
+| `scorer.c`, a fill ball's fresh rack | 42 pins, not 10 | a fill ball of 11 after one clears the rack is rejected |
+| `scorer.c`, the edit's ball limit | `>` to `>=` | an edit that leaves exactly 21 balls is accepted |
+| `scorer.c`, where new balls go | `index - first` to `index + first` | new balls inserted after ball one land where the edit starts |
+| `game.c`, `Game_EditRolls` | the busy mark removed | a roll from inside an edit's notification gets `GAME_ERR_BUSY` |
+| `slot_pool.c`, `SlotPool_Find` | `<` to `<=` | a pointer one past the pool is not a game |
+| `fault.c`, `Fault_Stop` | `abort()` removed | `Fault_Stop` ends the process with `abort()` (SIGABRT): kills a hand mutant that exits another way (`_Exit(1)`), but not Mull's, which deletes the call from a `_Noreturn` function and so leaves undefined behavior that still dies as expected |
+
+The three legacy ones pin kay-oo's behavior, so the new core can't drift from it unnoticed.
+
+After the six tests (debug mode, 8387bdc): 497 mutants, 440 killed, 31 timed out, **26
+survived, 94.8%**, up from 93.8%. Five of the six are killed; the sixth is the `Fault_Stop`
+case above.
+
+The rest are not test gaps:
+
+- **Equivalent through `bool` (7).** Mull replaces a value with 42, and a `bool` holds only its
+  lowest bit: 42 is even, so `busy = 42` stores `false`, the value it replaced. `frame.c`,
+  `game.c` (2), `pinsetter.c` (2), `slot_pool.c`, `scorer.c`.
+- **Equivalent by the code around them (9).** Four in `frame_reporter.h` only add loop
+  iterations that do nothing; `Frame_CopyRolls` counting down copies the only roll a spare's
+  frame ever has; two initial values in `slot_pool.c` and one in `scorer.c` are always
+  overwritten before they are read; `scorer.c`'s `>` to `>=` picks between two equal values.
+- **Undefined behavior that happens to pass (2).** `roll_edit.c` without `RollLog_Init` reads an
+  uninitialized count, and `scorer.c`'s `<` to `<=` in `Scorer_CompleteFrames` reads one
+  uninitialized frame. No test can pin these reliably; a memory sanitizer (MSan, Valgrind) would
+  see them, and none runs here.
+- **Not observable (1).** `Fault_Stop` without its trailing newline still prints the reason.
+
+### How often it runs
+
+A run takes about 2.5 minutes a mode, far too slow for the commit loop. It runs at each phase's
+stop for review, and before deleting code it pins (the strangle), not on every commit or push.
