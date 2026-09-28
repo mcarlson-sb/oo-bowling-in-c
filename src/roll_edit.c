@@ -23,6 +23,12 @@ static bool RollEdit_IsMissingNewPins(const RollEdit *edit)
     return (edit->new_pins == NULL) && (edit->new_count > 0U);
 }
 
+/* Only once RollEdit_IsWithinLog holds: more rolls removed than the log has would wrap. */
+static unsigned RollEdit_ResultingRollCount(const RollEdit *edit, const RollLog *log)
+{
+    return ((unsigned)RollLog_Count(log) - edit->rolls_removed) + edit->new_count;
+}
+
 static GameStatus RollEdit_Check(const RollEdit *edit, const RollLog *log)
 {
     if (edit == NULL) {
@@ -34,9 +40,7 @@ static GameStatus RollEdit_Check(const RollEdit *edit, const RollLog *log)
     if (RollEdit_IsMissingNewPins(edit)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
-    const unsigned new_length =
-        ((unsigned)RollLog_Count(log) - edit->rolls_removed) + edit->new_count;
-    if (new_length > GAME_MAX_ROLLS) {
+    if (RollEdit_ResultingRollCount(edit, log) > GAME_MAX_ROLLS) {
         return GAME_ERR_TOO_MANY_ROLLS;
     }
     return GAME_OK;
