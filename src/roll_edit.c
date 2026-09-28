@@ -10,12 +10,21 @@ static inline uint8_t RollNumber_ToIndex(RollNumber roll_number)
     return (uint8_t)(roll_number - 1U);
 }
 
+static bool RollEdit_StartsAtARoll(const RollEdit *edit, const RollLog *log)
+{
+    return (edit->first_roll != 0U) && (edit->first_roll <= RollLog_Count(log));
+}
+
+static bool RollEdit_RemovesOnlyExistingRolls(const RollEdit *edit, const RollLog *log)
+{
+    const uint8_t first_index = RollNumber_ToIndex(edit->first_roll);
+    return (first_index + edit->rolls_removed) <= RollLog_Count(log);
+}
+
+/* Starts at a roll the log has, before asking what it removes: roll 0 has no index. */
 static bool RollEdit_IsWithinLog(const RollEdit *edit, const RollLog *log)
 {
-    const uint8_t count = RollLog_Count(log);
-    const uint8_t first_index = RollNumber_ToIndex(edit->first_roll);
-    return (edit->first_roll != 0U) && (edit->first_roll <= count) &&
-           ((first_index + edit->rolls_removed) <= count);
+    return RollEdit_StartsAtARoll(edit, log) && RollEdit_RemovesOnlyExistingRolls(edit, log);
 }
 
 static bool RollEdit_IsMissingNewPins(const RollEdit *edit)
