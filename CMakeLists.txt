@@ -88,6 +88,7 @@ add_executable(bowling_tests
     test/roll_list_test.cpp
     test/roll_log_test.cpp
     test/slot_pool_test.cpp
+    test/frame_listeners_test.cpp
     test/game_test.cpp
     test/nine_pin_no_tap_test.cpp
     test/scoreboard_test.cpp

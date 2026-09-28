@@ -3,6 +3,7 @@
 
 /* Who a game tells about changed frames. It keeps and tells them, and nothing more. */
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -40,6 +41,7 @@ static inline void FrameListeners_Tell(FrameListeners *self, FrameNumber frame_n
 static inline void FrameListeners_TellNewest(const FrameListeners *self, FrameNumber frame_number,
                                              Score frame_score, bool frame_complete)
 {
+    assert(self->count > 0U);
     if (self->count == 0U) {
         return;
     }
