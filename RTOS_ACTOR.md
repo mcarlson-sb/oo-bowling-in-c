@@ -222,3 +222,8 @@ The rest are not test gaps:
 
 A run takes about 2.5 minutes a mode, far too slow for the commit loop. It runs at each phase's
 stop for review, and before deleting code it pins (the strangle), not on every commit or push.
+
+A nightly run was considered and skipped for now (2026-09-28). GitHub runs scheduled and
+manually dispatched workflows only from the default branch's workflow files, so a nightly for
+this branch would mean a commit to `main`, which stays untouched. The checkpoints above are the
+cadence.
