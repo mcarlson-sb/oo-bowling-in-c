@@ -9,13 +9,6 @@
 #include "pinsetter_hooks.h"
 #include "pinsetter_ring.h"
 
-#if PINSETTER_CHECK_OVERLAP
-void Pinsetter_HookPostUnderWay(Pinsetter *pinsetter)
-{
-    (void)atomic_flag_test_and_set(&pinsetter->posting);
-}
-#endif
-
 static bool Pinsetter_Enqueue(Pinsetter *pinsetter, Pins pins)
 {
     const unsigned post_at = Pinsetter_PostAt(pinsetter);

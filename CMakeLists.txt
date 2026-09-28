@@ -37,6 +37,7 @@ add_library(bowling STATIC
     src/frame_reporter.c
     src/game.c
     src/pinsetter.c
+    src/pinsetter_hooks.c
     src/pinsetter_isr.c
     src/regular_frame.c
     src/roll_list.c
