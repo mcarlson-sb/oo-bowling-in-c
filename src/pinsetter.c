@@ -33,17 +33,28 @@ Pinsetter *Pinsetter_Create(void)
     return pinsetter;
 }
 
-void Pinsetter_Destroy(Pinsetter *pinsetter)
+static bool Pinsetter_FindSlot(const Pinsetter *pinsetter, uint8_t *slot)
 {
     for (uint8_t i = 0U; i < PINSETTER_POOL_SIZE; i++) {
         if (&s_pinsetters[i] == pinsetter) {
-            if (pinsetter->draining) {
-                Fault_Stop("pinsetter: destroyed while draining");
-            }
-            if (!SlotPool_Release(&s_pool, i)) {
-                Fault_Stop("pinsetter: destroyed twice");
-            }
+            *slot = i;
+            return true;
         }
+    }
+    return false;
+}
+
+void Pinsetter_Destroy(Pinsetter *pinsetter)
+{
+    uint8_t slot = 0U;
+    if (!Pinsetter_FindSlot(pinsetter, &slot)) {
+        return;
+    }
+    if (pinsetter->draining) {
+        Fault_Stop("pinsetter: destroyed while draining");
+    }
+    if (!SlotPool_Release(&s_pool, slot)) {
+        Fault_Stop("pinsetter: destroyed twice");
     }
 }
 
