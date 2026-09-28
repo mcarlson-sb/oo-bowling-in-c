@@ -52,6 +52,12 @@ void Scorer_Init(Scorer *self, ScorerVariant variant);
 
 GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events);
 
+/* Applies the edit (see RollEdit) and replays every ball; reports every frame again, the final
+ * state only, with complete = false for a frame the edit reopened. Rejected, changing nothing,
+ * with the status of the first ball it makes impossible, or with GAME_ERR_INVALID_EDIT,
+ * GAME_ERR_NO_SUCH_ROLL or GAME_ERR_TOO_MANY_ROLLS. */
+GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events);
+
 /* The total of the complete frames. */
 Score Scorer_Score(const Scorer *self);
 

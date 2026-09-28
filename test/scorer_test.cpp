@@ -180,3 +180,88 @@ TEST(TenPinScorerTest, should_score_random_games_as_the_reference_does)
         }
     }
 }
+
+/* ---- Edits: check, replay, and report only the final state ----------------------------- */
+
+namespace {
+
+RollEdit Replace(RollNumber first_ball, uint8_t removed, const std::vector<Pins> &new_pins)
+{
+    return RollEdit{first_ball, removed, new_pins.empty() ? nullptr : new_pins.data(),
+                    static_cast<uint8_t>(new_pins.size())};
+}
+
+} // namespace
+
+TEST(TenPinScorerEditTest, should_rescore_and_report_every_complete_frame_after_a_correction)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {3U, 4U, 5U, 5U, 2U}); /* 7, then a spare waiting... 12 */
+    const std::vector<Pins> five = {5U};
+    const RollEdit edit = Replace(1U, 1U, five);
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ((std::vector<Event>{{1, 9, true}, {2, 12, true}}), EventsOf(events));
+    EXPECT_EQ(21U, Scorer_Score(&scorer));
+}
+
+TEST(TenPinScorerEditTest, should_reject_an_edit_that_makes_a_ball_impossible_and_change_nothing)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {3U, 4U, 5U, 5U, 2U});
+    const std::vector<Pins> eight = {8U};
+    const RollEdit edit = Replace(2U, 1U, eight); /* 3 then 8: 11 pins */
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ(0U, events.count);
+    EXPECT_EQ(19U, Scorer_Score(&scorer));
+}
+
+TEST(TenPinScorerEditTest, should_report_a_frame_the_edit_reopened_as_not_complete)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {5U, 5U, 2U}); /* frame 1, a spare, is complete at 12 */
+    const RollEdit edit = Replace(3U, 1U, {}); /* delete the 2: the spare waits again */
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ((std::vector<Event>{{1, 0, false}}), EventsOf(events));
+    EXPECT_EQ(0U, Scorer_Score(&scorer));
+}
+
+TEST(TenPinScorerEditTest, should_reject_an_edit_outside_the_balls_the_game_has_had)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {3U, 4U});
+    const std::vector<Pins> one = {1U};
+    FrameEvents events;
+    const RollEdit at_zero = Replace(0U, 1U, one);         /* balls count from 1 */
+    const RollEdit past_the_end = Replace(3U, 0U, one);    /* adding a ball is a roll */
+    const RollEdit removes_too_many = Replace(2U, 2U, one); /* only one ball from 2 on */
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Scorer_Edit(&scorer, &at_zero, &events));
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Scorer_Edit(&scorer, &past_the_end, &events));
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, Scorer_Edit(&scorer, &removes_too_many, &events));
+    EXPECT_EQ(7U, Scorer_Score(&scorer));
+}
+
+TEST(TenPinScorerEditTest, should_reject_a_null_edit_or_one_that_promises_balls_it_does_not_give)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {3U, 4U});
+    FrameEvents events;
+    const RollEdit no_pins = {1U, 1U, nullptr, 1U};
+    EXPECT_EQ(GAME_ERR_INVALID_EDIT, Scorer_Edit(&scorer, nullptr, &events));
+    EXPECT_EQ(GAME_ERR_INVALID_EDIT, Scorer_Edit(&scorer, &no_pins, &events));
+    EXPECT_EQ(7U, Scorer_Score(&scorer));
+}
+
+TEST(TenPinScorerEditTest, should_reject_an_edit_that_leaves_more_balls_than_a_game_can_have)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollMany(&scorer, 12, 10U); /* a perfect game, 12 balls */
+    RollAll(&scorer, {});
+    const std::vector<Pins> ten_ones(10U, 1U);
+    const RollEdit edit = Replace(1U, 0U, ten_ones); /* 22 balls */
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_TOO_MANY_ROLLS, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ(300U, Scorer_Score(&scorer));
+}

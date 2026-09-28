@@ -1,5 +1,7 @@
 #include "scorer.h"
 
+#include <stddef.h>
+
 /* A frame takes at most this many balls of its own, in any variant. */
 #define SCORER_MAX_BALLS_PER_FRAME 3U
 
@@ -8,6 +10,7 @@ typedef struct {
     uint8_t frames;
     uint8_t balls_per_frame;
     Pins pins_per_rack;
+    uint8_t max_balls; /* in a whole game */
     /* Bonus balls owed by a frame that clears the rack, by the ball that cleared it: [0] is the
      * first ball (a strike), [1] the second (a spare). */
     uint8_t bonus_balls[SCORER_MAX_BALLS_PER_FRAME];
@@ -15,7 +18,7 @@ typedef struct {
 
 static const VariantRules k_variant_rules[] = {
     [SCORER_TEN_PIN] = { .frames = 10U, .balls_per_frame = 2U, .pins_per_rack = 10U,
-                         .bonus_balls = { 2U, 1U, 0U } },
+                         .max_balls = 21U, .bonus_balls = { 2U, 1U, 0U } },
 };
 
 /* Where a frame's balls are in the game's list, and how many bonus balls it is owed. */
@@ -228,4 +231,111 @@ Score Scorer_Score(const Scorer *self)
         }
     }
     return score;
+}
+
+/* ---- Edits ------------------------------------------------------------------------------ */
+
+static bool Scorer_EditStartsAtABall(const Scorer *self, const RollEdit *edit)
+{
+    return (edit->first_roll != 0U) && (edit->first_roll <= self->ball_count);
+}
+
+/* Only once it starts at a ball: ball 0 has no index. */
+static bool Scorer_EditRemovesOnlyExistingBalls(const Scorer *self, const RollEdit *edit)
+{
+    return ((unsigned)(edit->first_roll - 1U) + edit->rolls_removed) <= self->ball_count;
+}
+
+static bool RollEdit_PromisesBallsWithoutPins(const RollEdit *edit)
+{
+    return (edit->new_pins == NULL) && (edit->new_count > 0U);
+}
+
+/* Only once the edit is within the balls: more removed than there are would wrap. */
+static unsigned Scorer_BallsAfterEdit(const Scorer *self, const RollEdit *edit)
+{
+    return ((unsigned)self->ball_count - edit->rolls_removed) + edit->new_count;
+}
+
+/* The same rules, in the same order, as the Game facade's edits. */
+static GameStatus Scorer_CheckEdit(const Scorer *self, const RollEdit *edit)
+{
+    if (edit == NULL) {
+        return GAME_ERR_INVALID_EDIT;
+    }
+    if (!Scorer_EditStartsAtABall(self, edit) || !Scorer_EditRemovesOnlyExistingBalls(self, edit)) {
+        return GAME_ERR_NO_SUCH_ROLL;
+    }
+    if (RollEdit_PromisesBallsWithoutPins(edit)) {
+        return GAME_ERR_INVALID_EDIT;
+    }
+    if (Scorer_BallsAfterEdit(self, edit) > Scorer_Rules(self)->max_balls) {
+        return GAME_ERR_TOO_MANY_ROLLS;
+    }
+    return GAME_OK;
+}
+
+/* The ball at `index` of the edited game: before the range, the new balls, then after it. */
+static Pins Scorer_EditedBall(const Scorer *self, const RollEdit *edit, uint8_t index)
+{
+    const uint8_t first = (uint8_t)(edit->first_roll - 1U);
+    if (index < first) {
+        return self->balls[index];
+    }
+    if (index < (uint8_t)(first + edit->new_count)) {
+        return edit->new_pins[index - first];
+    }
+    return self->balls[(uint8_t)(index - edit->new_count + edit->rolls_removed)];
+}
+
+/* Every ball of the edited game into a fresh copy, each judged as a roll would be. */
+static GameStatus Scorer_ReplayEdited(const Scorer *self, const RollEdit *edit, Scorer *edited)
+{
+    FrameEvents ignored;
+    Scorer_Init(edited, self->variant);
+    const uint8_t count = (uint8_t)Scorer_BallsAfterEdit(self, edit);
+    for (uint8_t i = 0U; i < count; i++) {
+        const GameStatus status = Scorer_Roll(edited, Scorer_EditedBall(self, edit, i), &ignored);
+        if (status != GAME_OK) {
+            return status;
+        }
+    }
+    return GAME_OK;
+}
+
+/* After an edit, every frame again: a complete one with its score, and one that was complete
+ * but no longer is with complete = false. */
+static void Scorer_ReportAll(const Scorer *self, uint8_t were_complete, FrameEvents *events)
+{
+    Lane lane;
+    Lane_Walk(&lane, self);
+    const uint8_t now_complete = Scorer_CompleteFrames(self, &lane);
+    const uint8_t frames = (were_complete > now_complete) ? were_complete : now_complete;
+    for (uint8_t i = 0U; i < frames; i++) {
+        if (i < now_complete) {
+            FrameEvents_Add(events, i, Scorer_FrameScore(self, &lane.frames[i]), true);
+        } else {
+            FrameEvents_Add(events, i, 0U, false);
+        }
+    }
+}
+
+GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events)
+{
+    events->count = 0U;
+    const GameStatus checked = Scorer_CheckEdit(self, edit);
+    if (checked != GAME_OK) {
+        return checked;
+    }
+    Scorer edited;
+    const GameStatus replayed = Scorer_ReplayEdited(self, edit, &edited);
+    if (replayed != GAME_OK) {
+        return replayed; /* self was never touched: nothing to undo */
+    }
+    Lane before;
+    Lane_Walk(&before, self);
+    const uint8_t were_complete = Scorer_CompleteFrames(self, &before);
+    *self = edited; /* a plain value, so a copy is the whole game */
+    Scorer_ReportAll(self, were_complete, events);
+    return GAME_OK;
 }
