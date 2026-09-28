@@ -10,7 +10,7 @@ static inline uint8_t RollNumber_ToIndex(RollNumber roll_number)
     return (uint8_t)(roll_number - 1U);
 }
 
-static bool RollEdit_HasRange(const RollEdit *edit, const RollLog *log)
+static bool RollEdit_IsWithinLog(const RollEdit *edit, const RollLog *log)
 {
     const uint8_t count = RollLog_Count(log);
     const uint8_t first_index = RollNumber_ToIndex(edit->first_roll);
@@ -18,15 +18,20 @@ static bool RollEdit_HasRange(const RollEdit *edit, const RollLog *log)
            ((first_index + edit->rolls_removed) <= count);
 }
 
+static bool RollEdit_IsMissingNewPins(const RollEdit *edit)
+{
+    return (edit->new_pins == NULL) && (edit->new_count > 0U);
+}
+
 static GameStatus RollEdit_Check(const RollEdit *edit, const RollLog *log)
 {
     if (edit == NULL) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
-    if (!RollEdit_HasRange(edit, log)) {
+    if (!RollEdit_IsWithinLog(edit, log)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
-    if ((edit->new_pins == NULL) && (edit->new_count > 0U)) {
+    if (RollEdit_IsMissingNewPins(edit)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
     const unsigned new_length =
