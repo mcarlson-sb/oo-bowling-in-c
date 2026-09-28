@@ -50,6 +50,12 @@ typedef struct {
     uint8_t count;
 } FrameEvents;
 
+/* One frame: its score, and whether that score is known yet. */
+typedef struct {
+    Score score; /* 0 until complete */
+    bool complete;
+} ScorerFrame;
+
 typedef struct {
     ScorerVariant variant;
     CountRule rule;
@@ -72,6 +78,12 @@ GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events);
 
 /* The total of the complete frames. */
 Score Scorer_Score(const Scorer *self);
+
+/* Frames started so far: a frame starts with its first ball. */
+uint8_t Scorer_FrameCount(const Scorer *self);
+
+/* Frame `index` (the first is 0), which must have started. */
+ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index);
 
 #ifdef __cplusplus
 }

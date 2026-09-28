@@ -365,3 +365,24 @@ GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events)
     Scorer_ReportAll(self, were_complete, events);
     return GAME_OK;
 }
+
+/* ---- Questions ------------------------------------------------------------------------- */
+
+uint8_t Scorer_FrameCount(const Scorer *self)
+{
+    Lane lane;
+    Lane_Walk(&lane, self);
+    return lane.frame_count;
+}
+
+ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index)
+{
+    Lane lane;
+    Lane_Walk(&lane, self);
+    const FrameShape *frame = &lane.frames[index];
+    ScorerFrame result = { 0U, Scorer_IsFrameComplete(self, frame) };
+    if (result.complete) {
+        result.score = Lane_FrameScore(&lane, frame);
+    }
+    return result;
+}

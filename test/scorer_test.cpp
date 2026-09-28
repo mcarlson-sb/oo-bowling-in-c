@@ -345,3 +345,17 @@ TEST(TenPinScorerEditTest, should_put_new_balls_where_the_edit_starts_when_it_st
     EXPECT_EQ((std::vector<Event>{{1, 7, true}, {2, 11, true}}), EventsOf(events));
     EXPECT_EQ(18U, Scorer_Score(&scorer));
 }
+
+/* ---- Questions a caller can ask ------------------------------------------------------- */
+
+TEST(TenPinScorerQueryTest, should_report_each_frame_as_unknown_until_it_is_complete)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {10U, 3U});
+    EXPECT_EQ(2U, Scorer_FrameCount(&scorer)); /* frames started */
+    EXPECT_FALSE(Scorer_Frame(&scorer, 0U).complete); /* the strike waits for one more ball */
+    RollAll(&scorer, {4U});
+    const ScorerFrame first = Scorer_Frame(&scorer, 0U);
+    EXPECT_TRUE(first.complete);
+    EXPECT_EQ(17U, first.score);
+}
