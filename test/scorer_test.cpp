@@ -1,0 +1,42 @@
+/* The scorer core: a pure, data-driven scorer with no callbacks. Each operation returns a
+ * status, and writes the frame changes it caused to a buffer the caller supplies. */
+
+#include <gtest/gtest.h>
+
+#include <initializer_list>
+
+#include "scorer.h"
+
+namespace {
+
+Scorer MakeScorer(ScorerVariant variant)
+{
+    Scorer scorer;
+    Scorer_Init(&scorer, variant);
+    return scorer;
+}
+
+/* Setup balls: each must be accepted, or the test isn't testing what it says. */
+void RollAll(Scorer *scorer, std::initializer_list<Pins> balls)
+{
+    for (const Pins pins : balls) {
+        FrameEvents events;
+        ASSERT_EQ(GAME_OK, Scorer_Roll(scorer, pins, &events)) << "setup ball of " << +pins;
+    }
+}
+
+void RollMany(Scorer *scorer, int count, Pins pins)
+{
+    for (int i = 0; i < count; i++) {
+        RollAll(scorer, {pins});
+    }
+}
+
+} // namespace
+
+TEST(TenPinScorerTest, should_add_up_open_frames)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollMany(&scorer, 20, 1U);
+    EXPECT_EQ(20U, Scorer_Score(&scorer));
+}
