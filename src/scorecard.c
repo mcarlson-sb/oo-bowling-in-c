@@ -27,10 +27,15 @@ Pins Scorecard_PinsStanding(const Scorecard *self)
     return FrameContext_PinsStanding(&self->frames[self->frame_count - 1U]);
 }
 
+static bool Scorecard_NextFrameIsTenth(const Scorecard *self)
+{
+    return self->frame_count == (SCORECARD_FRAMES - 1U);
+}
+
 static void Scorecard_AddNewFrame(Scorecard *self, Pins pins)
 {
     FrameContext *new_frame = &self->frames[self->frame_count];
-    if (self->frame_count == (SCORECARD_FRAMES - 1U)) {
+    if (Scorecard_NextFrameIsTenth(self)) {
         FrameContext_InitTenth(new_frame);
     } else {
         FrameContext_Init(new_frame);
