@@ -27,7 +27,7 @@ static bool RollEdit_IsWithinLog(const RollEdit *edit, const RollLog *log)
     return RollEdit_StartsAtARoll(edit, log) && RollEdit_RemovesOnlyExistingRolls(edit, log);
 }
 
-static bool RollEdit_IsMissingNewPins(const RollEdit *edit)
+static bool RollEdit_PromisesRollsWithoutPins(const RollEdit *edit)
 {
     return (edit->new_pins == NULL) && (edit->new_count > 0U);
 }
@@ -46,7 +46,7 @@ static GameStatus RollEdit_Check(const RollEdit *edit, const RollLog *log)
     if (!RollEdit_IsWithinLog(edit, log)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
-    if (RollEdit_IsMissingNewPins(edit)) {
+    if (RollEdit_PromisesRollsWithoutPins(edit)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
     if (RollEdit_ResultingRollCount(edit, log) > GAME_MAX_ROLLS) {
