@@ -73,9 +73,26 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
 else()
     set(OO_C_INTERRUPT_STACK_LIMIT 160)
 endif()
-target_compile_options(bowling PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
-set_source_files_properties(src/pinsetter_isr.c PROPERTIES
-    COMPILE_OPTIONS -Wstack-usage=${OO_C_INTERRUPT_STACK_LIMIT})
+# GCC's option: clang has no -Wstack-usage. Every build that gates on it uses GCC; clang only
+# builds the mutation-testing configuration below.
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(bowling PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
+    set_source_files_properties(src/pinsetter_isr.c PROPERTIES
+        COMPILE_OPTIONS -Wstack-usage=${OO_C_INTERRUPT_STACK_LIMIT})
+endif()
+
+# Mutation testing with Mull (tools/mull.yml, tools/mutation.sh): clang compiles the library
+# through Mull's plugin, which builds every mutant into it; mull-runner then runs the tests once
+# per mutant. The tests themselves aren't instrumented. Needs clang and Mull of the same LLVM
+# version (Mull 0.34.1 for LLVM 18 on Ubuntu 24.04).
+option(OO_C_MUTATION "Build the library with Mull's mutants in it (clang only)" OFF)
+set(OO_C_MULL_PLUGIN "/usr/lib/mull-ir-frontend-18" CACHE FILEPATH "Mull's clang plugin")
+if(OO_C_MUTATION)
+    if(NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        message(FATAL_ERROR "OO_C_MUTATION needs clang, the compiler Mull's plugin loads into")
+    endif()
+    target_compile_options(bowling PRIVATE -fpass-plugin=${OO_C_MULL_PLUGIN} -g -grecord-command-line)
+endif()
 
 # ---- Host unit tests (GoogleTest) -----------------------------------------
 include(FetchContent)

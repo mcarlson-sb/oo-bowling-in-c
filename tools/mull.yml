@@ -1,0 +1,10 @@
+# Mull (mutation testing) for the library's own code: mutants in src/ only, never in the tests
+# or GoogleTest. See tools/mutation.sh.
+mutators:
+  - cxx_all
+includePaths:
+  - .*/src/.*
+excludePaths:
+  - .*/_deps/.*
+  - .*/test/.*
+timeout: 10000
