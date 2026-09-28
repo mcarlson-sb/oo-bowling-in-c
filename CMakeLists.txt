@@ -100,6 +100,7 @@ add_executable(bowling_tests
     test/correction_test.cpp
     test/pinsetter_test.cpp
     test/remote_scoreboard_test.cpp
+    test/reference_scorer_test.cpp
     test/pinsetter_overlap_test.cpp
 )
 find_package(Threads REQUIRED) # the pinsetter test runs a second thread
