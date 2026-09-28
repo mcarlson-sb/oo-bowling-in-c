@@ -39,11 +39,10 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     if (count_pins == NULL) {
         return NULL;
     }
-    uint8_t slot = 0U;
-    if (!SlotPool_Acquire(&s_pool, &slot)) {
+    Game *game = SlotPool_Take(&s_pool);
+    if (game == NULL) {
         return NULL;
     }
-    Game *game = &s_games[slot];
     Scorecard_Init(&game->scorecard);
     game->count_pins = count_pins;
     FrameReporter_Init(&game->reporter);
@@ -56,14 +55,13 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
  * away, as Game_Create returning NULL. */
 void Game_Destroy(Game *game)
 {
-    uint8_t slot = 0U;
-    if (!SlotPool_Find(&s_pool, game, &slot)) {
+    if (!SlotPool_Holds(&s_pool, game)) {
         return;
     }
     if (game->busy) {
         Fault_Stop("game: destroyed while busy, from inside its own callback or rule");
     }
-    if (!SlotPool_Release(&s_pool, slot)) {
+    if (!SlotPool_Return(&s_pool, game)) {
         Fault_Stop("game: destroyed twice");
     }
 }

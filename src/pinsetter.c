@@ -18,11 +18,10 @@ static SlotPool s_pool = { s_in_use, PINSETTER_POOL_SIZE, s_pinsetters, sizeof(P
 
 Pinsetter *Pinsetter_Create(void)
 {
-    uint8_t slot = 0U;
-    if (!SlotPool_Acquire(&s_pool, &slot)) {
+    Pinsetter *pinsetter = SlotPool_Take(&s_pool);
+    if (pinsetter == NULL) {
         Fault_Stop("pinsetter: none free; PINSETTER_POOL_SIZE is smaller than the lanes");
     }
-    Pinsetter *pinsetter = &s_pinsetters[slot];
     atomic_store(&pinsetter->post_at, 0U);
     atomic_store(&pinsetter->drain_at, 0U);
     atomic_store(&pinsetter->rolls_lost, 0U);
@@ -35,14 +34,13 @@ Pinsetter *Pinsetter_Create(void)
 
 void Pinsetter_Destroy(Pinsetter *pinsetter)
 {
-    uint8_t slot = 0U;
-    if (!SlotPool_Find(&s_pool, pinsetter, &slot)) {
+    if (!SlotPool_Holds(&s_pool, pinsetter)) {
         return;
     }
     if (pinsetter->draining) {
         Fault_Stop("pinsetter: destroyed while draining");
     }
-    if (!SlotPool_Release(&s_pool, slot)) {
+    if (!SlotPool_Return(&s_pool, pinsetter)) {
         Fault_Stop("pinsetter: destroyed twice");
     }
 }
