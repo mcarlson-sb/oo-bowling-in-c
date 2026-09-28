@@ -1576,10 +1576,11 @@ low. We don't just record debt. We fix it." Two extractions, one commit each:
   rules that are only about them: whether the game is over, the pins standing, the Chain of
   Responsibility that moves a roll along the frames, starting a new frame, and the score. It
   is the State pattern's client now, not `Game`.
-- **`FrameReporter`** (`src/frame_reporter.{h,c}`, `14b9d1e`): the listeners and `frames_told_complete`,
-  and everything that decides what they hear: the walk after a roll or an edit, the catch-up of
-  a new listener. It reads the `Scorecard` and never changes it. The walk stays `static inline`
-  in its header, as `FrameListeners_Tell` is, because every callback's stack sits on top of it.
+- **`FrameReporter`** (`src/frame_reporter.{h,c}`, `14b9d1e`): the listeners and
+  `frames_told_complete`, and everything that decides what they hear: the walk after a roll or
+  an edit, the catch-up of a new listener. It reads the `Scorecard` and never changes it. The
+  walk stays `static inline` in its header, as `FrameListeners_Tell` is, because every
+  callback's stack sits on top of it.
 
 `game.c` is 199 lines, from 313: the pool, a roll's checks and the caller's rule, the busy
 guard, and replaying an edit. The busy flag stays the game's: `Game` sets it around the
@@ -1679,6 +1680,32 @@ same. At `-O0`, where `static inline` is not inlined, two things grew the bases:
 is one more frame under the callback (+64), and `Game_EditRolls` holds three named results
 (+16, under both). `game.h` states the new `-O0` figures.
 
+### An independent reference, and the fail-stops counted
+
+The analysis rubric's top band for tests now asks for the library to be checked against a
+separate, deliberately simple implementation, not only against itself. Three commits:
+
+- **`test/reference_scorer_test.cpp`** (`d94cc37`, `[make-change]`): the classic procedural
+  kata, about twenty lines, in the test and sharing no code with the library. A seeded random
+  test rolls 1,000 games (1 to 21 rolls, one roll in four clearing the rack) and compares
+  `Game_Score` with the reference after every roll, under the standard rule and under no-tap,
+  where the reference counts each roll with the same rule on its own model of the lane. It
+  passed as written; two mutants showed it can fail:
+
+  | Mutant | Reference tests | All tests failing |
+  |---|---|---|
+  | `SpareFrame_Roll` doesn't add the spare's bonus roll | both fail | 16 |
+  | `TenthStrikeFrame_Roll` ends the tenth frame after one fill ball | both fail | 8 |
+
+- **The fail-stops, counted** (`91135d2`): in the coverage builds only, the test executable
+  defines its own `Fault_Stop` (`test/coverage_fault_stop.c`), which calls `__gcov_dump()`
+  before `abort()`; defined in the executable, it keeps the library's `fault.c` out of the link,
+  as `fault.h` allows. Release coverage went from 98.1% of lines and 94.7% of branches to 99.8%
+  and 98.8%, and README's table of expected gaps lost its fail-stop row.
+- **The branch that exposed** (`504be7b`): with the fail-stops counted, one untaken branch was
+  left unexplained, an edit that removes rolls past the last one. The behavior was right and
+  untested; a test now asks for it, and a mutant dropping the check fails it alone.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on
@@ -1733,6 +1760,54 @@ reducing on host numbers, with no single frame standing out beyond `Game_EditRol
 budget has to be measured on the target (`ENG-1.3`).
 
 ---
+
+## What the phases did to the code
+
+The analysis tool in `temp-analysis/` (kept out of git) measured every phase's last commit in
+a temporary worktree: fourteen points from `main` to HEAD, with the same lizard, clang-tidy and
+coverage builds at each. Read left to right:
+
+| | main | phase 1 | phase 3 | phase 5 | 5b | 6 | 6b | cleanup | cleanup-b | deep-dive | comments | composed | HEAD |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Library code lines | 629 | 651 | 700 | 770 | 802 | 943 | 980 | 1,058 | 1,094 | 1,138 | 1,157 | 1,360 | 1,360 |
+| Test code lines | 313 | 373 | 569 | 799 | 959 | 1,306 | 1,325 | 1,325 | 1,418 | 1,707 | 1,707 | 1,789 | 1,909 |
+| `.c` files | 9 | 9 | 9 | 9 | 9 | 10 | 11 | 13 | 14 | 14 | 14 | 19 | 19 |
+| `game.c` code lines | 109 | 128 | 173 | 240 | 269 | 293 | 269 | 216 | 225 | 250 | 265 | 180 | 180 |
+| Cyclomatic max | 5 | 6 | 7 | 6 | **12** | **12** | **12** | 10 | 9 | 9 | 9 | 6 | 6 |
+| Cognitive max | 4 | 5 | 6 | 7 | **10** | **10** | **10** | **8** | **8** | **8** | **8** | 5 | 5 |
+| Comment share | 20% | 20% | 21% | 22% | 22% | 24% | 26% | 27% | 27% | 29% | 11% | 11% | 11% |
+| Release lines / branches | 100 / 98.6 | 100 / 98.6 | 100 / 98.9 | 100 / 99.1 | 100 / 98.4 | 99.8 / 97.3 | 98.8 / 97.9 | 98.8 / 97.9 | 98.7 / 97.4 | 97.9 / 95.3 | 97.9 / 95.3 | 98.1 / 94.7 | 99.8 / 98.8 |
+
+(Phase 2 is phase 1's code: declined. Bold is over `ENG-3.1`'s limits, which nothing checked
+until the clean-up's lizard gate and, later, the cognitive gate.)
+
+- **The features grew `game.c`, and nothing else.** Phases 1 to 5b added a caller's rule,
+  listeners, corrections and edits, and every one landed in `game.c`: 109 code lines to 269,
+  with the file count flat at nine. Phase 5b put the worst function in the history there,
+  `Game_EditRolls`, at cyclomatic 12 and cognitive 10, over both limits, unnoticed because no
+  gate existed.
+- **Phase 6 added a second object, not more of the first.** The pinsetter brought a second
+  opaque handle and its own files, and the test code grew fastest here (959 to 1,306 lines): a
+  thread, a ring and a wire each needed their own tests.
+- **The clean-ups turned size into files.** `kay-cleanup` took `game.c` from 269 to 216 lines
+  and the worst function from 12 to 10, by moving the listeners and the roll log out. The
+  composed-method round did the most: 14 to 19 `.c` files, 102 to 134 functions, the maximum
+  cyclomatic complexity from 9 to 6, cognitive from 8 to 5, `game.c` to 180 lines. The library
+  grew by 200 lines to get there, in declarations, headers and small named functions.
+- **Comments grew with the explanations, then were cut.** From 20% to 29% of library lines
+  across the phases, as each review added reasons to the code; the comment clean-up took it to
+  11%, and it has stayed there.
+- **Coverage dipped as the safety grew.** Release branch coverage fell from 99.1% at phase 5 to
+  94.7% by the composed methods, not from missing tests but because each new fail-stop was a
+  line only a death test reaches, which gcov couldn't see. Counting them brought it back to
+  98.8%.
+- **Where the complexity went.** At `main` the design was already bigger than the kata needed
+  (the reference scorer is twenty lines), but every function was simple. The features spent
+  that simplicity in one file; the clean-ups bought it back by spreading the same behavior over
+  more, smaller pieces. They bought back most of it, not all: HEAD's functions are a little
+  more complex than `main`'s on every measure (cyclomatic average 1.65 against 1.52, maximum 6
+  against 5; cognitive average 1.82 against 1.78, maximum 5 against 4), in a library twice the
+  size, for a rule, listeners, corrections, edits and a pinsetter.
 
 ## Conclusion: late binding pays at the boundaries between owners
 
