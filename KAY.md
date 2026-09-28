@@ -1706,6 +1706,23 @@ separate, deliberately simple implementation, not only against itself. Three com
   left unexplained, an edit that removes rolls past the last one. The behavior was right and
   untested; a test now asks for it, and a mutant dropping the check fails it alone.
 
+### Three more levels evened out
+
+A review found three functions still mixing levels. One commit each, tests unchanged:
+- **`Pinsetter_Create`** (`10f8b96`) did four raw atomic stores and an `#if` after taking a
+  pinsetter; `Pinsetter_Reset` holds them, so it reads as `Game_CreateWithRule` does.
+- **`Game_ApplyEditedLog`** (`347ca0f`) mixed struct copies with the story; `Game_ReplayWith`
+  and `Game_Restore` (which keeps the impure-rule fail-stop) lift them.
+- **`Scorecard_AddNewFrame`** (`2717a46`) did five things; `Scorecard_StartNextFrame`
+  and `Scorecard_GiveFirstRoll` leave "start it, give it the roll, count it".
+
+At `-O2` and in release no frame changed, and the interrupt side's object is identical. At
+`-O0` the restore path is two frames deeper under the rule, 384 → 480 bytes, which `game.h` now
+says; a shorter restore (assign and call `Game_Replay` directly) would have saved 48 of them by
+repeating `Game_ReplayWith`'s one line, and wasn't taken. The deepest `-O0` chain, which
+`game.h` doesn't state, grew from 1,024 to 1,168 bytes, from those frames and
+`Scorecard_GiveFirstRoll`'s.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on
