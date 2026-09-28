@@ -29,8 +29,14 @@ Each layer talks only to the one below it. Only the top layer is visible to call
 +--------------------------------------------------------------+
 |  Game                                   include/game.h       |  public
 |  opaque handle, pool of 2 games,        src/game.c           |
-|  counts each roll with its PinCountRule, then runs it along  |
-|  the chain of frames                                         |
+|  checks each roll and counts it with its PinCountRule        |
++--------------------------------------------------------------+
+        |  Scorecard_IsOver / _PinsStanding / _Roll / _Score
+        v
++--------------------------------------------------------------+
+|  Scorecard  (value)                     src/scorecard.*      |
+|  the ten frames; runs a roll along the chain of frames, and  |
+|  starts a new frame when none keeps it                       |
 +--------------------------------------------------------------+
         |  FrameContext_Roll / _Score / _IsComplete / _PinsStanding
         v
@@ -62,25 +68,34 @@ Each layer talks only to the one below it. Only the top layer is visible to call
   FrameNumber wherever a roll or a frame is numbered from 1.
 ```
 
-**Inside `Game`, beside the frames: two value types.** `Game` holds both by value, as it
-holds its frames, and each has one job that used to be part of `game.c`:
+**Inside `Game`: three value types.** `Game` holds each by value, and each has one job that
+used to be part of `game.c`. What is left in `game.c` is the pool, a roll's checks and the
+caller's rule, the busy guard, and replaying the log after an edit:
 
 ```
 +--------------------------------------------------------------+
 |  Game                                   src/game.c           |
-|  the pool, a roll's checks and its way along the frames,     |
-|  replaying the log, and reporting changed frames             |
 +--------------------------------------------------------------+
-     |  FrameListeners_Add / _Tell         |  RollLog_Append / _At / _Edit
-     |  / _TellNewest                      |
-     v                                     v
-+-----------------------------+   +--------------------------------+
-|  FrameListeners  (value)    |   |  RollLog  (value)              |
-|  who to tell about changed  |   |  every roll, as the pins that  |
-|  frames; it keeps and tells |   |  fell; checks an edit's range  |
-|  them, and nothing more     |   |  and length, and splices it    |
-|  src/frame_listeners.*      |   |  src/roll_log.*                |
-+-----------------------------+   +--------------------------------+
+     |  Scorecard_*           |  FrameReporter_AfterRoll   |  RollLog_Append
+     |  (above)               |  / _AfterEdit / _Add       |  / _At / _Edit
+     |                        |  / _CatchUpNewest          |
+     v                        v                            v
++----------------+   +-----------------------+   +-----------------------+
+|  Scorecard     |   |  FrameReporter        |   |  RollLog              |
+|  the frames    |   |  what the listeners   |   |  every roll, as the   |
+|                |   |  hear: compares the   |   |  pins that fell;      |
+|                |   |  Scorecard with what  |   |  checks an edit, and  |
+|                |   |  they were last told  |   |  splices it           |
+|  src/          |   |  src/frame_reporter.* |   |  src/roll_log.*       |
+|  scorecard.*   |   +-----------------------+   +-----------------------+
++----------------+       |  FrameListeners_Add / _Tell / _TellNewest
+         ^               v
+         |       +-----------------------+
+         +-------|  FrameListeners       |
+     reads it    |  who to tell; keeps   |
+                 |  and tells them       |
+                 |  src/frame_listeners.*|
+                 +-----------------------+
 ```
 
 **The re-entry guard is the game's.** `Game` has one `busy` flag, set for the whole of a roll
@@ -90,8 +105,9 @@ counted, the listeners while frames are told. While `busy` is set, a roll, an ed
 gets `GAME_ERR_BUSY`, adding a listener gets `false`, and `Game_Destroy` stops
 the program. Reading the game (`Game_Score`) is always allowed.
 
-`Game_ReportFrames` is the one bridge between them: it reads the frames and tells the
-listeners. It is the only function that touches both, and it owns `frames_told_complete`.
+`FrameReporter` is the one bridge between the frames and the listeners: it reads the
+`Scorecard` and tells the `FrameListeners`, and it owns `frames_told_complete`, how many frames
+they have been told are complete. It never changes the `Scorecard`.
 
 **Beside the game: the pinsetter.** The one part of the system that runs on another thread
 (in firmware, an interrupt handler). It never calls the game; the main loop carries each roll
@@ -147,6 +163,8 @@ PRIVATE  src/
 
   frame_transition.h   --> frame.h
 
+  scorecard.h       --> bowling_types.h (public), frame_context.h
+  frame_reporter.h  --> bowling_types.h, game.h (public), frame_listeners.h, scorecard.h
   frame_listeners.h --> bowling_types.h, game.h   (public)
   roll_log.h        --> bowling_types.h, game.h (public), game_limits.h
 
@@ -157,7 +175,7 @@ PRIVATE  src/
                         (the struct both pinsetter files share; nothing else includes it)
 
 Source files that include a header from another module:
-  game.c           --> frame_context.h, frame_listeners.h, roll_log.h, slot_pool.h
+  game.c           --> fault.h, frame_reporter.h, roll_log.h, scorecard.h, slot_pool.h
   pinsetter.c      --> fault.h, pinsetter_hooks.h, pinsetter_ring.h, slot_pool.h
   pinsetter_isr.c  --> fault.h, pinsetter_hooks.h, pinsetter_ring.h
   frame_context.c  --> frame_transition.h
@@ -248,7 +266,8 @@ s_games[2]                                          2,096 bytes
 +-------------------------------------------------------------+
 | Game [0]                                        1,048 bytes |
 |  +-------------------------------------------------------+  |
-|  | frames[10]  : FrameContext                 10 x 96    |  |
+|  | scorecard   : Scorecard                  968 bytes    |  |
+|  |  frames[10] : FrameContext               10 x 96      |  |
 |  |  +-------------------------------------------------+  |  |
 |  |  | FrameContext                        96 bytes    |  |  |
 |  |  |  current_state : Frame *  -------------+        |  |  |
@@ -260,11 +279,12 @@ s_games[2]                                          2,096 bytes
 |  |  |  tenth_strike  : TenthStrikeFrame 16            |  |  |
 |  |  +-------------------------------------------------+  |  |
 |  |  ... 9 more                                           |  |
-|  | frame_count     : uint8_t                             |  |
+|  |  frame_count : uint8_t                                |  |
 |  | count_pins      : PinCountRule      the caller's rule |  |
-|  | frames_told_complete : uint8_t                        |  |
-|  | listeners       : FrameListeners          40 bytes    |  |
+|  | reporter        : FrameReporter           48 bytes    |  |
+|  |  listeners : FrameListeners               40 bytes    |  |
 |  |   entries[2], count             (callback, context)   |  |
+|  |  frames_told_complete : uint8_t                       |  |
 |  | busy            : bool       a roll or edit under way |  |
 |  | log             : RollLog                 22 bytes    |  |
 |  |   pins[21], count                                     |  |
@@ -279,6 +299,7 @@ s_pinsetters[2]                                        72 bytes
 |  post_at    : atomic_uint      written by the interrupt side|
 |  drain_at   : atomic_uint      written by the main loop     |
 |  rolls_lost : _Atomic uint16_t posts refused, ever          |
+|  draining   : bool             a drain under way            |
 |  posting    : atomic_flag  a post under way (debug builds)  |
 | Pinsetter [1]                                               |
 +-------------------------------------------------------------+
@@ -400,7 +421,7 @@ or "the spare state", and the context builds one from the **family** it was give
 frame started (Abstract Factory).
 
 ```
-Game_AddNewFrame
+Scorecard_AddNewFrame
    |
    |-- frames 1 to 9 --> FrameContext_Init -------> factory = &s_regular_family
    |                                                new_strike --> StrikeFrame
@@ -438,24 +459,26 @@ Game_Roll(game, pins)
    |   busy = true, until the roll returns
    |  Game_Accept:
    |-- tenth frame complete?              --yes--> GAME_ERR_GAME_OVER
+   |      (Scorecard_IsOver)
    |-- pins > pins standing?              --yes--> GAME_ERR_INVALID_PINS
-   |      (asks the latest frame: Frame_PinsStanding)
+   |      (Scorecard_PinsStanding asks the latest frame: Frame_PinsStanding)
    |
    |   counted = game->count_pins(pins standing, pins)
    |      (the game's PinCountRule: standard, or one the caller supplied)
    |
    |-- counted > pins standing?           --yes--> GAME_ERR_RULE_OUT_OF_RANGE
    v
-Game_ApplyPinsToFrames: offer the counted roll to each frame, oldest first
+Scorecard_Roll
+   |  Scorecard_ApplyPinsToFrames: offer the counted roll to each frame, oldest first
    |
    |   frame 1 --> frame 2 --> ... --> latest frame
    |     each one either keeps the roll (consumed: stop)
    |     or passes it on (a complete frame, or a strike/spare taking a bonus)
    v
-nobody kept it?  --yes--> Game_AddNewFrame: start a new frame with this roll
+nobody kept it?  --yes--> Scorecard_AddNewFrame: start a new frame with this roll
    |
    v
-Game_ReportFrames, from the first frame not yet reported: tell each listener
+FrameReporter_AfterRoll, from the first frame not yet reported: tell each listener
    |   (FrameListeners_Tell) about every frame this roll completed, oldest first
    v
 GAME_OK
@@ -469,10 +492,11 @@ every frame sees the same value. In nine-pin no-tap a first-ball 9 counts as a s
 earlier strike collecting its bonus must also receive a 10, not a 9. The frames never know
 that a rule exists.
 
-**Telling listeners, after the roll.** Once a roll has gone all the way through, `Game`
-tells each listener (up to two, set with `Game_OnFrameChanged`) about every frame the roll
-completed, oldest first. A frame never completes before the one before it, so `Game` only
-keeps a count of frames already reported, and checks the frames just past it. Frames don't
+**Telling listeners, after the roll.** Once a roll has gone all the way through, the game's
+`FrameReporter` tells each listener (up to two, set with `Game_OnFrameChanged`) about every
+frame the roll completed, oldest first. A frame never completes before the one before it, so
+the reporter only keeps a count of frames already reported, checks the frames just past it,
+and asserts, in a debug build, that every frame before the count is complete. Frames don't
 hold listeners, and no listener is called while a roll is half applied. A listener may read
 the game (`Game_Score` then sees the whole roll), but not change it: the game is busy, so a
 roll, an edit or a drain from inside a listener, or from inside the rule, is refused. A
@@ -500,13 +524,13 @@ Game_EditRolls(game, &edit)     edit: a RollEdit {first_roll, rolls_removed, new
 Game_ApplyEditedLog
    |   saved = game->log             (a copy of plain values: safe, unlike the frames)
    |   game->log = edited
-   |   Game_Replay: empty the frames, then Game_Accept every roll, in order
+   |   Game_Replay: Scorecard_Init, then Game_Accept every roll, in order
    |      (each one counted again by the game's PinCountRule)
    |
    |-- a roll is now impossible?   --yes--> game->log = saved, replay that,
    |                                        and return the impossible roll's status
    v
-Game_ReportFrames, from the first frame: tell each frame again, the final state only
+FrameReporter_AfterEdit, from the first frame: tell each frame again, the final state only
    |   a complete frame   --> (number, new score, complete = true)
    |   a reopened frame   --> (number, 0,         complete = false)
    v

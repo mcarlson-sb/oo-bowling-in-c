@@ -94,9 +94,9 @@ else is a real gap:
 | Where | Build | Why it isn't covered |
 |---|---|---|
 | `roll_list.c`: the bounds checks' `return` lines and their branches | debug | In a debug build the `assert` just above stops the program first. The death tests do reach it, but each runs in a child process that `abort()` ends before `gcov` can save its data. The release build covers these lines |
-| `game.c`, `frame.c`: an `assert` failing | debug | An assert's failure path is never taken in a passing run. Where a death test does take it, `abort()` ends the process before `gcov` saves the data |
+| `scorecard.c`, `frame_reporter.h`, `frame.c`: an `assert` failing | debug | An assert's failure path is never taken in a passing run. Where a death test does take it, `abort()` ends the process before `gcov` saves the data |
 | `fault.c`, and the calls to `Fault_Stop` in `Pinsetter_Create` and `Game_ApplyEditedLog` | both | Only the death test reaches them, and `abort()` ends its child process before `gcov` saves the data. A fail-stop stays in release builds, so this gap is in both |
-| `game.c`: the loop condition in `Game_ApplyPinsToFrames` stopping early | both | A frame keeps a roll only when it is the latest frame, so the chain never stops with frames still to go. The same bowling fact the frame-reporting count relies on |
+| `scorecard.c`: the loop condition in `Scorecard_ApplyPinsToFrames` stopping early | both | A frame keeps a roll only when it is the latest frame, so the chain never stops with frames still to go. The same bowling fact the frame-reporting count relies on |
 | `frame_listeners.h`: the `return` in `FrameListeners_TellNewest` when there are no listeners | both | The game only catches up a listener it has just added, so the list is never empty there. In a debug build the `assert` just above stops first. `test/frame_listeners_test.cpp` drives both builds' behavior, but its own inlined copy of the function isn't instrumented |
 
 The release build reaches 100% of lines and every branch except that loop condition, that
@@ -192,11 +192,11 @@ the call lands.
 | 1 | `Game_Roll` (`src/game.c`) | Refuses a `NULL` or busy game, then sets `busy` until it returns |
 | 2 | `Game_Accept` | Not over. Asks the latest frame how many pins are standing: `FrameContext_PinsStanding`, then `Frame_PinsStanding`, which makes a **function pointer** call, `self->vtable->pins_standing`. Frame 2 is a `RegularFrame`, so it lands in `RegularFrame_PinsStanding`: 4. A 3 fits |
 | 3 | `Game_Accept` | **Function pointer:** `game->count_pins(4, 3)`. The game's rule; `Game_Create` set it to `Game_CountPinsDown`, so it counts 3. `Game_CreateWithRule` puts the caller's rule here instead |
-| 4 | `Game_ApplyPinsToFrames` | Offers the 3 to each frame, oldest first, through `FrameContext_Roll` and `Frame_Roll` |
+| 4 | `Scorecard_Roll` (`src/scorecard.c`) | Offers the 3 to each frame, oldest first, through `FrameContext_Roll` and `Frame_Roll` |
 | 5 | `Frame_Roll` (`src/frame.c`), frame 1 | **Function pointer:** `self->vtable->roll`. Frame 1 is a `StrikeFrame`, so it lands in `StrikeFrame_Roll` (`src/strike_frame.c`): its second bonus roll. The frame is complete, at 19, and it passes the 3 on |
 | 6 | `Frame_Roll`, frame 2 | The same call lands in `RegularFrame_Roll` (`src/regular_frame.c`): not a strike, not a spare, so it keeps the 3. The frame is complete, at 9. The roll is consumed, so no new frame starts |
 | 7 | `Game_Roll` | Appends the 3 to the roll log |
-| 8 | `Game_ReportAfterRoll`, then `Game_ReportFrames` | Walks the frames not yet reported, and for each complete one calls `FrameListeners_Tell`, which makes a **function pointer** call to each listener's `callback`: the caller's code. Frame 1, 19, complete; then frame 2, 9, complete |
+| 8 | `FrameReporter_AfterRoll`, then `FrameReporter_Tell` (`src/frame_reporter.h`) | Walks the frames not yet reported, and for each complete one calls `FrameListeners_Tell`, which makes a **function pointer** call to each listener's `callback`: the caller's code. Frame 1, 19, complete; then frame 2, 9, complete |
 | 9 | `Game_Roll` | Clears `busy` and returns `GAME_OK`. `Game_Score` is now 28 |
 
 Three kinds of function pointer, then, and two owners:
@@ -279,7 +279,8 @@ library's own files. A caller's `#include "frame.h"` isn't found.
 **Why private headers exist at all.** Ideally every struct would be defined only in its own
 `.c` file, as `struct Game` is in `game.c`. But C needs a struct's full definition wherever
 storage for it is allocated. With no heap, objects are held by value, one inside the next:
-- `Game` holds ten `FrameContext`s.
+- `Game` holds a `Scorecard`, a `FrameReporter` and a `RollLog`.
+- The `Scorecard` holds ten `FrameContext`s.
 - Each `FrameContext` holds one of each state.
 - Each state holds a `Frame`.
 - Each `Frame` holds two `RollList`s.
@@ -321,8 +322,8 @@ type" flag: each kind of frame is its own state object, and the frame switches s
 
 ### Chain of Responsibility: how a roll finds its frame
 
-`Game_ApplyPinsToFrames` hands each roll to the frames in order. Each frame either keeps it
-(`consumed`) or passes it on, and a roll no frame keeps starts a new frame. Unlike the
+`Scorecard_ApplyPinsToFrames` hands each roll to the frames in order. Each frame either
+keeps it (`consumed`) or passes it on, and a roll no frame keeps starts a new frame. Unlike the
 textbook version, a strike or spare frame can act *and* pass on: it records the roll as a
 bonus, then passes it on, because the same roll starts the next frame.
 
@@ -405,7 +406,9 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 
 | File | Role |
 |---|---|
-| `include/game.h`, `src/game.c` | The public API and the `Game` object: the opaque handle, the pool, the roll chain, the listeners and the mailbox for rolls made from inside them |
+| `include/game.h`, `src/game.c` | The public API and the `Game` object: the opaque handle, the pool, a roll's checks and the caller's rule, the busy guard, and replaying an edit |
+| `src/scorecard.*` | The ten frames: moving a roll along them, starting new frames, and the score |
+| `src/frame_reporter.*` | What the listeners hear: each frame a roll completes, every frame again after an edit, and a new listener's catch-up |
 | `include/pinsetter.h`, `src/pinsetter.c`, `src/pinsetter_isr.c`, `src/pinsetter_ring.h` | The pinsetter: a lock-free ring of 21 rolls between the interrupt handler that posts them (`pinsetter_isr.c`, all an interrupt handler runs) and the main loop that drains them into a game (`pinsetter.c`, with the pool); `pinsetter_ring.h` is the struct they share |
 | `src/game_limits.h` | `GAME_MAX_ROLLS`, shared by the game's roll log and the pinsetter's mailbox |
 | `src/frame_listeners.h/.c` | `FrameListeners`, the value type a game keeps its listeners in, with the flag that refuses changes from inside one |

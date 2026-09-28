@@ -75,7 +75,7 @@ means pointing the context at a different state object.
 | **State (shared base)** | `Frame`: the fields and behavior all states share | `src/frame.h/.c` |
 | **Concrete states** | `RegularFrame`, `StrikeFrame`, `SpareFrame`, `TenthStrikeFrame`, `TenthSpareFrame` | `src/*_frame.c`, `src/tenth_frame.c` |
 | **Requests** | `FrameContext_Roll`, `FrameContext_PinsStanding`, `FrameContext_Score`, `FrameContext_IsComplete` | `src/frame_context.c` |
-| **Client** | `Game`, which holds ten contexts and never knows what state any of them is in | `src/game.c` |
+| **Client** | `Scorecard`, which holds ten contexts and never knows what state any of them is in | `src/scorecard.c` |
 
 The states and what they mean:
 
@@ -199,8 +199,8 @@ Pins FrameContext_PinsStanding(const FrameContext *self)
 }
 ```
 
-`Game` calls these and never asks what state a frame is in. There is no `switch` on a state
-anywhere in `game.c`.
+`Scorecard` calls these and never asks what state a frame is in. There is no `switch` on a
+state anywhere in `scorecard.c` or `game.c`.
 
 **A context can't be copied.** `current_state` points at one of the context's *own* slots,
 such as `&self->regular`. Copy the struct, and the copy's `current_state` still points into
@@ -531,8 +531,8 @@ suppose a house rule made a first-roll 9 a "near miss", worth a one-roll bonus. 
 8. **Update the transition table** in section 5 of this document and the diagrams in
    ARCHITECTURE.md.
 
-Nothing in `game.c` changes, and neither does any existing state apart from the one that
-triggers the new one.
+Nothing in `scorecard.c` or `game.c` changes, and neither does any existing state apart from
+the one that triggers the new one.
 
 ## 10. Testing the state machine
 

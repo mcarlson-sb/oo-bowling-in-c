@@ -1566,6 +1566,32 @@ CCN 5, four parameters. lizard passed it, and the clang-tidy step failed the com
 with "cognitive complexity of 10 (threshold 7)"; every other job passed (run 36362415447). The
 branch was deleted.
 
+### Finding 5: game.c's six concerns, extracted
+
+The snapshot's fifth finding was `game.c`: six concerns in 265 code lines, which KAY.md had
+been carrying as debt. The user's rule: "We refactor mercilessly to keep unneeded complexity
+low. We don't just record debt. We fix it." Two extractions, one commit each:
+
+- **`Scorecard`** (`src/scorecard.{h,c}`, `89a02f9`): the ten `FrameContext`s and the
+  rules that are only about them: whether the game is over, the pins standing, the Chain of
+  Responsibility that moves a roll along the frames, starting a new frame, and the score. It
+  is the State pattern's client now, not `Game`.
+- **`FrameReporter`** (`src/frame_reporter.{h,c}`, `14b9d1e`): the listeners and `frames_told_complete`,
+  and everything that decides what they hear: the walk after a roll or an edit, the catch-up of
+  a new listener. It reads the `Scorecard` and never changes it. The walk stays `static inline`
+  in its header, as `FrameListeners_Tell` is, because every callback's stack sits on top of it.
+
+`game.c` is 199 lines, from 313: the pool, a roll's checks and the caller's rule, the busy
+guard, and replaying an edit. The busy flag stays the game's: `Game` sets it around the
+catch-up, as before. `sizeof(Game)` is unchanged, 1,048 bytes.
+
+**Stack, measured after each step** (the call-graph sum used before, GCC 16, 64-bit host).
+The bases `game.h` documents ended where they were, or lower: under a callback 272 at `-O2`
+and 416 at `-O0`; under the rule 416 at `-O2` (was 432) and 368 at `-O0`. Between the two
+commits the `-O0` callback base was 432, from two locals in the walk, and `game.h` said so for
+that commit. The deepest chains grow by 48 to 64 bytes, `Scorecard_Roll`'s frame; each function
+stays inside the stack gate.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on
