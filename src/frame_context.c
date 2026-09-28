@@ -1,41 +1,7 @@
 #include "frame_context.h"
+
+#include "frame_families.h"
 #include "frame_transition.h"
-
-/* Abstract Factory: one table per family of states. */
-struct FrameStateFactory {
-    Frame *(*new_strike)(FrameContext *self);
-    Frame *(*new_spare)(FrameContext *self, const Frame *replaced, Pins completing_pins);
-};
-
-static Frame *NewPassingStrike(FrameContext *self)
-{
-    return StrikeFrame_Init(&self->strike);
-}
-
-static Frame *NewPassingSpare(FrameContext *self, const Frame *replaced, Pins completing_pins)
-{
-    return SpareFrame_Init(&self->spare, replaced, completing_pins);
-}
-
-static const struct FrameStateFactory s_regular_family = {
-    .new_strike = NewPassingStrike,
-    .new_spare = NewPassingSpare,
-};
-
-static Frame *NewTenthStrike(FrameContext *self)
-{
-    return TenthStrikeFrame_Init(&self->tenth_strike);
-}
-
-static Frame *NewTenthSpare(FrameContext *self, const Frame *replaced, Pins completing_pins)
-{
-    return TenthSpareFrame_Init(&self->tenth_spare, replaced, completing_pins);
-}
-
-static const struct FrameStateFactory s_last_frame_family = {
-    .new_strike = NewTenthStrike,
-    .new_spare = NewTenthSpare,
-};
 
 static void FrameContext_Start(FrameContext *self, const struct FrameStateFactory *family)
 {
@@ -45,12 +11,12 @@ static void FrameContext_Start(FrameContext *self, const struct FrameStateFactor
 
 void FrameContext_Init(FrameContext *self)
 {
-    FrameContext_Start(self, &s_regular_family);
+    FrameContext_Start(self, &FrameFamily_Passing);
 }
 
 void FrameContext_InitTenth(FrameContext *self)
 {
-    FrameContext_Start(self, &s_last_frame_family);
+    FrameContext_Start(self, &FrameFamily_Tenth);
 }
 
 Frame *FrameContext_NewStrikeFrame(FrameContext *self)

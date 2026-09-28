@@ -32,6 +32,7 @@ add_library(bowling STATIC
     src/fault.c
     src/frame.c
     src/frame_context.c
+    src/frame_families.c
     src/frame_listeners.c
     src/frame_reporter.c
     src/game.c
