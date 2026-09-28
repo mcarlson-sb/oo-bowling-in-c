@@ -33,7 +33,7 @@ typedef enum {
  *   - It is pure: every edit replays every roll through it. If a rejected edit can't be undone
  *     because the rule now answers differently, the program stops (Fault_Stop).
  * It runs on up to 416 bytes of the library's stack at -O2, where inlining makes the edit's frame
- * large, and 384 at -O0 (64-bit host; measure on the target). */
+ * large, and 480 at -O0 (64-bit host; measure on the target). */
 typedef Pins (*PinCountRule)(Pins pins_standing, Pins pins_down);
 
 Game *Game_Create(void);

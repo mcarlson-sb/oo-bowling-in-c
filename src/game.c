@@ -166,25 +166,34 @@ static GameStatus Game_Replay(Game *game)
     return GAME_OK;
 }
 
-/* A rejected edit puts the saved log back and replays it. That replay fails only if the rule
- * isn't pure, and then no known-good game is left, so the program stops. */
+/* Makes `log` the game's, and rescores from it. */
+static inline GameStatus Game_ReplayWith(Game *game, const RollLog *log)
+{
+    game->log = *log;
+    return Game_Replay(game);
+}
+
+/* Every roll in `saved` was accepted before, so its replay fails only if the rule isn't pure,
+ * and then no known-good game is left: the program stops. */
+static inline void Game_Restore(Game *game, const RollLog *saved)
+{
+    if (Game_ReplayWith(game, saved) != GAME_OK) {
+        Fault_Stop("game: the replay that undoes a rejected edit failed; the PinCountRule "
+                   "is not pure");
+    }
+}
+
 static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
 {
     const uint8_t were_told_complete = FrameReporter_FramesToldComplete(&game->reporter);
     const RollLog saved = game->log;
-    game->log = *edited;
-
-    const GameStatus status = Game_Replay(game);
-    if (status == GAME_OK) {
+    const GameStatus replayed = Game_ReplayWith(game, edited);
+    if (replayed == GAME_OK) {
         FrameReporter_AfterEdit(&game->reporter, &game->scorecard, were_told_complete);
     } else {
-        game->log = saved;
-        if (Game_Replay(game) != GAME_OK) {
-            Fault_Stop("game: the replay that undoes a rejected edit failed; the PinCountRule "
-                       "is not pure");
-        }
+        Game_Restore(game, &saved);
     }
-    return status;
+    return replayed;
 }
 
 GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins)
