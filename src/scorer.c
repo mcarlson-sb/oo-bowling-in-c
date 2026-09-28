@@ -172,6 +172,28 @@ void Scorer_Init(Scorer *self, ScorerVariant variant)
     self->ball_count = 0U;
 }
 
+/* How many frames are complete. They always complete oldest first: a frame's bonus balls are
+ * the next frames' own balls, and no frame completes before the bonus balls of the one before
+ * it are in. So the complete frames are always the first few. */
+static uint8_t Scorer_CompleteFrames(const Scorer *self, const Lane *lane)
+{
+    uint8_t complete = 0U;
+    while ((complete < lane->frame_count) &&
+           Scorer_IsFrameComplete(self, &lane->frames[complete])) {
+        complete++;
+    }
+    return complete;
+}
+
+static void FrameEvents_Add(FrameEvents *events, uint8_t index, Score score, bool complete)
+{
+    FrameEvent *event = &events->events[events->count];
+    event->frame_number = (FrameNumber)(index + 1U);
+    event->frame_score = score;
+    event->frame_complete = complete;
+    events->count++;
+}
+
 GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events)
 {
     events->count = 0U;
@@ -183,8 +205,15 @@ GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events)
     if (pins > lane.standing) {
         return GAME_ERR_INVALID_PINS;
     }
+    const uint8_t were_complete = Scorer_CompleteFrames(self, &lane);
     self->balls[self->ball_count] = pins;
     self->ball_count++;
+
+    Lane_Walk(&lane, self);
+    const uint8_t now_complete = Scorer_CompleteFrames(self, &lane);
+    for (uint8_t i = were_complete; i < now_complete; i++) {
+        FrameEvents_Add(events, i, Scorer_FrameScore(self, &lane.frames[i]), true);
+    }
     return GAME_OK;
 }
 

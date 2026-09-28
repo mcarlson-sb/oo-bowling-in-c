@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <initializer_list>
+#include <vector>
 
 #include "scorer.h"
 
@@ -103,4 +104,46 @@ TEST(TenPinScorerTest, should_reject_a_fill_ball_with_more_pins_than_are_standin
     EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Roll(&scorer, 8U, &events)); /* 7 standing */
     RollAll(&scorer, {7U});
     EXPECT_EQ(20U, Scorer_Score(&scorer));
+}
+
+/* ---- The frames a ball changed, written to the caller's buffer ------------------------- */
+
+namespace {
+
+struct Event {
+    int frame;
+    int score;
+    bool complete;
+    bool operator==(const Event &other) const
+    {
+        return (frame == other.frame) && (score == other.score) && (complete == other.complete);
+    }
+};
+
+std::vector<Event> EventsOf(const FrameEvents &events)
+{
+    std::vector<Event> list;
+    for (uint8_t i = 0U; i < events.count; i++) {
+        const FrameEvent &event = events.events[i];
+        list.push_back({event.frame_number, event.frame_score, event.frame_complete});
+    }
+    return list;
+}
+
+std::vector<Event> EventsOfRoll(Scorer *scorer, Pins pins)
+{
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Roll(scorer, pins, &events));
+    return EventsOf(events);
+}
+
+} // namespace
+
+TEST(TenPinScorerEventsTest, should_report_each_frame_a_ball_completes_oldest_first)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    EXPECT_EQ((std::vector<Event>{}), EventsOfRoll(&scorer, 10U));
+    EXPECT_EQ((std::vector<Event>{}), EventsOfRoll(&scorer, 3U));
+    /* The 4 completes the strike (17) and its own frame (7). */
+    EXPECT_EQ((std::vector<Event>{{1, 17, true}, {2, 7, true}}), EventsOfRoll(&scorer, 4U));
 }
