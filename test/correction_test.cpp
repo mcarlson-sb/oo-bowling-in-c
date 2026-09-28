@@ -530,3 +530,47 @@ TEST(EditRollsPropertyTest, should_hold_under_the_no_tap_rule_too)
 {
     CheckEditsAgainstFreshGames([] { return MakeGameWithRule(&NinePinNoTap); }, 20260929U);
 }
+
+/* ---- Pinned by mutation testing -------------------------------------------------------- */
+
+namespace {
+
+/* Rolls from inside its notification, once, but only after it is armed. */
+struct RollsWhenArmed {
+    Game *game = nullptr;
+    bool armed = false;
+    bool tried = false;
+    GameStatus status = GAME_OK;
+};
+
+void RollsWhenArmed_FrameChanged(void *context, uint8_t frame_number, Score frame_score,
+                                 bool frame_complete)
+{
+    (void)frame_number;
+    (void)frame_score;
+    (void)frame_complete;
+    auto *listener = static_cast<RollsWhenArmed *>(context);
+    if (listener->armed && !listener->tried) {
+        listener->tried = true;
+        listener->status = Game_Roll(listener->game, 1U);
+    }
+}
+
+} // namespace
+
+TEST(CorrectionTest, should_refuse_a_roll_made_from_inside_an_edits_notification)
+{
+    /* The game is busy for the whole edit, notification included, as it is for a roll. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollsWhenArmed listener;
+    listener.game = game;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &RollsWhenArmed_FrameChanged, &listener));
+    RollAll(game, {3U, 4U});
+
+    listener.armed = true;
+    EXPECT_EQ(GAME_OK, Game_CorrectRoll(game, 1U, 2U)); /* tells frame 1 again: 6 */
+    EXPECT_TRUE(listener.tried);
+    EXPECT_EQ(GAME_ERR_BUSY, listener.status);
+    EXPECT_EQ(6U, Game_Score(game)); /* the refused roll changed nothing */
+}

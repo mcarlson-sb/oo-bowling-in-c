@@ -37,6 +37,7 @@ TEST_F(SlotPoolTest, should_hold_its_objects_and_nothing_else)
     EXPECT_FALSE(SlotPool_Holds(&pool, nullptr));
     EXPECT_FALSE(SlotPool_Holds(&pool, &elsewhere));
     EXPECT_FALSE(SlotPool_Holds(&pool, &things[1].b));
+    EXPECT_FALSE(SlotPool_Holds(&pool, things + 2)); /* one past the last: not an object */
 }
 
 TEST_F(SlotPoolTest, should_report_whether_a_returned_object_was_taken)

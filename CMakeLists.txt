@@ -121,6 +121,7 @@ add_executable(bowling_tests
     test/reference_scorer_test.cpp
     test/pinsetter_overlap_test.cpp
     test/scorer_test.cpp
+    test/fault_test.cpp
 )
 find_package(Threads REQUIRED) # the pinsetter test runs a second thread
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main Threads::Threads)
