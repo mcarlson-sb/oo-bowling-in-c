@@ -175,6 +175,11 @@ void Scorer_Init(Scorer *self, ScorerVariant variant)
 GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events)
 {
     events->count = 0U;
+    Lane lane;
+    Lane_Walk(&lane, self);
+    if (lane.phase == LANE_OVER) {
+        return GAME_ERR_GAME_OVER;
+    }
     self->balls[self->ball_count] = pins;
     self->ball_count++;
     return GAME_OK;

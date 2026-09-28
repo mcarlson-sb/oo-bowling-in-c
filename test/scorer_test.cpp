@@ -72,3 +72,14 @@ TEST(TenPinScorerTest, should_score_a_perfect_game_as_300)
     RollMany(&scorer, 12, 10U); /* the last two are the tenth frame's fill balls */
     EXPECT_EQ(300U, Scorer_Score(&scorer));
 }
+
+TEST(TenPinScorerTest, should_reject_a_ball_after_the_game_is_over)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollMany(&scorer, 19, 0U);
+    RollAll(&scorer, {3U}); /* an open tenth frame ends the game */
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_GAME_OVER, Scorer_Roll(&scorer, 4U, &events));
+    EXPECT_EQ(3U, Scorer_Score(&scorer));
+    EXPECT_EQ(0U, events.count);
+}
