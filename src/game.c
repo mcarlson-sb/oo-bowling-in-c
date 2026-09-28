@@ -21,7 +21,7 @@ struct Game {
 
 static Game s_games[GAME_POOL_SIZE];
 static bool s_in_use[GAME_POOL_SIZE];
-static SlotPool s_pool = { s_in_use, GAME_POOL_SIZE };
+static SlotPool s_pool = { s_in_use, GAME_POOL_SIZE, s_games, sizeof(Game) };
 
 static Pins Game_CountPinsDown(Pins pins_standing, Pins pins_down)
 {

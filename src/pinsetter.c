@@ -14,7 +14,7 @@
 
 static Pinsetter s_pinsetters[PINSETTER_POOL_SIZE];
 static bool s_in_use[PINSETTER_POOL_SIZE];
-static SlotPool s_pool = { s_in_use, PINSETTER_POOL_SIZE };
+static SlotPool s_pool = { s_in_use, PINSETTER_POOL_SIZE, s_pinsetters, sizeof(Pinsetter) };
 
 Pinsetter *Pinsetter_Create(void)
 {

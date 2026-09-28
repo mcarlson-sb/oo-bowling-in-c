@@ -4,10 +4,16 @@ extern "C" {
 #include "slot_pool.h"
 }
 
+struct Thing {
+    int a;
+    int b;
+};
+
 class SlotPoolTest : public ::testing::Test {
 protected:
+    Thing things[2] = {};
     bool in_use[2] = {false, false};
-    SlotPool pool = {in_use, 2U};
+    SlotPool pool = {in_use, 2U, things, sizeof(Thing)};
     uint8_t slot = 0xFFU;
 };
 
@@ -50,7 +56,7 @@ TEST_F(SlotPoolTest, should_hand_out_a_released_slot_again)
 TEST_F(SlotPoolTest, should_ignore_releasing_a_slot_it_does_not_have)
 {
     bool guard[3] = {false, false, false}; /* in_use, plus one flag just past its end */
-    SlotPool small = {guard, 2U};
+    SlotPool small = {guard, 2U, things, sizeof(Thing)};
 
     guard[2] = true;
     SlotPool_Release(&small, 2U);
@@ -65,4 +71,27 @@ TEST_F(SlotPoolTest, should_report_whether_a_released_slot_was_in_use)
     EXPECT_TRUE(SlotPool_Release(&pool, slot));
     EXPECT_FALSE(SlotPool_Release(&pool, slot)); /* already free */
     EXPECT_FALSE(SlotPool_Release(&pool, 7U));   /* not a slot of this pool */
+}
+
+TEST_F(SlotPoolTest, should_find_the_slot_each_object_is_in)
+{
+    EXPECT_TRUE(SlotPool_Find(&pool, &things[0], &slot));
+    EXPECT_EQ(0U, slot);
+    EXPECT_TRUE(SlotPool_Find(&pool, &things[1], &slot));
+    EXPECT_EQ(1U, slot);
+}
+
+TEST_F(SlotPoolTest, should_not_find_null_or_an_object_outside_the_pool)
+{
+    Thing elsewhere = {};
+
+    EXPECT_FALSE(SlotPool_Find(&pool, nullptr, &slot));
+    EXPECT_FALSE(SlotPool_Find(&pool, &elsewhere, &slot));
+    EXPECT_EQ(0xFFU, slot);
+}
+
+TEST_F(SlotPoolTest, should_not_find_an_address_inside_an_object)
+{
+    EXPECT_FALSE(SlotPool_Find(&pool, &things[1].b, &slot));
+    EXPECT_EQ(0xFFU, slot);
 }
