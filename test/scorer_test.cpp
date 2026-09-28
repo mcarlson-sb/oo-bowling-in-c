@@ -4,9 +4,11 @@
 #include <gtest/gtest.h>
 
 #include <initializer_list>
+#include <random>
 #include <vector>
 
 #include "scorer.h"
+#include "ten_pin_reference.h"
 
 namespace {
 
@@ -146,4 +148,35 @@ TEST(TenPinScorerEventsTest, should_report_each_frame_a_ball_completes_oldest_fi
     EXPECT_EQ((std::vector<Event>{}), EventsOfRoll(&scorer, 3U));
     /* The 4 completes the strike (17) and its own frame (7). */
     EXPECT_EQ((std::vector<Event>{{1, 17, true}, {2, 7, true}}), EventsOfRoll(&scorer, 4U));
+}
+
+/* ---- Against the independent reference ------------------------------------------------- */
+
+TEST(TenPinScorerTest, should_score_random_games_as_the_reference_does)
+{
+    /* Random legal games of random length, with extra strikes and spares, checked after every
+     * ball. The reference plays its own lane to know how many pins stand. */
+    std::mt19937 random(20260928U);
+    for (int game_number = 0; game_number < 2000; ++game_number) {
+        Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+        ten_pin_reference::Lane lane;
+        std::vector<int> balls;
+        const int stop_after = std::uniform_int_distribution<int>(1, 21)(random);
+        for (int ball = 0; (ball < stop_after) && !lane.over; ++ball) {
+            const bool clear_the_rack = std::uniform_int_distribution<int>(0, 3)(random) == 0;
+            const int down =
+                clear_the_rack ? lane.standing
+                               : std::uniform_int_distribution<int>(0, lane.standing)(random);
+            RollAll(&scorer, {static_cast<Pins>(down)});
+            balls.push_back(down);
+            lane.Roll(down);
+            ASSERT_EQ(ten_pin_reference::Score(balls), static_cast<int>(Scorer_Score(&scorer)))
+                << "game " << game_number << ", after ball " << (ball + 1);
+        }
+        FrameEvents events;
+        if (lane.over) {
+            ASSERT_EQ(GAME_ERR_GAME_OVER, Scorer_Roll(&scorer, 0U, &events))
+                << "game " << game_number;
+        }
+    }
 }
