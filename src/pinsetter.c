@@ -48,16 +48,14 @@ void Pinsetter_Destroy(Pinsetter *pinsetter)
 static GameStatus Pinsetter_DrainWaiting(Pinsetter *pinsetter, Game *game)
 {
     /* Read once, so rolls posted during the drain wait for the next one. */
-    const unsigned post_at = atomic_load_explicit(&pinsetter->post_at, memory_order_acquire);
-    unsigned drain_at = atomic_load_explicit(&pinsetter->drain_at, memory_order_relaxed);
-    while (drain_at != post_at) {
-        const Pins pins = pinsetter->rolls[drain_at];
-        const GameStatus status = Game_Roll(game, pins);
-        if (status != GAME_OK) {
-            return status;
+    const unsigned end = Pinsetter_PostedUpTo(pinsetter);
+    for (unsigned oldest = Pinsetter_OldestAt(pinsetter); oldest != end;
+         oldest = Pinsetter_Next(oldest)) {
+        const GameStatus rolled = Game_Roll(game, Pinsetter_Peek(pinsetter, oldest));
+        if (rolled != GAME_OK) {
+            return rolled;
         }
-        drain_at = Pinsetter_Next(drain_at);
-        atomic_store_explicit(&pinsetter->drain_at, drain_at, memory_order_release);
+        Pinsetter_MarkTaken(pinsetter, oldest);
     }
     return GAME_OK;
 }
@@ -77,7 +75,7 @@ GameStatus Pinsetter_Drain(Pinsetter *pinsetter, Game *game)
 
 uint16_t Pinsetter_RollsLost(const Pinsetter *pinsetter)
 {
-    return atomic_load_explicit(&pinsetter->rolls_lost, memory_order_relaxed);
+    return Pinsetter_LostCount(pinsetter);
 }
 
 bool Pinsetter_DiscardOldest(Pinsetter *pinsetter)
@@ -85,10 +83,10 @@ bool Pinsetter_DiscardOldest(Pinsetter *pinsetter)
     if (pinsetter->draining) {
         return false;
     }
-    const unsigned drain_at = atomic_load_explicit(&pinsetter->drain_at, memory_order_relaxed);
-    if (drain_at == atomic_load_explicit(&pinsetter->post_at, memory_order_acquire)) {
+    const unsigned oldest = Pinsetter_OldestAt(pinsetter);
+    if (oldest == Pinsetter_PostedUpTo(pinsetter)) {
         return false;
     }
-    atomic_store_explicit(&pinsetter->drain_at, Pinsetter_Next(drain_at), memory_order_release);
+    Pinsetter_MarkTaken(pinsetter, oldest);
     return true;
 }

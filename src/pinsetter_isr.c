@@ -18,18 +18,14 @@ void Pinsetter_HookPostUnderWay(Pinsetter *pinsetter)
 
 static bool Pinsetter_Enqueue(Pinsetter *pinsetter, Pins pins)
 {
-    const unsigned post_at = atomic_load_explicit(&pinsetter->post_at, memory_order_relaxed);
+    const unsigned post_at = Pinsetter_PostAt(pinsetter);
     const unsigned next = Pinsetter_Next(post_at);
-    if (next == atomic_load_explicit(&pinsetter->drain_at, memory_order_acquire)) {
-        /* The only writer, so a load and a store: some targets can't do a lock-free
-         * read-modify-write. */
-        const uint16_t lost = atomic_load_explicit(&pinsetter->rolls_lost, memory_order_relaxed);
-        atomic_store_explicit(&pinsetter->rolls_lost, (uint16_t)(lost + 1U),
-                              memory_order_relaxed);
+    if (Pinsetter_IsFull(pinsetter, next)) {
+        Pinsetter_CountLost(pinsetter);
         return false;
     }
     pinsetter->rolls[post_at] = pins;
-    atomic_store_explicit(&pinsetter->post_at, next, memory_order_release);
+    Pinsetter_MarkPosted(pinsetter, next);
     return true;
 }
 
