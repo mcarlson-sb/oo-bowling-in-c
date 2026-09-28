@@ -63,3 +63,8 @@ jobs:
           -config='{CheckOptions: {readability-function-cognitive-complexity.Threshold: 7}}'
           -header-filter='(src|include)/.*' -warnings-as-errors='*'
           src/*.c -- -std=c11 -Iinclude -Isrc
+
+      # No function pointers in src/ or include/, outside the files still being strangled and
+      # what FreeRTOS itself requires: over clang's AST, so typedefs and decays can't hide one.
+      - name: Check for function pointers
+        run: python3 tools/check_function_pointers.py --clang clang
