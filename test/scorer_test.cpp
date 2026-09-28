@@ -56,3 +56,12 @@ TEST(TenPinScorerTest, should_add_a_strikes_next_two_balls_as_its_bonus)
     RollMany(&scorer, 16, 0U);
     EXPECT_EQ(24U, Scorer_Score(&scorer)); /* 10 + 3 + 4, then 3 + 4 */
 }
+
+TEST(TenPinScorerTest, should_leave_a_strike_out_of_the_total_until_its_bonus_is_known)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {10U, 3U});
+    EXPECT_EQ(0U, Scorer_Score(&scorer)); /* the strike still waits for one ball */
+    RollAll(&scorer, {4U});
+    EXPECT_EQ(24U, Scorer_Score(&scorer)); /* 17, and frame 2 is complete after two balls */
+}
