@@ -29,7 +29,7 @@ bool FrameListeners_Add(FrameListeners *self, FrameChangedCallback callback, voi
 
 /* In the order they were added. Inline, like TellNewest, because every callback's stack sits
  * on top of it. */
-static inline void FrameListeners_Tell(FrameListeners *self, FrameNumber frame_number,
+static inline void FrameListeners_Tell(const FrameListeners *self, FrameNumber frame_number,
                                        Score frame_score, bool frame_complete)
 {
     for (uint8_t i = 0U; i < self->count; i++) {
