@@ -298,9 +298,9 @@ the `.c` file:
   `test/correction_test.cpp`, `test/pinsetter_test.cpp` and `test/remote_scoreboard_test.cpp`
   use only the public headers (through `test/test_support.h`), as a real caller would. They
   are black-box tests of the public API.
-- `test/frame_test.cpp`, `test/roll_list_test.cpp`, `test/slot_pool_test.cpp` and
-  `test/pinsetter_overlap_test.cpp` are white-box
-  tests of private types. They are the only tests granted `src/`, and `CMakeLists.txt` says
+- `test/frame_test.cpp`, `test/roll_list_test.cpp`, `test/roll_log_test.cpp`,
+  `test/slot_pool_test.cpp`, `test/frame_listeners_test.cpp` and
+  `test/pinsetter_overlap_test.cpp` are white-box tests of private types. They are the only tests granted `src/`, and `CMakeLists.txt` says
   why.
 
 ## Design patterns
@@ -411,14 +411,15 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `src/frame_reporter.*` | What the listeners hear: each frame a roll completes, every frame again after an edit, and a new listener's catch-up |
 | `include/pinsetter.h`, `src/pinsetter.c`, `src/pinsetter_isr.c`, `src/pinsetter_ring.h` | The pinsetter: a lock-free ring of 21 rolls between the interrupt handler that posts them (`pinsetter_isr.c`, all an interrupt handler runs) and the main loop that drains them into a game (`pinsetter.c`, with the pool); `pinsetter_ring.h` is the struct they share |
 | `src/game_limits.h` | `GAME_MAX_ROLLS`, shared by the game's roll log and the pinsetter's mailbox |
-| `src/frame_listeners.h/.c` | `FrameListeners`, the value type a game keeps its listeners in, with the flag that refuses changes from inside one |
-| `src/roll_log.h/.c` | `RollLog`, the value type a game keeps every roll in, with an edit's checks and splice |
+| `src/frame_listeners.h/.c` | `FrameListeners`, the value type that keeps a game's listeners and tells them |
+| `src/roll_log.h/.c` | `RollLog`, the value type a game keeps every roll in |
+| `src/roll_edit.h/.c` | `RollEdit_Apply`: which edits a roll log can take, and the log each one makes |
 | `src/pinsetter_hooks.h` | The switch for the pinsetter's debug-only overlap check (`PINSETTER_CHECK_OVERLAP`), and the hook its white-box test uses |
 | `include/fault.h`, `src/fault.c` | `Fault_Stop`, the fail-stop for an error with no safe way on, such as more lanes than pinsetters. The host version writes the reason and calls `abort()`; a target build defines its own, and the linker then leaves this one out |
 | `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |
 | `src/frame.h/.c` | Abstract base `Frame`: its vtable, shared fields and methods, and `RollResult` |
 | `src/roll_list.h/.c` | `RollList`, the value type a frame keeps its rolls and bonus rolls in |
-| `src/slot_pool.h/.c` | `SlotPool`, which tracks which of a pool's slots are in use, and finds the slot a handle is in, for the games and for the pinsetters |
+| `src/slot_pool.h/.c` | `SlotPool`, which hands out and takes back the games, and the pinsetters, from storage their modules own |
 | `src/regular_frame.*`, `src/strike_frame.*`, `src/spare_frame.*` | The states for frames 1 to 9. `RegularFrame` is also where the tenth frame starts |
 | `src/tenth_frame.*` | The tenth frame's strike and spare states |
 | `src/frame_context.h/.c` | The State-pattern context and the two state families (Abstract Factory) |

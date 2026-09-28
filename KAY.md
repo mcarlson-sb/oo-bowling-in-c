@@ -1606,6 +1606,24 @@ at the top of `Game_Roll` and `Game_EditRolls` wait for a third copy (the rule o
 deep-dive fixes had since added it, in `Game_OnFrameChanged`, so all three now ask
 `Game_CheckCanChange`. `game.h`'s stack figures are unchanged.
 
+### A single-responsibility review
+
+Asked which modules had more than one responsibility, the count was five: `game.c` (four),
+`pinsetter.c`, `roll_log.c`, and two borderline, `frame_context.c` and `pinsetter_isr.c`. The
+user asked for the two strongest to be fixed:
+- **The pool's plumbing, repeated in `game.c` and `pinsetter.c`.** `SlotPool` now hands out
+  and takes back the objects themselves (`SlotPool_Take`, `_Holds`, `_Return`, test first), so
+  neither module handles a slot number; what each keeps is constructing and destroying its own
+  objects. The index API became private, its tests mapped onto the object API's, and a bounds
+  check that could no longer fail went with it.
+- **`RollLog`'s edit rules.** `RollEdit` (`src/roll_edit.{h,c}`) holds which edits a log can
+  take and the log each makes, working through `RollLog`'s functions; `RollLog` is storage
+  again, and no longer needs `game.h`.
+
+`game.h`'s stack figures are unchanged by both. The docs pass also caught two stale README
+lines: the listeners' "flag that refuses changes", which moved to `Game` in the deep-dive
+fixes, and a list of white-box tests two files short.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on

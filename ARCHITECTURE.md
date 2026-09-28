@@ -75,20 +75,21 @@ roll's checks and the caller's rule, the busy guard, and replaying the log after
 +--------------------------------------------------------------+
 |  Game                                   src/game.c           |
 +--------------------------------------------------------------+
-     |  Scorecard_*           |  FrameReporter_AfterRoll   |  RollLog_Append
-     |  (above)               |  / _AfterEdit / _Add       |  / _At / _Edit
-     |                        |  / _CatchUpNewest          |
-     v                        v                            v
-+----------------+   +-----------------------+   +-----------------------+
-|  Scorecard     |   |  FrameReporter        |   |  RollLog              |
-|  the frames    |   |  what the listeners   |   |  every roll, as the   |
-|                |   |  hear: compares the   |   |  pins that fell;      |
-|                |   |  Scorecard with what  |   |  checks an edit, and  |
-|                |   |  they were last told  |   |  splices it           |
-|  src/          |   |  src/frame_reporter.* |   |  src/roll_log.*       |
-|  scorecard.*   |   +-----------------------+   +-----------------------+
-+----------------+       |  FrameListeners_Add / _Tell / _TellNewest
-         ^               v
+     |  Scorecard_*           |  FrameReporter_AfterRoll   |  RollLog_Append / _At
+     |  (above)               |  / _AfterEdit / _Add       |         RollEdit_Apply
+     |                        |  / _CatchUpNewest          |               |
+     v                        v                            v               v
++----------------+   +-----------------------+   +----------------+ +--------------+
+|  Scorecard     |   |  FrameReporter        |   |  RollLog       | |  RollEdit    |
+|  the frames    |   |  what the listeners   |   |  every roll,   | |  which edits |
+|                |   |  hear: compares the   |   |  as the pins   | |  a log can   |
+|                |   |  Scorecard with what  |   |  that fell     |<|  take, and   |
+|                |   |  they were last told  |   |                | |  the log     |
+|  src/          |   |  src/frame_reporter.* |   |  src/          | |  each makes  |
+|  scorecard.*   |   +-----------------------+   |  roll_log.*    | |  src/        |
++----------------+       |  FrameListeners_Add   +----------------+ |  roll_edit.* |
+         ^               |  / _Tell / _TellNewest                   +--------------+
+         |               v
          |       +-----------------------+
          +-------|  FrameListeners       |
      reads it    |  who to tell; keeps   |
@@ -96,6 +97,8 @@ roll's checks and the caller's rule, the busy guard, and replaying the log after
                  |  src/frame_listeners.*|
                  +-----------------------+
 ```
+
+`RollEdit` holds no state: it reads one `RollLog` through its functions and builds another.
 
 **The re-entry guard is the game's.** `Game` has one `busy` flag, set for the whole of a roll
 (`Game_Roll`) and of an edit (`Game_EditRolls`, and so `Game_CorrectRoll`), and while a new
@@ -165,7 +168,8 @@ PRIVATE  src/
   scorecard.h       --> bowling_types.h (public), frame_context.h
   frame_reporter.h  --> bowling_types.h, game.h (public), frame_listeners.h, scorecard.h
   frame_listeners.h --> bowling_types.h, game.h   (public)
-  roll_log.h        --> bowling_types.h, game.h (public), game_limits.h
+  roll_log.h        --> bowling_types.h (public), game_limits.h
+  roll_edit.h       --> game.h (public), roll_log.h
 
   slot_pool.h                    (standard headers only)
   game_limits.h                  (GAME_MAX_ROLLS; no includes)
@@ -174,7 +178,9 @@ PRIVATE  src/
                         (the struct both pinsetter files share; nothing else includes it)
 
 Source files that include a header from another module:
-  game.c           --> fault.h, frame_reporter.h, roll_log.h, scorecard.h, slot_pool.h
+  game.c           --> fault.h, frame_reporter.h, roll_edit.h, roll_log.h, scorecard.h,
+                       slot_pool.h
+  roll_edit.c      --> game_limits.h
   pinsetter.c      --> fault.h, pinsetter_hooks.h, pinsetter_ring.h, slot_pool.h
   pinsetter_isr.c  --> fault.h, pinsetter_hooks.h, pinsetter_ring.h
   frame_context.c  --> frame_transition.h
@@ -304,10 +310,11 @@ s_pinsetters[2]                                        72 bytes
 +-------------------------------------------------------------+
 ```
 
-Beside them, `s_in_use[2]` holds one `bool` per game. `SlotPool` (`src/slot_pool.c`) uses those
-flags to hand out and take back games, and finds which slot a handle is in by comparing it with
-each object's address, never reading it; `game.c` owns both arrays and gives the pool their
-addresses.
+Beside them, `s_in_use[2]` holds one `bool` per game. `game.c` owns both arrays and gives
+their addresses to a `SlotPool` (`src/slot_pool.c`), which hands out and takes back the games
+themselves (`SlotPool_Take`, `SlotPool_Return`), and tells whether a pointer is one of them
+(`SlotPool_Holds`) by comparing addresses, never reading it. `pinsetter.c` does the same for
+the pinsetters.
 
 Each context owns storage for every state it could be in, and `current_state` points at
 the one in use. Changing state rebuilds that slot in place (`FrameContext_NewStrikeFrame`
@@ -513,7 +520,7 @@ Game_EditRolls(game, &edit)     edit: a RollEdit {first_roll, rolls_removed, new
    |-- game == NULL?                        --yes--> GAME_ERR_NULL_GAME
    |-- game busy (inside a listener or the rule)?  --yes--> GAME_ERR_BUSY
    |
-   |  RollLog_Edit(&game->log, edit, &edited):
+   |  RollEdit_Apply(edit, &game->log, &edited):
    |-- range not rolls the log has?         --yes--> GAME_ERR_NO_SUCH_ROLL
    |   (starts after the last roll, or new rolls promised, but NULL)
    |-- more than 21 rolls after the edit?   --yes--> GAME_ERR_TOO_MANY_ROLLS
