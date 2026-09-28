@@ -418,7 +418,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |
 | `src/frame.h/.c` | Abstract base `Frame`: its vtable, shared fields and methods, and `RollResult` |
 | `src/roll_list.h/.c` | `RollList`, the value type a frame keeps its rolls and bonus rolls in |
-| `src/slot_pool.h/.c` | `SlotPool`, which tracks which of a pool's slots are in use, for the games and for the pinsetters |
+| `src/slot_pool.h/.c` | `SlotPool`, which tracks which of a pool's slots are in use, and finds the slot a handle is in, for the games and for the pinsetters |
 | `src/regular_frame.*`, `src/strike_frame.*`, `src/spare_frame.*` | The states for frames 1 to 9. `RegularFrame` is also where the tenth frame starts |
 | `src/tenth_frame.*` | The tenth frame's strike and spare states |
 | `src/frame_context.h/.c` | The State-pattern context and the two state families (Abstract Factory) |

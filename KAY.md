@@ -1592,6 +1592,15 @@ commits the `-O0` callback base was 432, from two locals in the walk, and `game.
 that commit. The deepest chains grow by 48 to 64 bytes, `Scorecard_Roll`'s frame; each function
 stays inside the stack gate.
 
+**Then the duplicate pool lookup.** Asked how many responsibilities remained in `game.c`,
+the answer was four, all of which tie together things only `Game` owns (the pool; admitting a
+roll through the caller's rule; the busy guard; the edit transaction), and one smell: the pool
+lookup, `Game_FindSlot`, duplicated as `Pinsetter_FindSlot`. `SlotPool` now knows its objects'
+base and size and finds a handle's slot by comparing addresses (`SlotPool_Find`, test first),
+and both copies are gone. The clean-up's "considered and not done" table had set this aside for
+MISRA's pointer-arithmetic rules; those are advisory, the lookup indexes rather than adds (Rule
+18.4's advice), and that call was mine, not the user's.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on

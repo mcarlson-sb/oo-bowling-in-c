@@ -306,7 +306,9 @@ s_pinsetters[2]                                        72 bytes
 ```
 
 Beside them, `s_in_use[2]` holds one `bool` per game. `SlotPool` (`src/slot_pool.c`) uses those
-flags to hand out and take back games; `game.c` owns both arrays.
+flags to hand out and take back games, and finds which slot a handle is in by comparing it with
+each object's address, never reading it; `game.c` owns both arrays and gives the pool their
+addresses.
 
 Each context owns storage for every state it could be in, and `current_state` points at
 the one in use. Changing state rebuilds that slot in place (`FrameContext_NewStrikeFrame`
