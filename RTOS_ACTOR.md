@@ -142,3 +142,25 @@ Six function-pointer types, the thing constraint 1 removes:
 | `src/strike_frame.h` | 14 | 5 | 0 |
 | `src/tenth_frame.c` | 56 | 46 | 5 |
 | `src/tenth_frame.h` | 22 | 9 | 0 |
+
+## Decisions
+
+### Task stack sizes: a static call graph, with a painted stack as the cross-check (2026-09-28)
+
+On the FreeRTOS POSIX port a task does not run on the stack buffer it is given.
+`pxPortInitialiseStack` (portable/ThirdParty/GCC/Posix/port.c, V11.1.0) only takes that
+buffer's size for `pthread_attr_setstacksize`, and pthreads allocates the thread's real stack.
+So `uxTaskGetStackHighWaterMark` measures an untouched buffer: a smoke-test task that called
+`printf` reported 4,091 of its 4,096 words unused.
+
+That number can't be the ENG-1.3 stack contract. Decided with the user:
+
+- **The contract: static call-graph analysis.** GCC's `-fcallgraph-info=su` gives every
+  function's frame and its callees; the worst-case depth from each task entry is computed at
+  build time. It is deterministic and needs no target. It can't follow an indirect call, and
+  with no function pointers in project code only FreeRTOS's own paths have that gap: they are
+  added as a measured allowance, and named.
+- **The cross-check: a painted stack on the host.** The task's pthread gets a painted buffer of
+  its own (`pthread_attr_setstack`), scanned after the integration tests. It measures real use,
+  but only for the paths the tests take, so it can confirm the contract, never set it.
+- On a real target `uxTaskGetStackHighWaterMark` works, and would be the third check.
