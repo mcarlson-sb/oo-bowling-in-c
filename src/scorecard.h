@@ -26,7 +26,6 @@ Pins Scorecard_PinsStanding(const Scorecard *self);
 void Scorecard_Roll(Scorecard *self, Pins pins);
 
 Score Scorecard_Score(const Scorecard *self);
-bool Scorecard_AllFramesCompleteBefore(const Scorecard *self, uint8_t index);
 
 static inline uint8_t Scorecard_FrameCount(const Scorecard *self)
 {
@@ -41,6 +40,17 @@ static inline bool Scorecard_IsFrameComplete(const Scorecard *self, uint8_t inde
 static inline Score Scorecard_FrameScore(const Scorecard *self, uint8_t index)
 {
     return FrameContext_Score(&self->frames[index]);
+}
+
+/* Inline, so a release build, where only asserts use it, doesn't carry it. */
+static inline bool Scorecard_AllFramesCompleteBefore(const Scorecard *self, uint8_t index)
+{
+    for (uint8_t i = 0U; i < index; i++) {
+        if (!Scorecard_IsFrameComplete(self, i)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 #endif /* SCORECARD_H */

@@ -67,13 +67,3 @@ Score Scorecard_Score(const Scorecard *self)
     }
     return score;
 }
-
-bool Scorecard_AllFramesCompleteBefore(const Scorecard *self, uint8_t index)
-{
-    for (uint8_t i = 0U; i < index; i++) {
-        if (!FrameContext_IsComplete(&self->frames[i])) {
-            return false;
-        }
-    }
-    return true;
-}
