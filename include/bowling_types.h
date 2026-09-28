@@ -18,4 +18,13 @@ typedef uint8_t RollNumber;
 /* 1 to 10. */
 typedef uint8_t FrameNumber;
 
+/* Replaces rolls_removed rolls, from roll number first_roll (the first is 1), with the new_count
+ * rolls in new_pins: a replacement, an insertion (none removed) or a deletion (none new). */
+typedef struct {
+    RollNumber first_roll;
+    uint8_t rolls_removed;
+    const Pins *new_pins; /* NULL only when new_count is 0 */
+    uint8_t new_count;
+} RollEdit;
+
 #endif /* BOWLING_TYPES_H */

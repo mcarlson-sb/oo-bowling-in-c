@@ -6,6 +6,7 @@
 
 #include <stdbool.h>
 
+#include "bowling_status.h"
 #include "bowling_types.h"
 
 #ifdef __cplusplus
@@ -13,20 +14,6 @@ extern "C" {
 #endif
 
 typedef struct Game Game;
-
-typedef enum {
-    GAME_OK = 0,
-    GAME_ERR_GAME_OVER,         /* the tenth frame is complete */
-    GAME_ERR_INVALID_PINS,      /* more pins than are standing */
-    GAME_ERR_NULL_GAME,
-    GAME_ERR_RULE_OUT_OF_RANGE, /* the PinCountRule counted more pins than were standing */
-    /* Called from inside a frame-changed callback or the PinCountRule, while a roll or an
-     * edit is in progress; or Pinsetter_Drain called from inside a drain. */
-    GAME_ERR_BUSY,
-    GAME_ERR_NO_SUCH_ROLL,      /* an edit's range isn't rolls the game has had */
-    GAME_ERR_TOO_MANY_ROLLS,    /* an edit would leave more than 21 rolls */
-    GAME_ERR_INVALID_EDIT       /* a NULL edit, or one that promises rolls but gives no pins */
-} GameStatus;
 
 /* How many pins a roll counts as, given the pins standing and the pins that fell. Supplied to
  * play a variant; the standard rule counts the pins that fell.
@@ -61,15 +48,6 @@ typedef void (*FrameChangedCallback)(void *context, FrameNumber frame_number, Sc
 bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context);
 
 GameStatus Game_Roll(Game *game, Pins pins);
-
-/* Replaces rolls_removed rolls, from roll number first_roll (the first is 1), with the new_count
- * rolls in new_pins: a replacement, an insertion (none removed) or a deletion (none new). */
-typedef struct {
-    RollNumber first_roll;
-    uint8_t rolls_removed;
-    const Pins *new_pins; /* NULL only when new_count is 0 */
-    uint8_t new_count;
-} RollEdit;
 
 /* Game_EditRolls with one roll out and one in. */
 GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins);
