@@ -5,6 +5,7 @@
 
 /* Everything that differs between variants: data, not code. */
 typedef struct {
+    uint8_t frames;
     uint8_t balls_per_frame;
     Pins pins_per_rack;
     /* Bonus balls owed by a frame that clears the rack, by the ball that cleared it: [0] is the
@@ -13,7 +14,8 @@ typedef struct {
 } VariantRules;
 
 static const VariantRules k_variant_rules[] = {
-    [SCORER_TEN_PIN] = { .balls_per_frame = 2U, .pins_per_rack = 10U, .bonus_balls = { 2U, 1U, 0U } },
+    [SCORER_TEN_PIN] = { .frames = 10U, .balls_per_frame = 2U, .pins_per_rack = 10U,
+                         .bonus_balls = { 2U, 1U, 0U } },
 };
 
 /* Where a frame's balls are in the game's list, and how many bonus balls it is owed. */
@@ -24,11 +26,21 @@ typedef struct {
     bool ended; /* it takes no more balls of its own */
 } FrameShape;
 
+/* What the lane takes next. The last frame's bonus balls are fill balls: they are thrown after
+ * it, on a fresh rack whenever one is cleared, but they start no frame. */
+typedef enum {
+    LANE_TAKING_FRAMES,
+    LANE_TAKING_FILL_BALLS,
+    LANE_OVER
+} LanePhase;
+
 /* The frames, worked out by walking the balls from the start. */
 typedef struct {
     FrameShape frames[SCORER_MAX_FRAMES];
     uint8_t frame_count; /* started */
     Pins standing;
+    LanePhase phase;
+    uint8_t fill_balls_left;
 } Lane;
 
 static const VariantRules *Scorer_Rules(const Scorer *self)
@@ -61,7 +73,23 @@ static FrameShape *Lane_CurrentFrame(Lane *lane, const VariantRules *rules, uint
     return &lane->frames[lane->frame_count - 1U];
 }
 
-static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins pins)
+static bool Lane_IsLastFrame(const Lane *lane, const VariantRules *rules)
+{
+    return lane->frame_count == rules->frames;
+}
+
+/* After the frame it belongs to ends: the next frame, the last frame's fill balls, or the end. */
+static void Lane_AfterFrameEnds(Lane *lane, const VariantRules *rules, const FrameShape *frame)
+{
+    if (!Lane_IsLastFrame(lane, rules)) {
+        return;
+    }
+    lane->fill_balls_left = frame->bonus_balls;
+    lane->phase = (frame->bonus_balls > 0U) ? LANE_TAKING_FILL_BALLS : LANE_OVER;
+    lane->standing = rules->pins_per_rack;
+}
+
+static void Lane_ThrowInFrame(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins pins)
 {
     FrameShape *frame = Lane_CurrentFrame(lane, rules, ball_index);
     frame->balls++;
@@ -72,6 +100,36 @@ static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index
     } else if (frame->balls == rules->balls_per_frame) {
         frame->ended = true;
     }
+    if (frame->ended) {
+        Lane_AfterFrameEnds(lane, rules, frame);
+    }
+}
+
+static void Lane_ThrowFillBall(Lane *lane, const VariantRules *rules, Pins pins)
+{
+    lane->standing = (Pins)(lane->standing - pins);
+    if (lane->standing == 0U) {
+        lane->standing = rules->pins_per_rack;
+    }
+    lane->fill_balls_left--;
+    if (lane->fill_balls_left == 0U) {
+        lane->phase = LANE_OVER;
+    }
+}
+
+static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins pins)
+{
+    switch (lane->phase) {
+    case LANE_TAKING_FRAMES:
+        Lane_ThrowInFrame(lane, rules, ball_index, pins);
+        break;
+    case LANE_TAKING_FILL_BALLS:
+        Lane_ThrowFillBall(lane, rules, pins);
+        break;
+    case LANE_OVER:
+    default:
+        break; /* Scorer_Roll refuses a ball once the lane is over */
+    }
 }
 
 static void Lane_Walk(Lane *lane, const Scorer *self)
@@ -79,6 +137,8 @@ static void Lane_Walk(Lane *lane, const Scorer *self)
     const VariantRules *rules = Scorer_Rules(self);
     lane->frame_count = 0U;
     lane->standing = rules->pins_per_rack;
+    lane->phase = LANE_TAKING_FRAMES;
+    lane->fill_balls_left = 0U;
     for (uint8_t i = 0U; i < self->ball_count; i++) {
         Lane_Throw(lane, rules, i, self->balls[i]);
     }

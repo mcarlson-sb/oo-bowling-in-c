@@ -65,3 +65,10 @@ TEST(TenPinScorerTest, should_leave_a_strike_out_of_the_total_until_its_bonus_is
     RollAll(&scorer, {4U});
     EXPECT_EQ(24U, Scorer_Score(&scorer)); /* 17, and frame 2 is complete after two balls */
 }
+
+TEST(TenPinScorerTest, should_score_a_perfect_game_as_300)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollMany(&scorer, 12, 10U); /* the last two are the tenth frame's fill balls */
+    EXPECT_EQ(300U, Scorer_Score(&scorer));
+}
