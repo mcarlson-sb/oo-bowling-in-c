@@ -67,6 +67,18 @@ void Game_Destroy(Game *game)
     }
 }
 
+/* Busy for the whole roll, edit or catch-up, since the rule and the listeners run inside it:
+ * a change from there would land under the one in progress, and tell frames out of order. */
+static inline void Game_MarkBusy(Game *game)
+{
+    game->busy = true;
+}
+
+static inline void Game_ClearBusy(Game *game)
+{
+    game->busy = false;
+}
+
 static GameStatus Game_CheckCanChange(const Game *game)
 {
     if (game == NULL) {
@@ -97,22 +109,26 @@ static GameStatus Game_Accept(Game *game, Pins pins)
     return GAME_OK;
 }
 
-/* Busy for the whole roll or edit, since the rule and the listeners run inside it: a change
- * from there would land under the one in progress, and tell frames out of order. */
+static GameStatus Game_RollWhileBusy(Game *game, Pins pins)
+{
+    const GameStatus accepted = Game_Accept(game, pins);
+    if (accepted == GAME_OK) {
+        RollLog_Append(&game->log, pins);
+        FrameReporter_AfterRoll(&game->reporter, &game->scorecard);
+    }
+    return accepted;
+}
+
 GameStatus Game_Roll(Game *game, Pins pins)
 {
     const GameStatus can_change = Game_CheckCanChange(game);
     if (can_change != GAME_OK) {
         return can_change;
     }
-    game->busy = true;
-    const GameStatus status = Game_Accept(game, pins);
-    if (status == GAME_OK) {
-        RollLog_Append(&game->log, pins);
-        FrameReporter_AfterRoll(&game->reporter, &game->scorecard);
-    }
-    game->busy = false;
-    return status;
+    Game_MarkBusy(game);
+    const GameStatus rolled = Game_RollWhileBusy(game, pins);
+    Game_ClearBusy(game);
+    return rolled;
 }
 
 Score Game_Score(const Game *game)
@@ -131,9 +147,9 @@ bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *contex
     if (!FrameReporter_Add(&game->reporter, callback, context)) {
         return false;
     }
-    game->busy = true;
+    Game_MarkBusy(game);
     FrameReporter_CatchUpNewest(&game->reporter, &game->scorecard);
-    game->busy = false;
+    Game_ClearBusy(game);
     return true;
 }
 
@@ -179,16 +195,17 @@ GameStatus Game_CorrectRoll(Game *game, RollNumber roll_number, Pins pins)
 
 GameStatus Game_EditRolls(Game *game, const RollEdit *edit)
 {
-    GameStatus status = Game_CheckCanChange(game);
-    if (status != GAME_OK) {
-        return status;
+    const GameStatus can_change = Game_CheckCanChange(game);
+    if (can_change != GAME_OK) {
+        return can_change;
     }
     RollLog edited;
-    status = RollEdit_Apply(edit, &game->log, &edited);
-    if (status == GAME_OK) {
-        game->busy = true;
-        status = Game_ApplyEditedLog(game, &edited);
-        game->busy = false;
+    const GameStatus edit_checked = RollEdit_Apply(edit, &game->log, &edited);
+    if (edit_checked != GAME_OK) {
+        return edit_checked;
     }
-    return status;
+    Game_MarkBusy(game);
+    const GameStatus replayed = Game_ApplyEditedLog(game, &edited);
+    Game_ClearBusy(game);
+    return replayed;
 }
