@@ -52,23 +52,12 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     return game;
 }
 
-static bool Game_FindSlot(const Game *game, uint8_t *slot)
-{
-    for (uint8_t i = 0U; i < GAME_POOL_SIZE; i++) {
-        if (&s_games[i] == game) {
-            *slot = i;
-            return true;
-        }
-    }
-    return false;
-}
-
 /* A busy destroy stops rather than being ignored: the leaked slot would surface later, far
  * away, as Game_Create returning NULL. */
 void Game_Destroy(Game *game)
 {
     uint8_t slot = 0U;
-    if (!Game_FindSlot(game, &slot)) {
+    if (!SlotPool_Find(&s_pool, game, &slot)) {
         return;
     }
     if (game->busy) {

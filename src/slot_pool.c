@@ -16,7 +16,7 @@ bool SlotPool_Find(const SlotPool *self, const void *object, uint8_t *slot)
 {
     const unsigned char *start = (const unsigned char *)self->objects;
     for (uint8_t i = 0U; i < self->size; i++) {
-        if ((const void *)(start + (i * self->object_size)) == object) {
+        if ((const void *)&start[(size_t)i * self->object_size] == object) {
             *slot = i;
             return true;
         }

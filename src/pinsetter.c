@@ -33,21 +33,10 @@ Pinsetter *Pinsetter_Create(void)
     return pinsetter;
 }
 
-static bool Pinsetter_FindSlot(const Pinsetter *pinsetter, uint8_t *slot)
-{
-    for (uint8_t i = 0U; i < PINSETTER_POOL_SIZE; i++) {
-        if (&s_pinsetters[i] == pinsetter) {
-            *slot = i;
-            return true;
-        }
-    }
-    return false;
-}
-
 void Pinsetter_Destroy(Pinsetter *pinsetter)
 {
     uint8_t slot = 0U;
-    if (!Pinsetter_FindSlot(pinsetter, &slot)) {
+    if (!SlotPool_Find(&s_pool, pinsetter, &slot)) {
         return;
     }
     if (pinsetter->draining) {
