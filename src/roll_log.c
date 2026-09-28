@@ -45,7 +45,7 @@ static bool RollLog_HasRange(const RollLog *self, const RollEdit *edit)
            ((first_index + edit->rolls_removed) <= self->count);
 }
 
-GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edited)
+static GameStatus RollLog_CheckEdit(const RollLog *self, const RollEdit *edit)
 {
     if (edit == NULL) {
         return GAME_ERR_NO_SUCH_ROLL;
@@ -60,7 +60,11 @@ GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edit
     if (new_length > GAME_MAX_ROLLS) {
         return GAME_ERR_TOO_MANY_ROLLS;
     }
+    return GAME_OK;
+}
 
+static void RollLog_Splice(const RollLog *self, const RollEdit *edit, RollLog *edited)
+{
     const uint8_t first_index = RollNumber_ToIndex(edit->first_roll);
     edited->count = 0U;
     for (uint8_t i = 0U; i < first_index; i++) {
@@ -72,5 +76,13 @@ GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edit
     for (uint8_t i = (uint8_t)(first_index + edit->rolls_removed); i < self->count; i++) {
         edited->pins[edited->count++] = self->pins[i];
     }
-    return GAME_OK;
+}
+
+GameStatus RollLog_Edit(const RollLog *self, const RollEdit *edit, RollLog *edited)
+{
+    const GameStatus status = RollLog_CheckEdit(self, edit);
+    if (status == GAME_OK) {
+        RollLog_Splice(self, edit, edited);
+    }
+    return status;
 }
