@@ -1,11 +1,10 @@
 #include "game.h"
 
-#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 
 #include "fault.h"
-#include "frame_listeners.h"
+#include "frame_reporter.h"
 #include "roll_log.h"
 #include "scorecard.h"
 #include "slot_pool.h"
@@ -15,8 +14,7 @@
 struct Game {
     Scorecard scorecard;
     PinCountRule count_pins;
-    uint8_t frames_told_complete;
-    FrameListeners listeners;
+    FrameReporter reporter;
     bool busy; /* see Game_Roll */
     RollLog log;
 };
@@ -24,44 +22,6 @@ struct Game {
 static Game s_games[GAME_POOL_SIZE];
 static bool s_in_use[GAME_POOL_SIZE];
 static SlotPool s_pool = { s_in_use, GAME_POOL_SIZE };
-
-static inline FrameNumber FrameNumber_FromIndex(uint8_t index)
-{
-    return (FrameNumber)(index + 1U);
-}
-
-/* Tells the listeners about the frames from index `first` on, and about a frame they were told
- * was complete, and no longer is, as reopened. Inline, like the two below, because every
- * callback's stack sits on top of it. */
-static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t were_told_complete)
-{
-    const Scorecard *scorecard = &game->scorecard;
-    const uint8_t frame_count = Scorecard_FrameCount(scorecard);
-    game->frames_told_complete = first;
-    const uint8_t frames = (were_told_complete > frame_count) ? were_told_complete : frame_count;
-    for (uint8_t i = first; i < frames; i++) {
-        const FrameNumber frame_number = FrameNumber_FromIndex(i);
-        if ((i < frame_count) && Scorecard_IsFrameComplete(scorecard, i)) {
-            FrameListeners_Tell(&game->listeners, frame_number, Scorecard_FrameScore(scorecard, i),
-                                true);
-            game->frames_told_complete = frame_number;
-        } else if (i < were_told_complete) {
-            FrameListeners_Tell(&game->listeners, frame_number, 0U, false);
-        }
-    }
-    assert(Scorecard_AllFramesCompleteBefore(scorecard, game->frames_told_complete));
-}
-
-/* A roll can't change or reopen a frame already reported. */
-static inline void Game_ReportAfterRoll(Game *game)
-{
-    Game_ReportFrames(game, game->frames_told_complete, game->frames_told_complete);
-}
-
-static inline void Game_ReportAfterEdit(Game *game, uint8_t were_told_complete)
-{
-    Game_ReportFrames(game, 0U, were_told_complete);
-}
 
 static Pins Game_CountPinsDown(Pins pins_standing, Pins pins_down)
 {
@@ -86,8 +46,7 @@ Game *Game_CreateWithRule(PinCountRule count_pins)
     Game *game = &s_games[slot];
     Scorecard_Init(&game->scorecard);
     game->count_pins = count_pins;
-    game->frames_told_complete = 0U;
-    FrameListeners_Init(&game->listeners);
+    FrameReporter_Init(&game->reporter);
     game->busy = false;
     RollLog_Init(&game->log);
     return game;
@@ -153,7 +112,7 @@ GameStatus Game_Roll(Game *game, Pins pins)
     const GameStatus status = Game_Accept(game, pins);
     if (status == GAME_OK) {
         RollLog_Append(&game->log, pins);
-        Game_ReportAfterRoll(game);
+        FrameReporter_AfterRoll(&game->reporter, &game->scorecard);
     }
     game->busy = false;
     return status;
@@ -167,26 +126,17 @@ Score Game_Score(const Game *game)
     return Scorecard_Score(&game->scorecard);
 }
 
-/* Only the newest: the others would take a repeat for an update. */
-static void Game_CatchUpNewestListener(Game *game)
-{
-    game->busy = true;
-    for (uint8_t i = 0U; i < game->frames_told_complete; i++) {
-        FrameListeners_TellNewest(&game->listeners, FrameNumber_FromIndex(i),
-                                  Scorecard_FrameScore(&game->scorecard, i), true);
-    }
-    game->busy = false;
-}
-
 bool Game_OnFrameChanged(Game *game, FrameChangedCallback callback, void *context)
 {
     if ((game == NULL) || game->busy) {
         return false;
     }
-    if (!FrameListeners_Add(&game->listeners, callback, context)) {
+    if (!FrameReporter_Add(&game->reporter, callback, context)) {
         return false;
     }
-    Game_CatchUpNewestListener(game);
+    game->busy = true;
+    FrameReporter_CatchUpNewest(&game->reporter, &game->scorecard);
+    game->busy = false;
     return true;
 }
 
@@ -207,13 +157,13 @@ static GameStatus Game_Replay(Game *game)
  * isn't pure, and then no known-good game is left, so the program stops. */
 static GameStatus Game_ApplyEditedLog(Game *game, const RollLog *edited)
 {
-    const uint8_t were_told_complete = game->frames_told_complete;
+    const uint8_t were_told_complete = FrameReporter_FramesToldComplete(&game->reporter);
     const RollLog saved = game->log;
     game->log = *edited;
 
     const GameStatus status = Game_Replay(game);
     if (status == GAME_OK) {
-        Game_ReportAfterEdit(game, were_told_complete);
+        FrameReporter_AfterEdit(&game->reporter, &game->scorecard, were_told_complete);
     } else {
         game->log = saved;
         if (Game_Replay(game) != GAME_OK) {

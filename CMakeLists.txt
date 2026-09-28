@@ -33,6 +33,7 @@ add_library(bowling STATIC
     src/frame.c
     src/frame_context.c
     src/frame_listeners.c
+    src/frame_reporter.c
     src/game.c
     src/pinsetter.c
     src/pinsetter_isr.c
