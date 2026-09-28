@@ -275,3 +275,40 @@ TEST(NoTapScorerTest, should_score_a_first_ball_nine_as_a_strike)
     RollAll(&scorer, {9U, 3U, 4U});
     EXPECT_EQ(24U, Scorer_Score(&scorer)); /* (10 + 3 + 4) + (3 + 4) */
 }
+
+/* ---- Pinned by mutation testing: each fails against a mutant that survived -------------- */
+
+TEST(TenPinScorerTest, should_give_a_fill_ball_a_fresh_rack_of_ten_after_one_clears_it)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollMany(&scorer, 18, 0U);
+    RollAll(&scorer, {10U, 10U}); /* the first fill ball clears its rack: ten stand again */
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Roll(&scorer, 11U, &events));
+    RollAll(&scorer, {10U});
+    EXPECT_EQ(30U, Scorer_Score(&scorer));
+}
+
+TEST(TenPinScorerEditTest, should_accept_an_edit_that_leaves_exactly_the_most_balls_a_game_can_have)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollMany(&scorer, 18, 0U);
+    RollAll(&scorer, {10U, 10U, 10U}); /* 21 balls, the most a game can have */
+    const std::vector<Pins> one = {1U};
+    const RollEdit edit = Replace(1U, 1U, one); /* still 21 */
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ(31U, Scorer_Score(&scorer));
+}
+
+TEST(TenPinScorerEditTest, should_put_new_balls_where_the_edit_starts_when_it_starts_after_ball_one)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {3U, 4U, 2U, 1U});
+    const std::vector<Pins> spare = {5U, 5U};
+    const RollEdit edit = Replace(3U, 1U, spare); /* 3, 4 | 5, 5 | 1 */
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ((std::vector<Event>{{1, 7, true}, {2, 11, true}}), EventsOf(events));
+    EXPECT_EQ(18U, Scorer_Score(&scorer));
+}
