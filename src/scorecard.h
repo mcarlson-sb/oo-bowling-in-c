@@ -1,20 +1,18 @@
 #ifndef SCORECARD_H
 #define SCORECARD_H
 
-/* A game's frames, and how a roll moves along them. Holds FrameContexts, so it can't be
- * copied: rebuild it with Scorecard_Init and the rolls instead. */
+/* A game's frames, for the Game facade: now an adapter over the scorer core, which holds the
+ * balls as plain values and works out the frames from them. The facade counts each roll with
+ * its PinCountRule before giving it here, so the core counts the pins it is given. */
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "bowling_types.h"
-#include "frame_context.h"
-
-#define SCORECARD_FRAMES 10U
+#include "scorer.h"
 
 typedef struct {
-    FrameContext frames[SCORECARD_FRAMES];
-    uint8_t frame_count;
+    Scorer scorer;
 } Scorecard;
 
 void Scorecard_Init(Scorecard *self);
@@ -29,17 +27,17 @@ Score Scorecard_Score(const Scorecard *self);
 
 static inline uint8_t Scorecard_FrameCount(const Scorecard *self)
 {
-    return self->frame_count;
+    return Scorer_FrameCount(&self->scorer);
 }
 
 static inline bool Scorecard_IsFrameComplete(const Scorecard *self, uint8_t index)
 {
-    return FrameContext_IsComplete(&self->frames[index]);
+    return Scorer_Frame(&self->scorer, index).complete;
 }
 
 static inline Score Scorecard_FrameScore(const Scorecard *self, uint8_t index)
 {
-    return FrameContext_Score(&self->frames[index]);
+    return Scorer_Frame(&self->scorer, index).score;
 }
 
 /* Inline, so a release build, where only asserts use it, doesn't carry it. */
