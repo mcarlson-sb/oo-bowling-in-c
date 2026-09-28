@@ -83,3 +83,24 @@ TEST(TenPinScorerTest, should_reject_a_ball_after_the_game_is_over)
     EXPECT_EQ(3U, Scorer_Score(&scorer));
     EXPECT_EQ(0U, events.count);
 }
+
+TEST(TenPinScorerTest, should_reject_more_pins_than_are_standing)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {6U});
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Roll(&scorer, 5U, &events));
+    RollAll(&scorer, {4U, 3U}); /* unchanged: the 4 is still the spare's second ball */
+    EXPECT_EQ(13U, Scorer_Score(&scorer));
+}
+
+TEST(TenPinScorerTest, should_reject_a_fill_ball_with_more_pins_than_are_standing)
+{
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollMany(&scorer, 18, 0U);
+    RollAll(&scorer, {10U, 3U});
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Roll(&scorer, 8U, &events)); /* 7 standing */
+    RollAll(&scorer, {7U});
+    EXPECT_EQ(20U, Scorer_Score(&scorer));
+}

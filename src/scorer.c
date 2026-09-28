@@ -81,12 +81,12 @@ static bool Lane_IsLastFrame(const Lane *lane, const VariantRules *rules)
 /* After the frame it belongs to ends: the next frame, the last frame's fill balls, or the end. */
 static void Lane_AfterFrameEnds(Lane *lane, const VariantRules *rules, const FrameShape *frame)
 {
+    lane->standing = rules->pins_per_rack;
     if (!Lane_IsLastFrame(lane, rules)) {
         return;
     }
     lane->fill_balls_left = frame->bonus_balls;
     lane->phase = (frame->bonus_balls > 0U) ? LANE_TAKING_FILL_BALLS : LANE_OVER;
-    lane->standing = rules->pins_per_rack;
 }
 
 static void Lane_ThrowInFrame(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins pins)
@@ -179,6 +179,9 @@ GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events)
     Lane_Walk(&lane, self);
     if (lane.phase == LANE_OVER) {
         return GAME_ERR_GAME_OVER;
+    }
+    if (pins > lane.standing) {
+        return GAME_ERR_INVALID_PINS;
     }
     self->balls[self->ball_count] = pins;
     self->ball_count++;
