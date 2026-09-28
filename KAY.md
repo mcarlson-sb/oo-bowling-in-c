@@ -1624,6 +1624,61 @@ user asked for the two strongest to be fixed:
 lines: the listeners' "flag that refuses changes", which moved to `Game` in the deep-dive
 fixes, and a list of white-box tests two files short.
 
+### Composed methods, and the snapshot's last findings
+
+A second code-quality snapshot (at `8ea05ba`) left three findings, and the user's brief added
+four composed-method items, one of which was the same. Seven commits, each a pure refactoring
+tagged `[clean-up]`, tests unchanged, debug, release and UBSan before each next step, and
+ThreadSanitizer in CI after the two pinsetter commits:
+
+| Commit | Change |
+|---|---|
+| `FrameReporter_Tell` reads as its story | `FramesToReport`, `IsComplete`, `TellComplete` (which owns `frames_told_complete`), `TellReopened`; all `static inline` |
+| The busy bracket | `Game_MarkBusy` and `Game_ClearBusy` around one named piece of work in `Game_Roll`, `Game_EditRolls` and `Game_OnFrameChanged`; the edit is still checked before the game is busy, and each result has its own name |
+| The pinsetter's loads and stores | In `pinsetter_ring.h`, one `static inline` helper per load or store, each with its memory order: `PostAt`, `IsFull`, `MarkPosted`, `CountLost` on the interrupt side; `OldestAt`, `PostedUpTo`, `Peek`, `MarkTaken`, `LostCount` on the main loop |
+| `Scorecard_NextFrameIsTenth` | Names the test in `Scorecard_AddNewFrame` |
+| `RollLog_AppendRange`, `RollLog_AppendPins` | Each of `RollEdit_Splice`'s three copies is one line (the middle one copies an array, not a log, so it takes the second helper) |
+| The two state families | `frame_families.{h,c}`: `FrameFamily_Passing` and `FrameFamily_Tenth`; `frame_context.c` keeps the context |
+| The overlap check's test hook | Out of `pinsetter_isr.c`, into `pinsetter_hooks.c` |
+
+**The busy bracket is two helpers, not one function that takes the work.** Execute Around
+would need a function pointer and a `void *` argument, since the three pieces of work take
+different inputs: an indirect call on the roll path, under every callback, for three
+two-line brackets.
+
+**lizard, before and after** (functions that changed or appeared):
+
+| Function | CCN / NLOC before | after |
+|---|---|---|
+| `FrameReporter_Tell` | 6 / 18 | 4 / 14 |
+| `Game_Roll` | 3 / 15 | 2 / 11 |
+| `Game_EditRolls` | 3 / 15 | 3 / 16 |
+| `Pinsetter_DrainWaiting` | 3 / 15 | 3 / 13 |
+| `Pinsetter_Enqueue` | 2 / 14 | 2 / 12 |
+| `RollEdit_Splice` | 4 / 14 | 1 / 9 |
+| 19 new helpers | | each CCN 1 or 2, at most 9 NLOC |
+| **The library** | 115 functions, CCN average 1.77, max 6; NLOC average 7.1 | 134 functions, CCN average 1.65, max 6 (`RollEdit_Check`); NLOC average 6.6 |
+
+`FrameReporter_Tell`'s cognitive complexity went from 7, the limit, to 5.
+
+**Stack frames** (`-fstack-usage`, GCC 16, 64-bit host), bytes, before and after:
+
+| | `-O0` | `-O2` | release, `-O3 -DNDEBUG` |
+|---|---|---|---|
+| Base under a callback (`game.h`) | 416 → 496 | 272 → 272 | |
+| Base under the rule (`game.h`) | 368 → 384 | 416 → 416 | |
+| `Pinsetter_Post` (interrupt side) | 64 → 64 | | 8 → 8, identical machine code, no calls |
+| `Pinsetter_Enqueue` | 128 → 64 | inlined | inlined |
+| `Pinsetter_DrainWaiting` | 112 → 64 | inlined | inlined |
+| `Game_EditRolls` | 80 → 96 | | |
+| `RollEdit_Apply` | | 80 → 96 | 80 → 96 |
+
+At `-O2` and in the release build, the only frame that changed is `RollEdit_Apply`'s, which is
+never under the rule or a listener. The interrupt side's release object is byte for byte the
+same. At `-O0`, where `static inline` is not inlined, two things grew the bases: `TellComplete`
+is one more frame under the callback (+64), and `Game_EditRolls` holds three named results
+(+16, under both). `game.h` states the new `-O0` figures.
+
 ### The debt, after the clean-up
 
 Before phase 6, `game.c` was 344 lines, with the roll-log and listener extractions deferred on

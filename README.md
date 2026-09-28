@@ -291,7 +291,8 @@ files can see their fields, and only convention stops them writing to them. The 
 happens one level up, at the library boundary. Where nothing needs the layout, it stays in
 the `.c` file:
 - `struct Game`: callers only hold a pointer to it.
-- `struct FrameStateFactory`: `frame_context.h` only forward-declares it.
+- `struct FrameStateFactory`: `frame_context.h` only forward-declares it; only the two files
+  that need its layout include `frame_families.h`.
 
 **The tests follow the same line.**
 - `test/game_test.cpp`, `test/nine_pin_no_tap_test.cpp`, `test/scoreboard_test.cpp`,
@@ -300,8 +301,8 @@ the `.c` file:
   are black-box tests of the public API.
 - `test/frame_test.cpp`, `test/roll_list_test.cpp`, `test/roll_log_test.cpp`,
   `test/slot_pool_test.cpp`, `test/frame_listeners_test.cpp` and
-  `test/pinsetter_overlap_test.cpp` are white-box tests of private types. They are the only tests granted `src/`, and `CMakeLists.txt` says
-  why.
+  `test/pinsetter_overlap_test.cpp` are white-box tests of private types. They are the only
+  tests granted `src/`, and `CMakeLists.txt` says why.
 
 ## Design patterns
 
@@ -332,7 +333,7 @@ bonus, then passes it on, because the same roll starts the next frame.
 A strike in frame 3 passes its bonus rolls on; a strike in frame 10 keeps its fill balls.
 The strike itself is identical; only the state it becomes differs. So each `FrameContext` is
 built with a **family** of states: a `const` table of two factory functions
-(`struct FrameStateFactory` in `src/frame_context.c`).
+(`struct FrameStateFactory` and the two tables in `src/frame_families.c`).
 
 - `FrameContext_Init` gives frames 1 to 9 the regular family: `StrikeFrame` and `SpareFrame`.
 - `FrameContext_InitTenth` gives the last frame the last-frame family: `TenthStrikeFrame` and
@@ -355,7 +356,7 @@ The factory table's layout is hidden: `frame_context.h` only forward-declares it
 ## Why write C this way
 
 **Adding behavior means adding a type, not editing branches.** The tenth frame's rules are
-two new states and one new factory table, in `tenth_frame.c` and `frame_context.c`.
+two new states and one new factory table, in `tenth_frame.c` and `frame_families.c`.
 `RegularFrame`, `StrikeFrame` and `SpareFrame` didn't change. In a procedural version the
 frame type is checked in every function that cares, and each new case means finding every
 one of those checks.
@@ -414,7 +415,7 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `src/frame_listeners.h/.c` | `FrameListeners`, the value type that keeps a game's listeners and tells them |
 | `src/roll_log.h/.c` | `RollLog`, the value type a game keeps every roll in |
 | `src/roll_edit.h/.c` | `RollEdit_Apply`: which edits a roll log can take, and the log each one makes |
-| `src/pinsetter_hooks.h` | The switch for the pinsetter's debug-only overlap check (`PINSETTER_CHECK_OVERLAP`), and the hook its white-box test uses |
+| `src/pinsetter_hooks.h/.c` | The switch for the pinsetter's debug-only overlap check (`PINSETTER_CHECK_OVERLAP`), and the hook its white-box test uses |
 | `include/fault.h`, `src/fault.c` | `Fault_Stop`, the fail-stop for an error with no safe way on, such as more lanes than pinsetters. The host version writes the reason and calls `abort()`; a target build defines its own, and the linker then leaves this one out |
 | `include/bowling_types.h` | `Pins` and `Score`, the domain's two quantities |
 | `src/frame.h/.c` | Abstract base `Frame`: its vtable, shared fields and methods, and `RollResult` |
@@ -422,7 +423,8 @@ GoogleTest and again under the undefined-behavior sanitizer, in about a second.
 | `src/slot_pool.h/.c` | `SlotPool`, which hands out and takes back the games, and the pinsetters, from storage their modules own |
 | `src/regular_frame.*`, `src/strike_frame.*`, `src/spare_frame.*` | The states for frames 1 to 9. `RegularFrame` is also where the tenth frame starts |
 | `src/tenth_frame.*` | The tenth frame's strike and spare states |
-| `src/frame_context.h/.c` | The State-pattern context and the two state families (Abstract Factory) |
+| `src/frame_context.h/.c` | The State-pattern context: each state's storage, the current state, and forwarding |
+| `src/frame_families.h/.c` | The two state families (Abstract Factory): frames 1 to 9, and the tenth |
 | `src/frame_transition.h` | The three context functions a state uses to change state, kept apart from what `Game` uses |
 | `test/game_test.cpp` | Host tests through the public API: scoring, end of game, game storage, tenth frame, input validation, `NULL` handles |
 | `KAY.md` | The log of the Kay-style OO experiment on the `kay-oo` branch |

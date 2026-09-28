@@ -314,13 +314,13 @@ on, but a strike in frame 10 keeps its fill balls. So each context is started wi
 **family** of states, a `const` factory table (the Abstract Factory pattern):
 
 ```c
-/* src/frame_context.c */
-static const struct FrameStateFactory s_regular_family = {
+/* src/frame_families.c */
+const struct FrameStateFactory FrameFamily_Passing = {
     .new_strike = NewPassingStrike,   /* builds a StrikeFrame */
     .new_spare = NewPassingSpare,     /* builds a SpareFrame */
 };
 
-static const struct FrameStateFactory s_last_frame_family = {
+const struct FrameStateFactory FrameFamily_Tenth = {
     .new_strike = NewTenthStrike,     /* builds a TenthStrikeFrame */
     .new_spare = NewTenthSpare,       /* builds a TenthSpareFrame */
 };
@@ -521,9 +521,9 @@ suppose a house rule made a first-roll 9 a "near miss", worth a one-roll bonus. 
 3. **Implement it** in its `.c` file: a `static` `roll`, a `pins_standing` (or the default
    `Frame_AllPinsStanding`), a `static const` vtable, and `_Init`.
 4. **Give it a slot** in `FrameContext`.
-5. **Give it a factory entry** in `struct FrameStateFactory`, and fill that entry in both
-   families: the passing version for frames 1 to 9 and the keeping version for frame 10, if
-   they differ.
+5. **Give it a factory entry** in `struct FrameStateFactory` (`src/frame_families.h`), and fill
+   that entry in both families, in `src/frame_families.c`: the passing version for frames 1 to
+   9 and the keeping version for frame 10, if they differ.
 6. **Trigger the transition** from the state that moves to it (here, a new guard in
    `RegularFrame_Roll`).
 7. **Check the invariants:** a state's rolls and bonus rolls fit in two `RollList`s, and

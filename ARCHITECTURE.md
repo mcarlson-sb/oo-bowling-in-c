@@ -127,6 +127,8 @@ across.
 |  | interrupt side           |  | main-loop side, and the   | |
 |  | src/pinsetter_isr.c      |  | pool of 2                 | |
 |  | Post, Enqueue            |  | src/pinsetter.c           | |
+|  | (nothing else)           |  | Drain, DiscardOldest,     | |
+|  |                          |  | RollsLost                 | |
 |  +--------------------------+  +---------------------------+ |
 |  the ring they share: src/pinsetter_ring.h                   |
 +--------------------------------------------------------------+
@@ -175,7 +177,10 @@ PRIVATE  src/
   game_limits.h                  (GAME_MAX_ROLLS; no includes)
   pinsetter_hooks.h --> pinsetter.h  (the overlap check's switch, and a test hook)
   pinsetter_ring.h  --> bowling_types.h, game_limits.h, pinsetter.h, pinsetter_hooks.h
-                        (the struct both pinsetter files share; nothing else includes it)
+                        (the struct both pinsetter sides share, and the ring's loads and
+                        stores, each with its memory order)
+  frame_families.h  --> bowling_types.h (public), frame.h
+                        (struct FrameStateFactory, and the two families)
 
 Source files that include a header from another module:
   game.c           --> fault.h, frame_reporter.h, roll_edit.h, roll_log.h, scorecard.h,
@@ -183,15 +188,18 @@ Source files that include a header from another module:
   roll_edit.c      --> game_limits.h
   pinsetter.c      --> fault.h, pinsetter_hooks.h, pinsetter_ring.h, slot_pool.h
   pinsetter_isr.c  --> fault.h, pinsetter_hooks.h, pinsetter_ring.h
-  frame_context.c  --> frame_transition.h
+  pinsetter_hooks.c --> pinsetter_ring.h (the test hook; compiled with the overlap check)
+  frame_context.c  --> frame_families.h, frame_transition.h
+  frame_families.c --> frame_context.h
   regular_frame.c  --> frame_transition.h (the one state that switches states)
 ```
 
 Includes only point from `src/` to `include/`, never the other way: no public header
 mentions a private one.
 
-`struct Game` is defined only in `game.c`, and `struct FrameStateFactory` only in
-`frame_context.c`: nothing outside those files needs their layout. `struct Pinsetter` is in
+`struct Game` is defined only in `game.c`: nothing outside it needs its layout.
+`struct FrameStateFactory` is in `frame_families.h`, which only `frame_context.c` and
+`frame_families.c` include. `struct Pinsetter` is in
 `pinsetter_ring.h`, because its two sides live in two files, so that the interrupt side can have
 a stack limit of its own; only those two files include it. The other structs are in
 headers because another struct holds them by value (section 4).
@@ -431,11 +439,11 @@ frame started (Abstract Factory).
 ```
 Scorecard_AddNewFrame
    |
-   |-- frames 1 to 9 --> FrameContext_Init -------> factory = &s_regular_family
+   |-- frames 1 to 9 --> FrameContext_Init -------> factory = &FrameFamily_Passing
    |                                                new_strike --> StrikeFrame
    |                                                new_spare  --> SpareFrame
    |
-   '-- frame 10 -------> FrameContext_InitTenth --> factory = &s_last_frame_family
+   '-- frame 10 -------> FrameContext_InitTenth --> factory = &FrameFamily_Tenth
                                                     new_strike --> TenthStrikeFrame
                                                     new_spare  --> TenthSpareFrame
 
@@ -447,7 +455,7 @@ RegularFrame_Roll
                    '--> whichever strike state this frame's family builds
 ```
 
-Both tables are `static const` in `src/frame_context.c`; the header only forward-declares
+Both tables are `const`, in `src/frame_families.c`; `frame_context.h` only forward-declares
 `struct FrameStateFactory`.
 
 ---
