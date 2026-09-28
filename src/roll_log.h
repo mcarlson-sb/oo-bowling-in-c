@@ -24,4 +24,9 @@ uint8_t RollLog_Count(const RollLog *self);
 /* Past the last roll: stops a debug build, reads as 0 in release. */
 Pins RollLog_At(const RollLog *self, uint8_t index);
 
+/* Appends `source`'s rolls from index `first` up to, not including, `end`. */
+void RollLog_AppendRange(RollLog *self, const RollLog *source, uint8_t first, uint8_t end);
+
+void RollLog_AppendPins(RollLog *self, const Pins *pins, uint8_t count);
+
 #endif /* ROLL_LOG_H */

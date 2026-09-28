@@ -30,3 +30,17 @@ Pins RollLog_At(const RollLog *self, uint8_t index)
     }
     return self->pins[index];
 }
+
+void RollLog_AppendRange(RollLog *self, const RollLog *source, uint8_t first, uint8_t end)
+{
+    for (uint8_t i = first; i < end; i++) {
+        RollLog_Append(self, RollLog_At(source, i));
+    }
+}
+
+void RollLog_AppendPins(RollLog *self, const Pins *pins, uint8_t count)
+{
+    for (uint8_t i = 0U; i < count; i++) {
+        RollLog_Append(self, pins[i]);
+    }
+}

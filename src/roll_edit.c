@@ -40,16 +40,11 @@ static GameStatus RollEdit_Check(const RollEdit *edit, const RollLog *log)
 static void RollEdit_Splice(const RollEdit *edit, const RollLog *log, RollLog *edited)
 {
     const uint8_t first_index = RollNumber_ToIndex(edit->first_roll);
+    const uint8_t after_removed = (uint8_t)(first_index + edit->rolls_removed);
     RollLog_Init(edited);
-    for (uint8_t i = 0U; i < first_index; i++) {
-        RollLog_Append(edited, RollLog_At(log, i));
-    }
-    for (uint8_t i = 0U; i < edit->new_count; i++) {
-        RollLog_Append(edited, edit->new_pins[i]);
-    }
-    for (uint8_t i = (uint8_t)(first_index + edit->rolls_removed); i < RollLog_Count(log); i++) {
-        RollLog_Append(edited, RollLog_At(log, i));
-    }
+    RollLog_AppendRange(edited, log, 0U, first_index);
+    RollLog_AppendPins(edited, edit->new_pins, edit->new_count);
+    RollLog_AppendRange(edited, log, after_removed, RollLog_Count(log));
 }
 
 GameStatus RollEdit_Apply(const RollEdit *edit, const RollLog *log, RollLog *edited)
