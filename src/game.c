@@ -97,7 +97,6 @@ static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t were_tol
     for (uint8_t i = first; i < frames; i++) {
         const FrameNumber frame_number = FrameNumber_FromIndex(i);
         if ((i < game->frame_count) && FrameContext_IsComplete(&game->frames[i])) {
-            assert(Game_AllFramesCompleteBefore(game, i));
             FrameListeners_Tell(&game->listeners, frame_number,
                                 FrameContext_Score(&game->frames[i]), true);
             game->frames_told_complete = frame_number;
@@ -105,6 +104,7 @@ static inline void Game_ReportFrames(Game *game, uint8_t first, uint8_t were_tol
             FrameListeners_Tell(&game->listeners, frame_number, 0U, false);
         }
     }
+    assert(Game_AllFramesCompleteBefore(game, game->frames_told_complete));
 }
 
 /* A roll can't change or reopen a frame already reported. */
