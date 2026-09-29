@@ -536,3 +536,11 @@ TEST(CandlepinTest, A16_should_a_ball_after_thirty_zeros_is_rejected_the_game_is
     EXPECT_EQ(GAME_ERR_GAME_OVER, Scorer_Roll(&scorer, 0U, &events));
     EXPECT_EQ(0U, events.count);
 }
+
+TEST(CandlepinTest, A17_should_a_strike_alone_totals_0_with_frame_1_unknown)
+{
+    Scorer scorer = MakeCandlepin();
+    RollAll(&scorer, {10U});
+    EXPECT_EQ(0U, Scorer_Score(&scorer));
+    EXPECT_FALSE(Scorer_Frame(&scorer, 0U).complete);
+}
