@@ -12,6 +12,7 @@
 
 #include "scorer.h"
 #include "rules_presets.h"
+#include "rules_reference.h"
 #include "candlepin_reference.h"
 #include "ten_pin_reference.h"
 
@@ -943,4 +944,71 @@ TEST(ScorerRulesTest, should_refuse_no_pins_more_than_it_scores_or_a_clear_every
     ExpectRefused({10U, 2U, 21U, {2U, 1U, 0U}, 0U});
     /* Ten pins, and a ball that leaves ten standing counts as a clear: every ball does. */
     ExpectRefused({10U, 2U, 10U, {2U, 1U, 0U}, 10U});
+}
+
+/* ---- Variants never compiled in, from their rules alone ----------------------------------- */
+
+namespace {
+
+/* Random legal games of random length, a quarter of the balls clearing the rack, checked after
+ * every ball against the independent reference: the score, and whether the game is over. */
+void ExpectToPlayAsTheReferenceDoes(const ScorerRules &rules, unsigned seed)
+{
+    const rules_reference::Rules reference = {
+        rules.frames, rules.balls_per_frame, rules.pins_per_rack,
+        {rules.bonus_balls_by_clearing_ball[0], rules.bonus_balls_by_clearing_ball[1],
+         rules.bonus_balls_by_clearing_ball[2]}};
+    std::mt19937 random(seed);
+    for (int game_number = 0; game_number < 5000; ++game_number) {
+        Scorer scorer = MakeScorer(rules);
+        rules_reference::Lane lane(reference);
+        std::vector<int> balls;
+        const int stop_after = std::uniform_int_distribution<int>(1, SCORER_MAX_BALLS)(random);
+        for (int ball = 0; (ball < stop_after) && !lane.over; ++ball) {
+            const bool clear_the_rack = std::uniform_int_distribution<int>(0, 3)(random) == 0;
+            const int down =
+                clear_the_rack ? lane.standing
+                               : std::uniform_int_distribution<int>(0, lane.standing)(random);
+            RollAll(&scorer, {static_cast<Pins>(down)});
+            balls.push_back(down);
+            lane.Roll(down);
+            ASSERT_EQ(rules_reference::Score(reference, balls),
+                      static_cast<int>(Scorer_Score(&scorer)))
+                << "game " << game_number << ", after ball " << (ball + 1);
+            ASSERT_EQ(lane.over, Scorer_IsOver(&scorer)) << "game " << game_number;
+        }
+    }
+}
+
+/* Ten-pin's frames, only five of them. */
+constexpr ScorerRules kFiveFrames = {5U, 2U, 10U, {2U, 1U, 0U}, 0U};
+/* Three balls a frame at a rack of five: a strike owes two, a spare one, a third-ball clear none. */
+constexpr ScorerRules kThreeBallsFivePins = {10U, 3U, 5U, {2U, 1U, 0U}, 0U};
+
+} // namespace
+
+TEST(RulesAsDataTest, should_play_a_five_frame_game_as_the_reference_does)
+{
+    ExpectToPlayAsTheReferenceDoes(kFiveFrames, 20261003U);
+}
+
+TEST(RulesAsDataTest, should_play_a_three_ball_game_at_a_rack_of_five_as_the_reference_does)
+{
+    ExpectToPlayAsTheReferenceDoes(kThreeBallsFivePins, 20261004U);
+}
+
+TEST(RulesAsDataTest, should_score_five_strikes_and_two_fill_balls_as_150_over_after_ball_7)
+{
+    Scorer scorer = MakeScorer(kFiveFrames);
+    RollMany(&scorer, 7, 10U);
+    EXPECT_EQ(150U, Scorer_Score(&scorer));
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+}
+
+TEST(RulesAsDataTest, should_agree_with_the_ten_pin_and_candlepin_references_through_the_scorer)
+{
+    /* The general reference, trusted no more than the variant references already checking the
+     * scorer: on their variants it must agree with the scorer too. */
+    ExpectToPlayAsTheReferenceDoes(rules::kTenPin, 20261005U);
+    ExpectToPlayAsTheReferenceDoes(rules::kCandlepin, 20261006U);
 }
