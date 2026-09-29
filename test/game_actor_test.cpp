@@ -422,3 +422,104 @@ TEST(GameActorTest, should_stop_telling_a_subscriber_that_unsubscribes)
     Send(&actor, SubscribeRequest(7U, &a), &outbox); /* its room is free again */
     EXPECT_EQ(GAME_OK, outbox.items[0].status);
 }
+
+/* ---- Pinned by mutation testing: each kills an actor mutant that survived ------------------ */
+
+TEST(GameActorTest, should_tell_a_subscriber_every_frame_one_roll_completes_in_order)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(1U, &s_subscriber_queue), &outbox);
+    Send(&actor, RollRequest(2U, 10U), &outbox);
+    Send(&actor, RollRequest(3U, 3U), &outbox);
+    Send(&actor, RollRequest(4U, 4U), &outbox); /* completes the strike and its own frame */
+    EXPECT_EQ((std::vector<Sent>{{GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 1, 17, true},
+                                 {GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 2, 7, true}}),
+              FrameEventsIn(outbox));
+}
+
+TEST(GameActorPinsetterTest, should_tell_every_subscriber_about_held_and_lost_rolls)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    int a = 0;
+    int b = 0;
+    Send(&actor, SubscribeRequest(1U, &a), &outbox);
+    Send(&actor, SubscribeRequest(2U, &b), &outbox);
+    Send(&actor, PinsetterRoll(11U), &outbox);
+    std::vector<void *> told;
+    for (uint8_t i = 0U; i < outbox.count; i++) {
+        told.push_back(outbox.items[i].to);
+    }
+    EXPECT_EQ((std::vector<void *>{&a, &b}), told); /* both hear the roll held */
+    Send(&actor, RollsLostReport(1U), &outbox);
+    EXPECT_EQ(2U, outbox.count); /* both hear the roll lost */
+    EXPECT_EQ(&b, outbox.items[1].to);
+}
+
+TEST(GameActorTest, should_stop_telling_the_second_subscriber_when_it_unsubscribes)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    int a = 0;
+    int b = 0;
+    Send(&actor, SubscribeRequest(1U, &a), &outbox);
+    Send(&actor, SubscribeRequest(2U, &b), &outbox);
+    Send(&actor, UnsubscribeRequest(3U, &b), &outbox);
+    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+    Send(&actor, RollRequest(4U, 3U), &outbox);
+    Send(&actor, RollRequest(5U, 4U), &outbox);
+    EXPECT_EQ((std::vector<Sent>{{GAME_OUT_FRAME_CHANGED, &a, 1, 7, true}}), FrameEventsIn(outbox));
+}
+
+TEST(GameActorPinsetterTest, should_tell_the_frames_the_held_rolls_complete_when_they_go_through)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(1U, &s_subscriber_queue), &outbox);
+    Send(&actor, PinsetterRoll(5U), &outbox); /* miscounted: 2 fell */
+    Send(&actor, PinsetterRoll(8U), &outbox);
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    Send(&actor, EditRequest(2U, 1U, 1U, {2U}), &outbox);
+    EXPECT_EQ((std::vector<Sent>{{GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 1, 13, true}}),
+              FrameEventsIn(outbox)); /* the spare, completed by the held 3 */
+}
+
+TEST(GameActorPinsetterTest, should_hold_again_at_the_next_held_roll_the_game_rejects)
+{
+    /* A correction lets the 8 through, but the 11 behind it can never fall: the held rolls stop
+     * there again, and the subscribers are told what is held now, and why. */
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(1U, &s_subscriber_queue), &outbox);
+    Send(&actor, PinsetterRoll(5U), &outbox); /* miscounted: 2 fell */
+    Send(&actor, PinsetterRoll(8U), &outbox);
+    Send(&actor, PinsetterRoll(11U), &outbox);
+    Send(&actor, EditRequest(2U, 1U, 1U, {2U}), &outbox);
+    EXPECT_EQ((std::vector<Held>{{11, 3, 1, GAME_ERR_INVALID_PINS}}), HeldEventsIn(outbox));
+}
+
+TEST(GameActorPinsetterTest, should_let_the_rest_through_after_discarding_from_a_full_held_list)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    BowlAGutterGame(&actor);
+    GameOutbox outbox;
+    for (int i = 0; i < 30; i++) {
+        Send(&actor, PinsetterRoll(1U), &outbox); /* a full held list, all after the game */
+    }
+    Send(&actor, DiscardHeldRequest(21U), &outbox);
+    EXPECT_EQ(GAME_OK, outbox.items[0].status); /* the game is still over: 29 remain held */
+}
+
+TEST(GameActorTest, should_refuse_unsubscribing_the_same_subscriber_twice)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    int a = 0;
+    int b = 0;
+    Send(&actor, SubscribeRequest(1U, &a), &outbox);
+    Send(&actor, SubscribeRequest(2U, &b), &outbox);
+    Send(&actor, UnsubscribeRequest(3U, &b), &outbox);
+    Send(&actor, UnsubscribeRequest(4U, &b), &outbox);
+    EXPECT_EQ(GAME_ERR_NOT_SUBSCRIBED, outbox.items[0].status);
+}
