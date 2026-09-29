@@ -1,8 +1,9 @@
 #ifndef GAME_SHELL_H
 #define GAME_SHELL_H
 
-/* The RTOS shell: the one game actor, in a task of its own, fed by queues. A request's reply
- * address is the caller's own FreeRTOS queue of GameOutput, and so is a subscriber's. */
+/* The RTOS shell: the one game actor, in a task of its own, fed by queues. Actors address each
+ * other by id; the shell's routing table binds each id to the FreeRTOS queue of GameOutput its
+ * actor reads, so a reply or an event goes to whoever is bound at its "to" when it is sent. */
 
 #include <stddef.h>
 
@@ -23,7 +24,15 @@ extern "C" {
 #define GAME_SHELL_ISR_STACK_BUDGET 3584U
 #define GAME_SHELL_SEND_STACK_BUDGET 3584U
 
+/* The ids the routing table can bind: 1 to GAME_SHELL_ACTORS - 1. The game is at
+ * GAME_SHELL_GAME_ID. */
+#define GAME_SHELL_ACTORS 8U
+#define GAME_SHELL_GAME_ID 1U
+
 void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority);
+
+/* After GameShell_Start, before the scheduler starts: outputs to `id` go to `queue`. */
+void GameShell_Bind(ActorId id, QueueHandle_t queue);
 
 BaseType_t GameShell_Send(const GameMessage *message, TickType_t wait);
 

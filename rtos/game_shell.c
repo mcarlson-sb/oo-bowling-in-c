@@ -23,6 +23,7 @@ typedef struct {
     GameActor actor;
     GameOutbox outbox;
     GameMessage message;
+    QueueHandle_t routes[GAME_SHELL_ACTORS];
     atomic_uint_least16_t outputs_dropped; /* written by the game task, read by any */
     QueueHandle_t commands;
     StaticQueue_t commands_queue;
@@ -45,10 +46,19 @@ static void GameShell_Deliver(GameShell *self)
 {
     for (uint8_t i = 0U; i < self->outbox.count; i++) {
         const GameOutput *out = &self->outbox.items[i];
-        if (xQueueSend((QueueHandle_t)out->to, out, 0U) != pdPASS) {
+        if (xQueueSend(self->routes[out->to], out, 0U) != pdPASS) {
             (void)atomic_fetch_add_explicit(&self->outputs_dropped, 1U, memory_order_relaxed);
         }
     }
+}
+
+/* From the pinsetter, which has no id: it hears no reply. */
+static void GameEnvelope_FromThePinsetter(GameEnvelope *envelope, GameSelector selector)
+{
+    envelope->selector = selector;
+    envelope->from = ACTOR_ID_NONE;
+    envelope->to = GAME_SHELL_GAME_ID;
+    envelope->seq = 0U;
 }
 
 static bool GameShell_TakePinsetterRoll(GameShell *self, GameMessage *message)
@@ -57,7 +67,7 @@ static bool GameShell_TakePinsetterRoll(GameShell *self, GameMessage *message)
     if (xQueueReceive(self->pinsetter, &pins, 0U) != pdPASS) {
         return false;
     }
-    message->envelope.selector = GAME_MSG_PINSETTER_ROLL;
+    GameEnvelope_FromThePinsetter(&message->envelope, GAME_MSG_PINSETTER_ROLL);
     message->payload.roll.pins = pins;
     return true;
 }
@@ -68,7 +78,7 @@ static bool GameShell_TakeLostReport(GameShell *self, GameMessage *message)
     if (xQueueReceive(self->lost_report, &lost, 0U) != pdPASS) {
         return false;
     }
-    message->envelope.selector = GAME_MSG_ROLLS_LOST;
+    GameEnvelope_FromThePinsetter(&message->envelope, GAME_MSG_ROLLS_LOST);
     message->payload.rolls_lost.lost = lost;
     return true;
 }
@@ -103,6 +113,9 @@ void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority
 {
     GameShell *self = &s_shell;
     GameActor_Init(&self->actor, variant, rule);
+    for (uint8_t id = 0U; id < GAME_SHELL_ACTORS; id++) {
+        self->routes[id] = NULL;
+    }
     atomic_init(&self->outputs_dropped, 0U);
     self->commands = xQueueCreateStatic(GAME_SHELL_COMMANDS, sizeof(GameMessage),
                                         self->commands_storage, &self->commands_queue);
@@ -117,6 +130,12 @@ void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority
     self->ports.lost_report = self->lost_report;
     self->ports.game_task = self->task;
     GameShell_ResetIsr();
+}
+
+void GameShell_Bind(ActorId id, QueueHandle_t queue)
+{
+    configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
+    s_shell.routes[id] = queue;
 }
 
 const GameShellPorts *GameShell_Ports(void)

@@ -53,18 +53,18 @@ static bool Subscribers_IsFull(const Subscribers *subscribers)
     return subscribers->count == GAME_MAX_SUBSCRIBERS;
 }
 
-static void Subscribers_Add(Subscribers *subscribers, void *queue)
+static void Subscribers_Add(Subscribers *subscribers, ActorId id)
 {
-    subscribers->queues[subscribers->count] = queue;
+    subscribers->ids[subscribers->count] = id;
     subscribers->count++;
 }
 
-static bool Subscribers_Remove(Subscribers *subscribers, const void *queue)
+static bool Subscribers_Remove(Subscribers *subscribers, ActorId id)
 {
     for (uint8_t i = 0U; i < subscribers->count; i++) {
-        if (subscribers->queues[i] == queue) {
+        if (subscribers->ids[i] == id) {
             subscribers->count--;
-            subscribers->queues[i] = subscribers->queues[subscribers->count];
+            subscribers->ids[i] = subscribers->ids[subscribers->count];
             return true;
         }
     }
@@ -80,7 +80,7 @@ void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule)
     self->lost_to_full_held_list = 0U;
 }
 
-static GameOutput *GameOutbox_Next(GameOutbox *outbox, GameOutputKind kind, void *to)
+static GameOutput *GameOutbox_Next(GameOutbox *outbox, GameOutputKind kind, ActorId to)
 {
     assert(outbox->count < GAME_OUTBOX_CAPACITY);
     GameOutput *out = &outbox->items[outbox->count];
@@ -92,7 +92,7 @@ static GameOutput *GameOutbox_Next(GameOutbox *outbox, GameOutputKind kind, void
 
 static GameOutput *GameOutbox_BeginReply(GameOutbox *outbox, const GameMessage *message)
 {
-    GameOutput *reply = GameOutbox_Next(outbox, GAME_OUT_REPLY, message->envelope.reply_to);
+    GameOutput *reply = GameOutbox_Next(outbox, GAME_OUT_REPLY, message->envelope.from);
     reply->payload.reply.seq = message->envelope.seq;
     return reply;
 }
@@ -109,7 +109,7 @@ static void GameOutbox_Reply(GameOutbox *outbox, const GameMessage *message, Gam
     GameReply_Finish(GameOutbox_BeginReply(outbox, message), status, score);
 }
 
-static void GameOutbox_FrameChanged(GameOutbox *outbox, void *to, const FrameEvent *frame)
+static void GameOutbox_FrameChanged(GameOutbox *outbox, ActorId to, const FrameEvent *frame)
 {
     GameOutbox_Next(outbox, GAME_OUT_FRAME_CHANGED, to)->payload.frame = *frame;
 }
@@ -119,7 +119,7 @@ static void GameActor_Publish(const GameActor *self, const FrameEvents *events,
 {
     for (uint8_t s = 0U; s < self->subscribers.count; s++) {
         for (uint8_t e = 0U; e < events->count; e++) {
-            GameOutbox_FrameChanged(outbox, self->subscribers.queues[s], &events->events[e]);
+            GameOutbox_FrameChanged(outbox, self->subscribers.ids[s], &events->events[e]);
         }
     }
 }
@@ -132,7 +132,7 @@ static RollNumber GameActor_HeldBallNumber(const GameActor *self, uint8_t index)
 static void GameActor_PublishHeld(const GameActor *self, uint8_t index, GameOutbox *outbox)
 {
     for (uint8_t s = 0U; s < self->subscribers.count; s++) {
-        GameOutput *out = GameOutbox_Next(outbox, GAME_OUT_ROLL_HELD, self->subscribers.queues[s]);
+        GameOutput *out = GameOutbox_Next(outbox, GAME_OUT_ROLL_HELD, self->subscribers.ids[s]);
         out->payload.roll_held.pins = self->held.pins[index];
         out->payload.roll_held.position = GameActor_HeldBallNumber(self, index);
         out->payload.roll_held.held = self->held.count;
@@ -143,7 +143,7 @@ static void GameActor_PublishHeld(const GameActor *self, uint8_t index, GameOutb
 static void GameActor_PublishLost(const GameActor *self, GameOutbox *outbox)
 {
     for (uint8_t s = 0U; s < self->subscribers.count; s++) {
-        GameOutput *out = GameOutbox_Next(outbox, GAME_OUT_ROLLS_LOST, self->subscribers.queues[s]);
+        GameOutput *out = GameOutbox_Next(outbox, GAME_OUT_ROLLS_LOST, self->subscribers.ids[s]);
         out->payload.rolls_lost.lost =
             (uint16_t)(self->lost_to_full_queue + self->lost_to_full_held_list);
     }
@@ -266,7 +266,7 @@ static void GameActor_QueryScore(const GameActor *self, const GameMessage *messa
     GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
 }
 
-static void GameActor_SendCompleteFrames(const GameActor *self, void *subscriber,
+static void GameActor_SendCompleteFrames(const GameActor *self, ActorId subscriber,
                                         GameOutbox *outbox)
 {
     for (uint8_t i = 0U; i < Scorer_FramesStarted(&self->scorer); i++) {
@@ -285,15 +285,15 @@ static void GameActor_Subscribe(GameActor *self, const GameMessage *message, Gam
         GameOutbox_Reply(outbox, message, GAME_ERR_TOO_MANY_SUBSCRIBERS, 0U);
         return;
     }
-    Subscribers_Add(&self->subscribers, message->envelope.reply_to);
+    Subscribers_Add(&self->subscribers, message->envelope.from);
     GameOutbox_Reply(outbox, message, GAME_OK, 0U);
-    GameActor_SendCompleteFrames(self, message->envelope.reply_to, outbox);
+    GameActor_SendCompleteFrames(self, message->envelope.from, outbox);
 }
 
 static void GameActor_Unsubscribe(GameActor *self, const GameMessage *message,
                                   GameOutbox *outbox)
 {
-    const bool removed = Subscribers_Remove(&self->subscribers, message->envelope.reply_to);
+    const bool removed = Subscribers_Remove(&self->subscribers, message->envelope.from);
     GameOutbox_Reply(outbox, message, removed ? GAME_OK : GAME_ERR_NOT_SUBSCRIBED, 0U);
 }
 

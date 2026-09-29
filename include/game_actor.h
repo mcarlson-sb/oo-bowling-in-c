@@ -3,15 +3,13 @@
 
 /* The game actor: one game, and everything that may change it, as messages. It handles one
  * message at a time and writes what it sends, replies and events, to an outbox the caller
- * supplies. It knows nothing of the RTOS: the RTOS shell owns the one instance, and moves
- * messages between it and the queues.
- *
- * A reply address (reply_to) is opaque here: the shell's queue, copied onto each output bound
- * for it, never followed. */
+ * supplies. It knows nothing of the RTOS, and holds no pointers: it addresses actors by id,
+ * and the RTOS shell, which owns the one instance, routes each id to a queue. */
 
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "actor_id.h"
 #include "bowling_status.h"
 #include "bowling_types.h"
 #include "scorer.h"
@@ -25,15 +23,15 @@ typedef uint16_t RequestSeq;
 
 typedef enum {
     GAME_MSG_ROLL,
-    /* reply_to is the subscriber: it gets the reply, a catch-up of the complete frames, then
-     * every frame change. */
+    /* from is the subscriber: it gets the reply, a catch-up of the complete frames, then every
+     * frame change. */
     GAME_MSG_SUBSCRIBE,
-    GAME_MSG_UNSUBSCRIBE, /* reply_to is the subscriber, which gets the reply */
+    GAME_MSG_UNSUBSCRIBE, /* from is the subscriber, which gets the reply */
     /* An edit (see RollEdit), with its new balls carried in the message: a queue copies the
      * message, so nothing in it may point back into the sender's memory. A correction is an
      * edit of one ball out and one in. */
     GAME_MSG_EDIT,
-    /* A roll the pinsetter counted, from its interrupt: no reply_to, and no reply. One the
+    /* A roll the pinsetter counted, from its interrupt: from no one, and no reply. One the
      * game rejects is held, with every pinsetter roll after it, until a correction lets it
      * through; see GameActor. */
     GAME_MSG_PINSETTER_ROLL,
@@ -45,11 +43,12 @@ typedef enum {
     GAME_MSG_ROLLS_LOST
 } GameSelector;
 
-/* Who a message is from and what it asks: every message has one. */
+/* What a message asks, who from and who to: every message has one. A reply goes to from. */
 typedef struct {
     GameSelector selector;
+    ActorId from;
+    ActorId to;
     RequestSeq seq;
-    void *reply_to;
 } GameEnvelope;
 
 typedef struct {
@@ -106,7 +105,7 @@ typedef struct {
 /* Where it goes, and the fields of its kind only. */
 typedef struct {
     GameOutputKind kind;
-    void *to;
+    ActorId to;
     union {
         GameReplyPayload reply;           /* GAME_OUT_REPLY */
         FrameEvent frame;                 /* GAME_OUT_FRAME_CHANGED */
@@ -132,7 +131,7 @@ typedef struct {
 } HeldRolls;
 
 typedef struct {
-    void *queues[GAME_MAX_SUBSCRIBERS];
+    ActorId ids[GAME_MAX_SUBSCRIBERS];
     uint8_t count;
 } Subscribers;
 

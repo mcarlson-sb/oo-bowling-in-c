@@ -41,6 +41,11 @@ struct OutputQueue {
 OutputQueue s_replies;
 OutputQueue s_subscriber;
 OutputQueue s_second_subscriber;
+
+/* The client's ids, bound to its queues. */
+constexpr ActorId kClient = 2U;
+constexpr ActorId kSubscriber = 3U;
+constexpr ActorId kSecondSubscriber = 4U;
 UBaseType_t s_subscriber_queue_length = OutputQueue::kMaxLength;
 
 /* The pinsetter's interrupt, simulated by the highest-priority task: when fired, it counts its
@@ -99,6 +104,9 @@ void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
     s_replies.Create();
     s_subscriber.Create(s_subscriber_queue_length);
     s_second_subscriber.Create();
+    GameShell_Bind(kClient, s_replies.handle);
+    GameShell_Bind(kSubscriber, s_subscriber.handle);
+    GameShell_Bind(kSecondSubscriber, s_second_subscriber.handle);
     s_interrupt = xTaskCreateStatic(&InterruptTask, "interrupt", configMINIMAL_STACK_SIZE,
                                     nullptr, kInterruptPriority, s_interrupt_stack,
                                     &s_interrupt_task);
@@ -116,7 +124,8 @@ GameMessage RollRequest(RequestSeq seq, Pins pins)
     GameMessage message = {};
     message.envelope.selector = GAME_MSG_ROLL;
     message.envelope.seq = seq;
-    message.envelope.reply_to = s_replies.handle;
+    message.envelope.from = kClient;
+    message.envelope.to = GAME_SHELL_GAME_ID;
     message.payload.roll.pins = pins;
     return message;
 }
@@ -126,7 +135,8 @@ GameMessage SubscribeRequest(RequestSeq seq)
     GameMessage message = {};
     message.envelope.selector = GAME_MSG_SUBSCRIBE;
     message.envelope.seq = seq;
-    message.envelope.reply_to = s_subscriber.handle;
+    message.envelope.from = kSubscriber;
+    message.envelope.to = GAME_SHELL_GAME_ID;
     return message;
 }
 
@@ -135,7 +145,8 @@ GameMessage ScoreQuery(RequestSeq seq)
     GameMessage message = {};
     message.envelope.selector = GAME_MSG_QUERY_SCORE;
     message.envelope.seq = seq;
-    message.envelope.reply_to = s_replies.handle;
+    message.envelope.from = kClient;
+    message.envelope.to = GAME_SHELL_GAME_ID;
     return message;
 }
 
@@ -145,7 +156,8 @@ GameMessage EditRequest(RequestSeq seq, RollNumber first, uint8_t removed,
     GameMessage message = {};
     message.envelope.selector = GAME_MSG_EDIT;
     message.envelope.seq = seq;
-    message.envelope.reply_to = s_replies.handle;
+    message.envelope.from = kClient;
+    message.envelope.to = GAME_SHELL_GAME_ID;
     message.payload.edit.first_roll = first;
     message.payload.edit.rolls_removed = removed;
     for (const Pins pins : new_pins) {
@@ -331,7 +343,7 @@ TEST(GameShellStackTest, should_keep_the_game_task_within_its_stack_budget_throu
         }
         GameMessage subscribe = SubscribeRequest(20U);
         (void)GameShell_Send(&subscribe, kPatience);
-        subscribe.envelope.reply_to = s_second_subscriber.handle;
+        subscribe.envelope.from = kSecondSubscriber;
         (void)GameShell_Send(&subscribe, kPatience);
         FirePinsetter(13, 10U); /* held: the game is over */
         const GameMessage every_ball_out = EditRequest(21U, 1U, 12U, {});
