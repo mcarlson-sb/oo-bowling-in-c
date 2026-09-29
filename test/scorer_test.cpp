@@ -705,3 +705,65 @@ TEST(CandlepinTest, should_complete_frames_oldest_first)
 {
     ExpectCompleteFramesToComeFirst<candlepin_reference::Lane>(SCORER_CANDLEPIN, 30, 20261002U);
 }
+
+/* ---- Edits ported from the Game facade's tests (correction_test.cpp) --------------------- */
+
+TEST(TenPinScorerEditTest, should_fix_a_strike_that_was_really_9_then_1)
+{
+    /* Replacing the 10 with one ball can't fix it: 9 then the 3 is too many pins. */
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {10U, 3U, 4U}); /* 17 + 7 = 24 */
+    const std::vector<Pins> really = {9U, 1U};
+    const RollEdit edit = Replace(1U, 1U, really);
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ(20U, Scorer_Score(&scorer)); /* a spare, 9 + 1 + 3, then 3 + 4 */
+}
+
+TEST(TenPinScorerEditTest, should_fix_a_tenth_frame_entered_with_a_ball_too_many_in_one_edit)
+{
+    /* Entered as 10, 0, 0 in the tenth; really 9, 0. As one edit, the report never shows a
+     * tenth frame waiting for a fill ball. */
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollMany(&scorer, 18, 0U);
+    RollAll(&scorer, {10U, 0U, 0U});
+    ASSERT_EQ(10U, Scorer_Score(&scorer));
+    const std::vector<Pins> really = {9U, 0U};
+    const RollEdit edit = Replace(19U, 3U, really);
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ(9U, Scorer_Score(&scorer));
+    ASSERT_EQ(10U, events.count);
+    EXPECT_EQ((Event{10, 9, true}), EventsOf(events).back());
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+}
+
+TEST(TenPinScorerEditTest, should_correct_the_first_and_last_balls_of_the_longest_game)
+{
+    /* Nine open frames, then a spare and its fill ball: 21 balls. */
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollMany(&scorer, 18, 1U);
+    RollAll(&scorer, {5U, 5U, 5U}); /* 18 + 15 = 33 */
+    ASSERT_EQ(33U, Scorer_Score(&scorer));
+    const std::vector<Pins> seven = {7U};
+    const std::vector<Pins> three = {3U};
+    const RollEdit last = Replace(21U, 1U, seven);
+    const RollEdit first = Replace(1U, 1U, three);
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &last, &events)); /* the fill ball was a 7 */
+    EXPECT_EQ(35U, Scorer_Score(&scorer));
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &first, &events)); /* the first ball was a 3 */
+    EXPECT_EQ(37U, Scorer_Score(&scorer));
+}
+
+TEST(NoTapScorerTest, should_recount_every_replayed_ball_from_the_pins_that_fell)
+{
+    Scorer scorer = MakeNoTapScorer();
+    RollAll(&scorer, {10U, 9U, 3U}); /* a strike, then a no-tap 9 counted as a strike, then 3 */
+    /* Now the 9 is a second ball, at 9 standing: a spare, not a no-tap strike. */
+    const std::vector<Pins> one = {1U};
+    const RollEdit edit = Replace(1U, 1U, one);
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ(13U, Scorer_Score(&scorer)); /* spare 1 + 9, plus its bonus 3 */
+}
