@@ -666,3 +666,23 @@ checked became checks:
 A note that had no home here yet: `Scorer_Edit` checks an edit with the same rules, in the same
 order, as the `Game` facade's edits, so the two report the same status for the same bad edit
 while both exist.
+
+### One job per type, and functions at one level
+
+After the comments, the structure. The actor handled two data structures as raw arrays inside
+its message handlers: the held rolls, a list written out by hand, and the subscribers, appended
+in one handler and searched and swap-removed in another. They are `HeldRolls` and
+`Subscribers` now, and the handlers only decide what to reply and whom to tell. Three handlers
+each rolled into the scorer and published the events, so that is one step, `GameActor_Play`,
+and the pinsetter's handler reads "if nothing is held, play it or hold it; else hold it behind
+the rest".
+
+In the scorer, functions mixed named steps with raw field changes. The rack was reset in two
+places, the lane was started field by field inside the walk, and a roll's report and an edit's
+report were two loops doing the same thing. Each is a named step now. The score and a frame's
+answer come from the count of complete frames, which the oldest-first test makes safe.
+
+Not done yet: the scorer's edit arithmetic (`RollEdit_*`, `Scorer_EditedBall`) is its own job and
+belongs in its own file. The legacy facade's `src/roll_edit.c` still has that name and does the
+same job over `RollLog`, so the move waits for the facade's deletion (phase 2's switch-over),
+and the scorer's version then takes the file.
