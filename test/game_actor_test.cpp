@@ -764,3 +764,33 @@ TEST(GameActorLifecycleTest, should_tell_subscribers_every_frame_of_the_old_game
     }
     EXPECT_EQ(reopened, FrameEventsIn(outbox));
 }
+
+/* ---- Pinned at the phase 3 interim stop, from mutation testing and coverage --------------- */
+
+TEST(GameActorTest, should_not_understand_a_selector_past_the_protocols_end)
+{
+    /* An id is a byte and so is nothing else, but a selector is an enum any sender can fill in. */
+    GameActor actor = MakeActor(rules::kTenPin);
+    GameOutbox outbox;
+    for (const int past : {static_cast<int>(MSG_SELECTOR_COUNT), 200}) {
+        Message nonsense = {};
+        nonsense.envelope.selector = static_cast<Selector>(past);
+        nonsense.envelope.from = kReplyTo;
+        Send(&actor, nonsense, &outbox);
+        ASSERT_EQ(1U, outbox.count) << "selector " << past;
+        EXPECT_EQ(MSG_NOT_UNDERSTOOD, outbox.items[0].envelope.selector) << "selector " << past;
+    }
+}
+
+TEST(GameActorLifecycleTest, should_keep_the_pinsetters_lost_count_from_before_any_game)
+{
+    /* Reported as a running total: heard again once the game starts, it is no news. */
+    GameActor actor;
+    GameActor_Init(&actor, kGame);
+    GameOutbox outbox;
+    Send(&actor, RollsLostReport(2U), &outbox);
+    Send(&actor, NewGameRequest(1U, rules::kTenPin), &outbox);
+    Send(&actor, SubscribeRequest(2U, kSubscriber), &outbox);
+    Send(&actor, RollsLostReport(2U), &outbox);
+    EXPECT_EQ((std::vector<int>{}), LostEventsIn(outbox));
+}

@@ -1012,3 +1012,20 @@ TEST(RulesAsDataTest, should_agree_with_the_ten_pin_and_candlepin_references_thr
     ExpectToPlayAsTheReferenceDoes(rules::kTenPin, 20261005U);
     ExpectToPlayAsTheReferenceDoes(rules::kCandlepin, 20261006U);
 }
+
+/* ---- Pinned at the phase 3 interim stop, from mutation testing -------------------------- */
+
+TEST(ScorerRulesTest, should_count_a_last_ball_clears_fill_balls_in_the_longest_game)
+{
+    /* Ten frames of three, 27 balls to the tenth; clearing it with its third ball owes four fill
+     * balls, 34 in all. */
+    ExpectRefused({10U, 3U, 10U, {0U, 0U, 4U}, 0U});
+}
+
+TEST(ScorerRulesTest, should_accept_the_largest_rack_it_scores)
+{
+    Scorer scorer = MakeScorer(rules::kTenPin);
+    const ScorerRules twenty_pins = {10U, 2U, SCORER_MAX_PINS_PER_RACK, {2U, 1U, 0U}, 0U};
+    EXPECT_EQ(GAME_OK, Scorer_Start(&scorer, &twenty_pins));
+    EXPECT_EQ(20U, Scorer_PinsStanding(&scorer));
+}
