@@ -30,25 +30,17 @@ endif()
 # ---- Library under test ---------------------------------------------------
 add_library(bowling STATIC
     src/fault.c
-    src/frame.c
-    src/frame_context.c
-    src/frame_families.c
     src/frame_listeners.c
     src/frame_reporter.c
     src/game.c
     src/pinsetter.c
     src/pinsetter_hooks.c
     src/pinsetter_isr.c
-    src/regular_frame.c
-    src/roll_list.c
     src/roll_edit.c
     src/roll_log.c
     src/scorecard.c
     src/scorer.c
     src/slot_pool.c
-    src/spare_frame.c
-    src/strike_frame.c
-    src/tenth_frame.c
 )
 target_include_directories(bowling PUBLIC include PRIVATE src)
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
@@ -107,8 +99,6 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 add_executable(bowling_tests
-    test/frame_test.cpp
-    test/roll_list_test.cpp
     test/roll_log_test.cpp
     test/slot_pool_test.cpp
     test/frame_listeners_test.cpp
@@ -125,9 +115,8 @@ add_executable(bowling_tests
 )
 find_package(Threads REQUIRED) # the pinsetter test runs a second thread
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main Threads::Threads)
-# frame_test.cpp, roll_list_test.cpp, roll_log_test.cpp, slot_pool_test.cpp and
-# pinsetter_overlap_test.cpp test private types or hooks directly, so they need the private
-# headers.
+# roll_log_test.cpp, slot_pool_test.cpp, frame_listeners_test.cpp and pinsetter_overlap_test.cpp
+# test private types or hooks directly, so they need the private headers.
 target_include_directories(bowling_tests PRIVATE src)
 target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 

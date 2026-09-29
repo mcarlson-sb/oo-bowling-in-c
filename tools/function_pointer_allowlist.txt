@@ -1,22 +1,15 @@
 # Files allowed to hold function pointers. tools/check_function_pointers.py fails on a function
 # pointer anywhere else, and on an entry here that no longer has one, so this list only shrinks.
 
-# Legacy: kay-oo's vtables, state-family factories, PinCountRule and FrameChangedCallback,
+# Legacy: kay-oo's PinCountRule and FrameChangedCallback, the callback facade,
 # still serving the existing API while the function-pointer-free core replaces them (the
 # strangler pattern). Each goes when nothing routes to it.
 include/game.h
-src/frame.h
-src/frame_families.c
-src/frame_families.h
 src/frame_listeners.c
 src/frame_listeners.h
 src/frame_reporter.c
 src/frame_reporter.h
 src/game.c
-src/regular_frame.c
-src/spare_frame.c
-src/strike_frame.c
-src/tenth_frame.c
 
 # RTOS shell files: what FreeRTOS itself requires (task entry functions, timer callbacks), each
 # use on a line marked "FUNCTION POINTER EXEMPTION:" with a reason. None yet.
