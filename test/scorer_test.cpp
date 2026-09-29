@@ -602,3 +602,17 @@ TEST(CandlepinTest, A22_should_inserting_a_31st_ball_is_rejected_and_changes_not
     EXPECT_EQ(GAME_ERR_TOO_MANY_ROLLS, Scorer_Edit(&scorer, &edit, &events));
     EXPECT_EQ(100U, Scorer_Score(&scorer));
 }
+
+TEST(CandlepinTest, should_accept_an_edit_that_leaves_exactly_thirty_balls)
+{
+    /* The other side of A22: 30 is a whole game, and an edit that keeps it at 30 is fine. */
+    Scorer scorer = MakeCandlepin();
+    for (int frame = 0; frame < 10; frame++) {
+        RollAll(&scorer, {3U, 3U, 4U});
+    }
+    const std::vector<Pins> two = {2U};
+    const RollEdit edit = Replace(1U, 1U, two); /* 2, 3, 4 | ...: frame 1 now open, 9 */
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ(99U, Scorer_Score(&scorer));
+}
