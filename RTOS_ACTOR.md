@@ -1304,3 +1304,43 @@ before the tests below. Release had 450, of which 431 were killed and 19 survive
 | **Extreme late binding** | Who receives a message is the routing table's data, and what it means is the bound kind's. The rules are a message. The same QUERY_SCORE gets three answers from three kinds, and the game's code doesn't know which | Bindings are made at startup only. The routing table isn't locked, so it must not change while tasks run | The kinds are a closed enum, and the dispatch a switch over it: a new kind is a code change in the shell. Each task's stack is sized for the deepest kind, because one entry reaches them all. Both are the price of every call target being known |
 
 **Stop.** Phase 3 ends here, as the brief asks.
+
+## Phase 4: actors are not tasks, and two lanes
+
+### Decisions from the phase 3 review (2026-09-29)
+
+1. **Shared tasks, split by role.** Actors are not tasks, as with F Prime's active and queued
+   components. A route binds an id to a kind, an instance, a mailbox and a hosting task. Each
+   game gets a task of its own; the observers share one, dispatched by `to` as now. The RAM is
+   measured again after the change.
+2. **The outbox belongs to the task, not the kind.** Each task has one, sized for the largest
+   reply burst of the kinds it hosts. An observers-only task doesn't carry the game's
+   43-message outbox.
+3. **No stack budget per kind.** Sharing a task pays the game-sized stack once. The fallback, if
+   a target's RAM forces it, is a second switch per task role (game tasks, observer tasks),
+   never per kind. It is recorded here, not built.
+4. **No live rebinding.** Deferred, because sends look the routing table up in the sender's
+   task, so a rebind message to the shell wouldn't remove the race. It would need every send
+   routed through one task, or an atomic update of the table.
+5. **Counters become queries:** a statistics selector every kind answers. The tests ask for it,
+   instead of reading an actor's state.
+6. **The QEMU target stage becomes phase 5.** The phase 4 report marks which conclusions hold
+   on this host only, and would change on a target.
+
+**The driving feature: two lanes.** Two game actors, one playing ten-pin and one candlepin, each
+started by its own NEW_GAME, with a scoreboard and a running average subscribed to both. It's
+the first time a kind has more than one instance.
+
+**What phase 4 should show, said before it is tested:**
+- **Sharing a task changes the shell only.** No actor's code changes when the observers move
+  into one task.
+- **An observer costs far less than a task.** An observer in the shared task costs its state and
+  its route: no stack, no task control block, no queue and no outbox of its own. So the second
+  observer's cost falls from about 18.8 KB to its 34 bytes.
+- **A second game needs no game code.** A game is an instance, and two lanes are two routes.
+- **Expected to fail: an observer of two games.** A FRAME_CHANGED doesn't say which game sent
+  it, except through its envelope's `from`, and a `FrameBoard` is keyed by frame number. So a
+  scoreboard subscribed to both lanes should mix their frames, and the observers will have to
+  change.
+- **The statistics selector hides state from the tests too.** They will still need the state
+  headers to allocate an actor, but no longer to read one.
