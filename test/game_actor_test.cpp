@@ -130,7 +130,7 @@ TEST(GameActorTest, should_refuse_a_subscriber_past_the_room_for_two)
     Send(&actor, SubscribeRequest(2U, &b), &outbox);
     Send(&actor, SubscribeRequest(3U, &c), &outbox);
     ASSERT_EQ(1U, outbox.count);
-    EXPECT_EQ(GAME_ERR_NO_ROOM, outbox.items[0].status);
+    EXPECT_EQ(GAME_ERR_TOO_MANY_SUBSCRIBERS, outbox.items[0].status);
     EXPECT_EQ(&c, outbox.items[0].to); /* told, and nothing more */
 
     Send(&actor, RollRequest(4U, 3U), &outbox);

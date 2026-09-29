@@ -3,8 +3,8 @@
 
 /* The game actor: one game, and everything that may change it, as messages. It handles one
  * message at a time and writes what it sends, replies and events, to an outbox the caller
- * supplies. It is pure: no RTOS, no callbacks, no function pointers. The RTOS shell owns the one
- * instance, and moves messages between it and the queues.
+ * supplies. It knows nothing of the RTOS: the RTOS shell owns the one instance, and moves
+ * messages between it and the queues.
  *
  * A reply address (reply_to) is opaque here: the shell's queue, copied onto each output bound
  * for it, never followed. */
@@ -38,8 +38,8 @@ typedef enum {
      * through; see GameActor. */
     GAME_MSG_PINSETTER_ROLL,
     GAME_MSG_QUERY_SCORE,
-    /* Throws away the first held roll, a glitch, and lets the rest through as far as they go
-     * (kay-oo's Pinsetter_DiscardOldest). GAME_ERR_NO_SUCH_ROLL if nothing is held. */
+    /* Throws away the first held roll, a glitch, and lets the rest through as far as they go.
+     * GAME_ERR_NO_SUCH_ROLL if nothing is held. */
     GAME_MSG_DISCARD_HELD,
     /* The pinsetter's count of rolls it lost to a full queue, so far (lost). */
     GAME_MSG_ROLLS_LOST
@@ -88,24 +88,20 @@ typedef struct {
 #define GAME_EVENTS_PER_MESSAGE ((2U * SCORER_MAX_EVENTS) + 1U)
 #define GAME_OUTBOX_CAPACITY (1U + (GAME_MAX_SUBSCRIBERS * GAME_EVENTS_PER_MESSAGE))
 
-/* What one message sent: replies and events, in the order they were sent. */
 typedef struct {
     GameOutput items[GAME_OUTBOX_CAPACITY];
     uint8_t count;
 } GameOutbox;
 
-/* The actor's state: the game, its subscribers, and the pinsetter rolls it is holding. A held
- * roll waits, in the order it came, for a correction or a discard to let it through; the first
- * of them was refused for held_reason. */
 typedef struct {
     Scorer scorer;
     void *subscribers[GAME_MAX_SUBSCRIBERS];
     uint8_t subscriber_count;
     Pins held[SCORER_MAX_BALLS];
     uint8_t held_count;
-    GameStatus held_reason;
-    uint16_t lost_by_pinsetter; /* its queue was full */
-    uint16_t lost_by_actor;     /* no room to hold them: more than a whole game's balls */
+    GameStatus first_held_refused_for;
+    uint16_t lost_to_full_queue;
+    uint16_t lost_to_full_held_list;
 } GameActor;
 
 void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule);
