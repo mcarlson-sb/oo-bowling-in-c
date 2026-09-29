@@ -918,3 +918,9 @@ TEST(ScorerRulesTest, should_refuse_rules_whose_longest_game_is_more_balls_than_
     /* Ten frames of three, and a strike owed three bonus balls: the tenth takes 4, 31 in all. */
     ExpectRefused({10U, 3U, 10U, {3U, 1U, 0U}, 0U});
 }
+
+TEST(ScorerRulesTest, should_refuse_no_frames_or_more_frames_than_it_holds)
+{
+    ExpectRefused({0U, 2U, 10U, {2U, 1U, 0U}, 0U});
+    ExpectRefused({11U, 2U, 10U, {2U, 1U, 0U}, 0U}); /* 23 balls, but 11 frames */
+}

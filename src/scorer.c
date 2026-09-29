@@ -232,14 +232,25 @@ static unsigned ScorerRules_LongestGame(const ScorerRules *rules)
            ScorerRules_LastFrameBalls(rules);
 }
 
+static bool ScorerRules_HasFramesItHolds(const ScorerRules *rules)
+{
+    return (rules->frames != 0U) && (rules->frames <= SCORER_MAX_FRAMES);
+}
+
+/* Rules the scorer can hold and play. Only once there are frames: the longest game counts them. */
+static bool ScorerRules_AreValid(const ScorerRules *rules)
+{
+    return ScorerRules_HasFramesItHolds(rules) &&
+           (ScorerRules_LongestGame(rules) <= SCORER_MAX_BALLS);
+}
+
 GameStatus Scorer_Start(Scorer *self, const ScorerRules *rules)
 {
-    const unsigned longest = ScorerRules_LongestGame(rules);
-    if (longest > SCORER_MAX_BALLS) {
+    if (!ScorerRules_AreValid(rules)) {
         return GAME_ERR_INVALID_RULES;
     }
     self->rules = *rules;
-    self->max_balls = (uint8_t)longest;
+    self->max_balls = (uint8_t)ScorerRules_LongestGame(rules);
     self->ball_count = 0U;
     return GAME_OK;
 }
