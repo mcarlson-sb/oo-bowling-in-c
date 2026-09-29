@@ -508,3 +508,12 @@ TEST(CandlepinTest, A13_should_a_strike_in_the_tenth_then_6_then_5_is_rejected_t
     EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Roll(&scorer, 5U, &events)); /* 4 standing */
     EXPECT_FALSE(Scorer_IsOver(&scorer));
 }
+
+TEST(CandlepinTest, A14_should_after_an_open_3_3_3_a_10_is_frame_2s_strike)
+{
+    Scorer scorer = MakeCandlepin();
+    RollAll(&scorer, {3U, 3U, 3U, 10U});
+    EXPECT_EQ(2U, Scorer_FrameCount(&scorer));
+    EXPECT_EQ(9U, Scorer_Frame(&scorer, 0U).score);
+    EXPECT_FALSE(Scorer_Frame(&scorer, 1U).complete); /* the strike waits for its bonus */
+}
