@@ -171,6 +171,9 @@ if(OO_C_RTOS)
     )
     target_include_directories(rtos_shell PUBLIC rtos)
     target_compile_options(rtos_shell PRIVATE ${OO_C_WARNINGS})
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(rtos_shell PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
+    endif()
     target_link_libraries(rtos_shell PUBLIC freertos bowling)
 
     add_executable(rtos_tests
