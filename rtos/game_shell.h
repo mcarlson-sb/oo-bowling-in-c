@@ -35,11 +35,20 @@ extern "C" {
 typedef enum {
     ACTOR_KIND_NONE,
     ACTOR_KIND_EXTERNAL,
-    ACTOR_KIND_GAME
+    ACTOR_KIND_GAME,
+    ACTOR_KIND_SCOREBOARD,
+    ACTOR_KIND_RUNNING_AVERAGE
 } ActorKind;
 
 /* With no game: the first NEW_GAME sent to GAME_SHELL_GAME_ID starts one. */
 void GameShell_Start(UBaseType_t priority);
+
+/* After GameShell_Start, before the scheduler starts: a scoreboard, or a running average, at
+ * `id`, hosted in a task of its own at `priority`. An observer hosted above the game's priority
+ * takes each event as it is sent, so its mailbox never fills. */
+void GameShell_HostScoreboard(ActorId id, UBaseType_t priority);
+
+void GameShell_HostRunningAverage(ActorId id, UBaseType_t priority);
 
 /* After GameShell_Start, before the scheduler starts: an external actor at `id`, which reads
  * `queue`. */

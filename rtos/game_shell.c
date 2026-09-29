@@ -6,14 +6,18 @@
 
 #include "game_shell_ports.h"
 #include "posix_stack.h"
+#include "running_average.h"
+#include "scoreboard.h"
 
 /* How many messages a hosted actor's mailbox holds. */
 #define GAME_SHELL_MAILBOX 4U
 #define GAME_SHELL_PINSETTER_ROLLS 32U
 
 /* The actors the shell can host, each in a task of its own, and the instances of each kind. */
-#define GAME_SHELL_HOSTED 1U
+#define GAME_SHELL_HOSTED 3U
 #define GAME_SHELL_GAMES 1U
+#define GAME_SHELL_SCOREBOARDS 1U
+#define GAME_SHELL_RUNNING_AVERAGES 1U
 
 /* The POSIX port sizes the task's pthread stack from this, and a pthread stack is at least
  * PTHREAD_STACK_MIN, so the port's minimum. */
@@ -52,6 +56,10 @@ typedef struct {
     GameShellHosted hosted[GAME_SHELL_HOSTED];
     uint8_t hosted_count;
     GameActor games[GAME_SHELL_GAMES];
+    Scoreboard scoreboards[GAME_SHELL_SCOREBOARDS];
+    uint8_t scoreboard_count;
+    RunningAverage running_averages[GAME_SHELL_RUNNING_AVERAGES];
+    uint8_t running_average_count;
     atomic_uint_least16_t outputs_dropped; /* written by the hosted tasks, read by any */
     QueueHandle_t pinsetter;
     StaticQueue_t pinsetter_queue;
@@ -107,6 +115,12 @@ static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *
     switch (route->kind) {
     case ACTOR_KIND_GAME:
         GameActor_Handle(&self->games[route->instance], message, outbox);
+        break;
+    case ACTOR_KIND_SCOREBOARD:
+        Scoreboard_Handle(&self->scoreboards[route->instance], message, outbox);
+        break;
+    case ACTOR_KIND_RUNNING_AVERAGE:
+        RunningAverage_Handle(&self->running_averages[route->instance], message, outbox);
         break;
     case ACTOR_KIND_EXTERNAL:
     case ACTOR_KIND_NONE:
@@ -169,8 +183,9 @@ static void GameShell_Task(void *parameter)
     }
 }
 
-/* An actor of `kind` at `id`, in a task of its own. */
-static void GameShell_Host(ActorId id, ActorKind kind, uint8_t instance, UBaseType_t priority)
+/* An actor of `kind`, its instance already started, at `id`, in a task of its own. */
+static void GameShell_HostInstance(ActorId id, ActorKind kind, uint8_t instance,
+                                   UBaseType_t priority)
 {
     GameShell *self = &s_shell;
     configASSERT(self->hosted_count < GAME_SHELL_HOSTED);
@@ -195,17 +210,47 @@ void GameShell_Start(UBaseType_t priority)
         self->routes[id] = s_no_route;
     }
     self->hosted_count = 0U;
+    self->scoreboard_count = 0U;
+    self->running_average_count = 0U;
     atomic_init(&self->outputs_dropped, 0U);
     self->pinsetter = xQueueCreateStatic(GAME_SHELL_PINSETTER_ROLLS, sizeof(Pins),
                                          self->pinsetter_storage, &self->pinsetter_queue);
     self->lost_report = xQueueCreateStatic(1U, sizeof(uint16_t), self->lost_report_storage,
                                            &self->lost_report_queue);
     GameActor_Init(&self->games[0], GAME_SHELL_GAME_ID);
-    GameShell_Host(GAME_SHELL_GAME_ID, ACTOR_KIND_GAME, 0U, priority);
+    GameShell_HostInstance(GAME_SHELL_GAME_ID, ACTOR_KIND_GAME, 0U, priority);
     self->ports.pinsetter = self->pinsetter;
     self->ports.lost_report = self->lost_report;
     self->ports.game_task = self->routes[GAME_SHELL_GAME_ID].task;
     GameShell_ResetIsr();
+}
+
+static uint8_t GameShell_StartScoreboard(GameShell *self, ActorId id)
+{
+    configASSERT(self->scoreboard_count < GAME_SHELL_SCOREBOARDS);
+    Scoreboard_Init(&self->scoreboards[self->scoreboard_count], id);
+    return self->scoreboard_count++;
+}
+
+static uint8_t GameShell_StartRunningAverage(GameShell *self, ActorId id)
+{
+    configASSERT(self->running_average_count < GAME_SHELL_RUNNING_AVERAGES);
+    RunningAverage_Init(&self->running_averages[self->running_average_count], id);
+    return self->running_average_count++;
+}
+
+void GameShell_HostScoreboard(ActorId id, UBaseType_t priority)
+{
+    configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
+    const uint8_t instance = GameShell_StartScoreboard(&s_shell, id);
+    GameShell_HostInstance(id, ACTOR_KIND_SCOREBOARD, instance, priority);
+}
+
+void GameShell_HostRunningAverage(ActorId id, UBaseType_t priority)
+{
+    configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
+    const uint8_t instance = GameShell_StartRunningAverage(&s_shell, id);
+    GameShell_HostInstance(id, ACTOR_KIND_RUNNING_AVERAGE, instance, priority);
 }
 
 void GameShell_Bind(ActorId id, QueueHandle_t queue)

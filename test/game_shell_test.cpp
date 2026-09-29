@@ -25,6 +25,8 @@ namespace {
 constexpr UBaseType_t kClientPriority = tskIDLE_PRIORITY + 1U;
 constexpr UBaseType_t kGamePriority = tskIDLE_PRIORITY + 2U;
 constexpr UBaseType_t kInterruptPriority = configMAX_PRIORITIES - 1U;
+/* Above the game: a hosted observer takes each event as the game sends it. */
+constexpr UBaseType_t kObserverPriority = kGamePriority + 1U;
 constexpr TickType_t kPatience = pdMS_TO_TICKS(1000);
 
 /* A caller's own queue of outputs, for replies or as a subscriber. */
@@ -49,6 +51,8 @@ constexpr ActorId kClient = 2U;
 constexpr ActorId kSubscriber = 3U;
 constexpr ActorId kSecondSubscriber = 4U;
 UBaseType_t s_subscriber_queue_length = OutputQueue::kMaxLength;
+/* What sits at kSubscriber: an external queue the test reads, unless a test hosts a kind there. */
+ActorKind s_subscriber_kind = ACTOR_KIND_EXTERNAL;
 
 /* The pinsetter's interrupt, simulated by the highest-priority task: when fired, it counts its
  * rolls one after another, as back-to-back interrupts would, and nothing lower runs until it's
@@ -125,7 +129,13 @@ void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
     s_subscriber.Create(s_subscriber_queue_length);
     s_second_subscriber.Create();
     GameShell_Bind(kClient, s_replies.handle);
-    GameShell_Bind(kSubscriber, s_subscriber.handle);
+    if (s_subscriber_kind == ACTOR_KIND_SCOREBOARD) {
+        GameShell_HostScoreboard(kSubscriber, kObserverPriority);
+    } else if (s_subscriber_kind == ACTOR_KIND_RUNNING_AVERAGE) {
+        GameShell_HostRunningAverage(kSubscriber, kObserverPriority);
+    } else {
+        GameShell_Bind(kSubscriber, s_subscriber.handle);
+    }
     GameShell_Bind(kSecondSubscriber, s_second_subscriber.handle);
     s_interrupt = xTaskCreateStatic(&InterruptTask, "interrupt", configMINIMAL_STACK_SIZE,
                                     nullptr, kInterruptPriority, s_interrupt_stack,
@@ -408,4 +418,103 @@ TEST(GameShellTest, should_drop_and_count_an_output_to_an_id_past_the_routing_ta
     });
     ASSERT_EQ(pdPASS, s_received);
     EXPECT_EQ(1U, s_dropped);
+}
+
+/* ---- Rebinding: the same game, the same sender, whoever sits at the subscriber's id ------- */
+
+namespace {
+
+Message QueryTo(ActorId to, RequestSeq seq)
+{
+    Message message = ScoreQuery(seq);
+    message.envelope.to = to;
+    return message;
+}
+
+uint16_t s_dropped_after;
+
+/* The one scenario every binding plays, sent by the client: the subscriber's id subscribed, a
+ * spare and an open frame rolled (7, then 12), and whoever sits at that id asked QUERY_SCORE. The
+ * game's code and this code are the same every time; only the binding differs. */
+void SubscribeRollAndAsk()
+{
+    const Message subscribe = SubscribeRequest(1U);
+    (void)GameShell_Send(&subscribe, kPatience);
+    RequestSeq seq = 2U;
+    for (const Pins pins : std::initializer_list<Pins>{3U, 4U, 5U, 5U, 2U}) {
+        const Message roll = RollRequest(seq++, pins);
+        (void)GameShell_Send(&roll, kPatience);
+        (void)xQueueReceive(s_replies.handle, &s_reply, kPatience);
+    }
+    const Message ask = QueryTo(kSubscriber, seq);
+    (void)GameShell_Send(&ask, kPatience);
+}
+
+/* A kind hosted at the subscriber's id answers the client. */
+void SubscribeRollAndAskTheSubscriber()
+{
+    SubscribeRollAndAsk();
+    s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
+    s_dropped_after = GameShell_OutputsDropped();
+}
+
+} // namespace
+
+TEST(GameShellRebindingTest, should_answer_the_total_when_a_scoreboard_sits_at_the_subscriber_id)
+{
+    s_subscriber_kind = ACTOR_KIND_SCOREBOARD;
+    RunClient(&SubscribeRollAndAskTheSubscriber);
+    ASSERT_EQ(pdPASS, s_received);
+    EXPECT_EQ(MSG_REPLY, s_reply.envelope.selector);
+    EXPECT_EQ(kSubscriber, s_reply.envelope.from);
+    EXPECT_EQ(19U, s_reply.payload.reply.score); /* 7 + 12 */
+    EXPECT_EQ(0U, s_dropped_after);
+}
+
+TEST(GameShellRebindingTest, should_answer_the_average_when_a_running_average_sits_there)
+{
+    s_subscriber_kind = ACTOR_KIND_RUNNING_AVERAGE;
+    RunClient(&SubscribeRollAndAskTheSubscriber);
+    ASSERT_EQ(pdPASS, s_received);
+    EXPECT_EQ(kSubscriber, s_reply.envelope.from);
+    EXPECT_EQ(9U, s_reply.payload.reply.score); /* 19 over 2 frames, rounded down */
+    EXPECT_EQ(0U, s_dropped_after);
+}
+
+namespace {
+
+std::vector<Message> s_recorded;
+
+/* A recording double answers no one: the test reads what reached it, the question last. Waiting
+ * for a reply that can't come would only wait out kPatience, which ThreadSanitizer's slow ticks
+ * stretch past the test's timeout. */
+void SubscribeRollAskAndReadTheRecording()
+{
+    SubscribeRollAndAsk();
+    Message message;
+    while (xQueueReceive(s_subscriber.handle, &message, kPatience) == pdPASS) {
+        s_recorded.push_back(message);
+        if (message.envelope.selector == MSG_QUERY_SCORE) {
+            break;
+        }
+    }
+    s_received = xQueueReceive(s_replies.handle, &s_reply, 0U);
+}
+
+} // namespace
+
+TEST(GameShellRebindingTest, should_reach_a_recording_double_that_sits_there_with_the_same_messages)
+{
+    /* An external queue the test reads: it records the game's messages, and the question, which
+     * nothing there answers. */
+    s_subscriber_kind = ACTOR_KIND_EXTERNAL;
+    RunClient(&SubscribeRollAskAndReadTheRecording);
+    EXPECT_NE(pdPASS, s_received); /* no one answered the client */
+    ASSERT_EQ(4U, s_recorded.size());
+    EXPECT_EQ(MSG_REPLY, s_recorded[0].envelope.selector); /* to its subscription */
+    EXPECT_EQ(MSG_FRAME_CHANGED, s_recorded[1].envelope.selector);
+    EXPECT_EQ(7U, s_recorded[1].payload.frame.frame_score);
+    EXPECT_EQ(MSG_FRAME_CHANGED, s_recorded[2].envelope.selector);
+    EXPECT_EQ(12U, s_recorded[2].payload.frame.frame_score);
+    EXPECT_EQ(MSG_QUERY_SCORE, s_recorded[3].envelope.selector);
 }
