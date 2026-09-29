@@ -57,8 +57,8 @@ static bool GameShell_TakePinsetterRoll(GameShell *self, GameMessage *message)
     if (xQueueReceive(self->pinsetter, &pins, 0U) != pdPASS) {
         return false;
     }
-    message->kind = GAME_MSG_PINSETTER_ROLL;
-    message->pins = pins;
+    message->envelope.selector = GAME_MSG_PINSETTER_ROLL;
+    message->payload.roll.pins = pins;
     return true;
 }
 
@@ -68,8 +68,8 @@ static bool GameShell_TakeLostReport(GameShell *self, GameMessage *message)
     if (xQueueReceive(self->lost_report, &lost, 0U) != pdPASS) {
         return false;
     }
-    message->kind = GAME_MSG_ROLLS_LOST;
-    message->lost = lost;
+    message->envelope.selector = GAME_MSG_ROLLS_LOST;
+    message->payload.rolls_lost.lost = lost;
     return true;
 }
 

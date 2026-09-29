@@ -23,10 +23,10 @@ GameActor MakeActor(ScorerVariant variant)
 GameMessage RollRequest(RequestSeq seq, Pins pins)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_ROLL;
-    message.seq = seq;
-    message.reply_to = &s_reply_queue;
-    message.pins = pins;
+    message.envelope.selector = GAME_MSG_ROLL;
+    message.envelope.seq = seq;
+    message.envelope.reply_to = &s_reply_queue;
+    message.payload.roll.pins = pins;
     return message;
 }
 
@@ -58,9 +58,9 @@ int s_subscriber_queue;
 GameMessage SubscribeRequest(RequestSeq seq, void *subscriber)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_SUBSCRIBE;
-    message.seq = seq;
-    message.reply_to = subscriber;
+    message.envelope.selector = GAME_MSG_SUBSCRIBE;
+    message.envelope.seq = seq;
+    message.envelope.reply_to = subscriber;
     return message;
 }
 
@@ -150,13 +150,13 @@ GameMessage EditRequest(RequestSeq seq, RollNumber first, uint8_t removed,
                         std::initializer_list<Pins> new_pins)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_EDIT;
-    message.seq = seq;
-    message.reply_to = &s_reply_queue;
-    message.first_roll = first;
-    message.rolls_removed = removed;
+    message.envelope.selector = GAME_MSG_EDIT;
+    message.envelope.seq = seq;
+    message.envelope.reply_to = &s_reply_queue;
+    message.payload.edit.first_roll = first;
+    message.payload.edit.rolls_removed = removed;
     for (const Pins pins : new_pins) {
-        message.new_pins[message.new_count++] = pins;
+        message.payload.edit.new_pins[message.payload.edit.new_count++] = pins;
     }
     return message;
 }
@@ -195,8 +195,8 @@ namespace {
 GameMessage PinsetterRoll(Pins pins)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_PINSETTER_ROLL;
-    message.pins = pins;
+    message.envelope.selector = GAME_MSG_PINSETTER_ROLL;
+    message.payload.roll.pins = pins;
     return message;
 }
 
@@ -249,9 +249,9 @@ std::vector<Held> HeldEventsIn(const GameOutbox &outbox)
 GameMessage ScoreQuery(RequestSeq seq)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_QUERY_SCORE;
-    message.seq = seq;
-    message.reply_to = &s_reply_queue;
+    message.envelope.selector = GAME_MSG_QUERY_SCORE;
+    message.envelope.seq = seq;
+    message.envelope.reply_to = &s_reply_queue;
     return message;
 }
 
@@ -289,9 +289,9 @@ namespace {
 GameMessage DiscardHeldRequest(RequestSeq seq)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_DISCARD_HELD;
-    message.seq = seq;
-    message.reply_to = &s_reply_queue;
+    message.envelope.selector = GAME_MSG_DISCARD_HELD;
+    message.envelope.seq = seq;
+    message.envelope.reply_to = &s_reply_queue;
     return message;
 }
 
@@ -339,8 +339,8 @@ std::vector<int> LostEventsIn(const GameOutbox &outbox)
 GameMessage RollsLostReport(uint16_t lost_so_far)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_ROLLS_LOST;
-    message.lost = lost_so_far;
+    message.envelope.selector = GAME_MSG_ROLLS_LOST;
+    message.payload.rolls_lost.lost = lost_so_far;
     return message;
 }
 
@@ -394,7 +394,7 @@ namespace {
 GameMessage UnsubscribeRequest(RequestSeq seq, void *subscriber)
 {
     GameMessage message = SubscribeRequest(seq, subscriber);
-    message.kind = GAME_MSG_UNSUBSCRIBE;
+    message.envelope.selector = GAME_MSG_UNSUBSCRIBE;
     return message;
 }
 

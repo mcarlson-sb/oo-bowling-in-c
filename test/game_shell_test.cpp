@@ -114,28 +114,28 @@ void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
 GameMessage RollRequest(RequestSeq seq, Pins pins)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_ROLL;
-    message.seq = seq;
-    message.reply_to = s_replies.handle;
-    message.pins = pins;
+    message.envelope.selector = GAME_MSG_ROLL;
+    message.envelope.seq = seq;
+    message.envelope.reply_to = s_replies.handle;
+    message.payload.roll.pins = pins;
     return message;
 }
 
 GameMessage SubscribeRequest(RequestSeq seq)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_SUBSCRIBE;
-    message.seq = seq;
-    message.reply_to = s_subscriber.handle;
+    message.envelope.selector = GAME_MSG_SUBSCRIBE;
+    message.envelope.seq = seq;
+    message.envelope.reply_to = s_subscriber.handle;
     return message;
 }
 
 GameMessage ScoreQuery(RequestSeq seq)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_QUERY_SCORE;
-    message.seq = seq;
-    message.reply_to = s_replies.handle;
+    message.envelope.selector = GAME_MSG_QUERY_SCORE;
+    message.envelope.seq = seq;
+    message.envelope.reply_to = s_replies.handle;
     return message;
 }
 
@@ -143,13 +143,13 @@ GameMessage EditRequest(RequestSeq seq, RollNumber first, uint8_t removed,
                         std::initializer_list<Pins> new_pins)
 {
     GameMessage message = {};
-    message.kind = GAME_MSG_EDIT;
-    message.seq = seq;
-    message.reply_to = s_replies.handle;
-    message.first_roll = first;
-    message.rolls_removed = removed;
+    message.envelope.selector = GAME_MSG_EDIT;
+    message.envelope.seq = seq;
+    message.envelope.reply_to = s_replies.handle;
+    message.payload.edit.first_roll = first;
+    message.payload.edit.rolls_removed = removed;
     for (const Pins pins : new_pins) {
-        message.new_pins[message.new_count++] = pins;
+        message.payload.edit.new_pins[message.payload.edit.new_count++] = pins;
     }
     return message;
 }
@@ -331,7 +331,7 @@ TEST(GameShellStackTest, should_keep_the_game_task_within_its_stack_budget_throu
         }
         GameMessage subscribe = SubscribeRequest(20U);
         (void)GameShell_Send(&subscribe, kPatience);
-        subscribe.reply_to = s_second_subscriber.handle;
+        subscribe.envelope.reply_to = s_second_subscriber.handle;
         (void)GameShell_Send(&subscribe, kPatience);
         FirePinsetter(13, 10U); /* held: the game is over */
         const GameMessage every_ball_out = EditRequest(21U, 1U, 12U, {});

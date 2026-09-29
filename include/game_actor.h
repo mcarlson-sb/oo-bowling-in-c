@@ -43,18 +43,38 @@ typedef enum {
     GAME_MSG_DISCARD_HELD,
     /* The pinsetter's count of rolls it lost to a full queue, so far (lost). */
     GAME_MSG_ROLLS_LOST
-} GameMessageKind;
+} GameSelector;
 
+/* Who a message is from and what it asks: every message has one. */
 typedef struct {
-    GameMessageKind kind;
+    GameSelector selector;
     RequestSeq seq;
     void *reply_to;
-    Pins pins;                         /* GAME_MSG_ROLL, GAME_MSG_PINSETTER_ROLL */
-    RollNumber first_roll;             /* GAME_MSG_EDIT */
+} GameEnvelope;
+
+typedef struct {
+    Pins pins;
+} GameRollPayload;
+
+typedef struct {
+    RollNumber first_roll;
     uint8_t rolls_removed;
     uint8_t new_count;
     Pins new_pins[SCORER_MAX_BALLS];
-    uint16_t lost;                     /* GAME_MSG_ROLLS_LOST */
+} GameEditPayload;
+
+typedef struct {
+    uint16_t lost;
+} GameRollsLostPayload;
+
+/* An envelope, and the fields of its selector only. */
+typedef struct {
+    GameEnvelope envelope;
+    union {
+        GameRollPayload roll;             /* GAME_MSG_ROLL, GAME_MSG_PINSETTER_ROLL */
+        GameEditPayload edit;             /* GAME_MSG_EDIT */
+        GameRollsLostPayload rolls_lost;  /* GAME_MSG_ROLLS_LOST */
+    } payload;
 } GameMessage;
 
 typedef enum {

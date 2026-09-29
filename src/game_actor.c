@@ -92,8 +92,8 @@ static GameOutput *GameOutbox_Next(GameOutbox *outbox, GameOutputKind kind, void
 
 static GameOutput *GameOutbox_BeginReply(GameOutbox *outbox, const GameMessage *message)
 {
-    GameOutput *reply = GameOutbox_Next(outbox, GAME_OUT_REPLY, message->reply_to);
-    reply->seq = message->seq;
+    GameOutput *reply = GameOutbox_Next(outbox, GAME_OUT_REPLY, message->envelope.reply_to);
+    reply->seq = message->envelope.seq;
     return reply;
 }
 
@@ -193,7 +193,7 @@ static void GameActor_LetHeldRollsThrough(GameActor *self, GameOutbox *outbox)
 static void GameActor_Roll(GameActor *self, const GameMessage *message, GameOutbox *outbox)
 {
     GameOutput *reply = GameOutbox_BeginReply(outbox, message);
-    const GameStatus status = GameActor_Play(self, message->pins, outbox);
+    const GameStatus status = GameActor_Play(self, message->payload.roll.pins, outbox);
     GameReply_Finish(reply, status, Scorer_Score(&self->scorer));
 }
 
@@ -210,17 +210,17 @@ static void GameActor_PinsetterRoll(GameActor *self, const GameMessage *message,
                                     GameOutbox *outbox)
 {
     if (HeldRolls_IsEmpty(&self->held)) {
-        GameActor_PlayOrHold(self, message->pins, outbox);
+        GameActor_PlayOrHold(self, message->payload.roll.pins, outbox);
     } else {
-        GameActor_HoldOrLose(self, message->pins, outbox);
+        GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
     }
 }
 
 static RollEdit GameMessage_Edit(const GameMessage *message)
 {
-    const RollEdit edit = { message->first_roll, message->rolls_removed,
-                            (message->new_count > 0U) ? message->new_pins : NULL,
-                            message->new_count };
+    const RollEdit edit = { message->payload.edit.first_roll, message->payload.edit.rolls_removed,
+                            (message->payload.edit.new_count > 0U) ? message->payload.edit.new_pins : NULL,
+                            message->payload.edit.new_count };
     return edit;
 }
 
@@ -252,8 +252,8 @@ static void GameActor_DiscardHeld(GameActor *self, const GameMessage *message,
 
 static void GameActor_RollsLost(GameActor *self, const GameMessage *message, GameOutbox *outbox)
 {
-    if (message->lost != self->lost_to_full_queue) {
-        self->lost_to_full_queue = message->lost;
+    if (message->payload.rolls_lost.lost != self->lost_to_full_queue) {
+        self->lost_to_full_queue = message->payload.rolls_lost.lost;
         GameActor_PublishLost(self, outbox);
     }
 }
@@ -283,22 +283,22 @@ static void GameActor_Subscribe(GameActor *self, const GameMessage *message, Gam
         GameOutbox_Reply(outbox, message, GAME_ERR_TOO_MANY_SUBSCRIBERS, 0U);
         return;
     }
-    Subscribers_Add(&self->subscribers, message->reply_to);
+    Subscribers_Add(&self->subscribers, message->envelope.reply_to);
     GameOutbox_Reply(outbox, message, GAME_OK, 0U);
-    GameActor_SendCompleteFrames(self, message->reply_to, outbox);
+    GameActor_SendCompleteFrames(self, message->envelope.reply_to, outbox);
 }
 
 static void GameActor_Unsubscribe(GameActor *self, const GameMessage *message,
                                   GameOutbox *outbox)
 {
-    const bool removed = Subscribers_Remove(&self->subscribers, message->reply_to);
+    const bool removed = Subscribers_Remove(&self->subscribers, message->envelope.reply_to);
     GameOutbox_Reply(outbox, message, removed ? GAME_OK : GAME_ERR_NOT_SUBSCRIBED, 0U);
 }
 
 void GameActor_Handle(GameActor *self, const GameMessage *message, GameOutbox *outbox)
 {
     outbox->count = 0U;
-    switch (message->kind) {
+    switch (message->envelope.selector) {
     case GAME_MSG_SUBSCRIBE:
         GameActor_Subscribe(self, message, outbox);
         break;
