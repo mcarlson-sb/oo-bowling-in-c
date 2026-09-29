@@ -48,7 +48,7 @@ Message Query(RequestSeq seq)
 /* Sends each message in turn, with the outbox emptied first, and returns what the last one sent. */
 TestOutbox Send(Scoreboard *board, std::initializer_list<Message> messages)
 {
-    TestOutbox outbox;
+    TestOutbox outbox(SCOREBOARD_MOST_SENT);
     for (const Message &message : messages) {
         outbox.count = 0U;
         Scoreboard_Handle(board, &message, &outbox);

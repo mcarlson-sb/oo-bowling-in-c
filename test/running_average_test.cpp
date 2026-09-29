@@ -49,7 +49,7 @@ Message Query(RequestSeq seq)
 
 TestOutbox Send(RunningAverage *average, std::initializer_list<Message> messages)
 {
-    TestOutbox outbox;
+    TestOutbox outbox(RUNNING_AVERAGE_MOST_SENT);
     for (const Message &message : messages) {
         outbox.count = 0U;
         RunningAverage_Handle(average, &message, &outbox);

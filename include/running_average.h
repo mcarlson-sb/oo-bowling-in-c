@@ -17,6 +17,9 @@
 extern "C" {
 #endif
 
+/* The most one message makes it send: a reply, or a NOT_UNDERSTOOD. */
+#define RUNNING_AVERAGE_MOST_SENT 1U
+
 /* Its state is its own: only the shell, which hosts it, and the tests see inside. */
 typedef struct RunningAverage RunningAverage;
 
