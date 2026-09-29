@@ -367,11 +367,15 @@ static void GameActor_NewGame(GameActor *self, const Message *message, GameOutbo
         GameOutbox_Reply(outbox, message, GAME_ERR_GAME_IN_PROGRESS, 0U);
         return;
     }
+    Message *reply = GameOutbox_BeginReply(outbox, message);
     const GameStatus status = Scorer_Start(&self->scorer, &message->payload.new_game.rules);
-    if (status == GAME_OK) {
-        self->lifecycle = GAME_IN_PLAY;
+    if (status != GAME_OK) {
+        GameReply_Finish(reply, status, 0U);
+        return;
     }
-    GameOutbox_Reply(outbox, message, status, 0U);
+    self->lifecycle = GAME_IN_PLAY;
+    GameActor_LetHeldRollsThrough(self, outbox);
+    GameReply_Finish(reply, GAME_OK, Scorer_Score(&self->scorer));
 }
 
 static void GameActor_Receive(GameActor *self, const Message *message, GameOutbox *outbox)

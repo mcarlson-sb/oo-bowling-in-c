@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <initializer_list>
 #include <vector>
 
@@ -717,4 +718,21 @@ TEST(GameActorLifecycleTest, should_start_a_new_game_after_one_ends)
     Send(&actor, RollRequest(23U, 3U), &outbox);
     Send(&actor, RollRequest(24U, 3U), &outbox);
     EXPECT_EQ(9U, outbox.items[0].payload.reply.score); /* candlepin's three balls a frame */
+}
+
+TEST(GameActorLifecycleTest, should_play_the_rolls_held_after_a_game_into_the_new_one)
+{
+    /* The pinsetter counted the next game's first frame before anyone started it. */
+    GameActor actor = MakeActor(rules::kTenPin);
+    BowlAGutterGame(&actor);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(21U, kSubscriber), &outbox);
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    Send(&actor, PinsetterRoll(4U), &outbox); /* both held: the game is over */
+    Send(&actor, NewGameRequest(22U, rules::kTenPin), &outbox);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
+    EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
+    const Sent frame_1 = {MSG_FRAME_CHANGED, kSubscriber, 1, 7, true};
+    const std::vector<Sent> heard = FrameEventsIn(outbox);
+    EXPECT_NE(heard.end(), std::find(heard.begin(), heard.end(), frame_1));
 }
