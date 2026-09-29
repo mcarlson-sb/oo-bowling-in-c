@@ -328,3 +328,83 @@ remote: - Cannot delete this branch
 `rtos-actor` stayed at `edfef2d` through all three. The commit that records this was then
 promoted by the gate as usual, with the ruleset in force, so `promote`'s own push passes the
 required checks: [36507119638](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36507119638).
+
+### Follow-ups against Fowler's "Continuous Integration"
+
+Checked against the practices in <https://martinfowler.com/articles/continuousIntegration.html>.
+
+- **Fix Broken Builds Immediately.** Fowler: "the best way to fix the build is to revert the
+  latest commit". Here a revert can't: `every-commit` tests every commit since `rtos-actor`, so
+  the red one stays in range. So the recovery rewrites the integration branch, never
+  `rtos-actor`: reset it to `rtos-actor`, re-apply the work corrected, and push with
+  `--force-with-lease` against the red tip (`CLAUDE.md` has the steps). Proved: a red commit
+  ([36507635496](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36507635496)),
+  recovered by those steps, with the README badge as the corrected work; the gate passed and
+  promotion resumed ([36507773093](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36507773093)).
+  A push whose lease names a tip that has since moved is refused ("stale info").
+- **Keep the Build Fast.** A whole gate run takes 45 to 65 seconds, against Fowler's ten
+  minutes. After every push, the gate is waited for before the next one; nothing is pushed onto
+  a red or running gate (`CLAUDE.md`).
+- **Time to green.** When `promote` runs, it reports how long the integration branch was red
+  before this run, in the job summary and as a notice. After the recovery above: "integration
+  was red for 2m 32s, over 1 red run".
+- **Everyone can see what's happening.** The README has the gate's badge. It shows the
+  integration branch's runs: `rtos-actor` has none of its own (the badge filtered to it says
+  "no status"), since everything on it was gated on the integration branch first.
+- **Automate Deployment.** Each promotion publishes `bowling-<sha>`: the release build's
+  `libbowling.a` and headers, the ones the gate built and tested (handed over from
+  `build-release`, not rebuilt), and the gate summary
+  ([36507920475](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36507920475)).
+- **Every Push to Mainline Should Trigger a Build.** Deliberately not: `rtos-actor` is only
+  ever moved by `promote`, to a SHA that has just passed every gate, so building it again would
+  test the same commit twice.
+
+### The gap: Test in a Clone of the Production Environment (a plan, not built)
+
+Fowler: "we want to set up our test environment to be as exact a mimic of our production
+environment as possible." Production here is a Cortex-M microcontroller. Every gate runs on a
+64-bit Linux host with glibc: `int` is 32 bits on both, but pointers, alignment, the C library,
+the ABI and every stack frame differ. The plan is a second stage that closes part of that gap.
+
+**What it would do.**
+
+1. **Cross-compile** the library with `arm-none-eabi-gcc`, warnings as errors, and the stack
+   tripwires (`-Wstack-usage`), for a Cortex-M CPU (`-mcpu=cortex-m3 -mthumb`, or M4F with its
+   FPU). The target's frames are the ones the ENG-1.3 stack contract is really about; this is
+   also where the call-graph analysis decided for task stacks (`-fcallgraph-info=su`) gets its
+   numbers.
+2. **Run the core's tests under QEMU** on a Cortex-M machine, `qemu-system-arm -M mps2-an385`
+   (Cortex-M3), with semihosting for output and the exit status, so a failing test fails the
+   job.
+3. **Report, not block.** It runs after `promote`, never in its way, and is not a required
+   check. It tells us when the target disagrees with the host; it doesn't hold the line.
+
+**How it would be built.**
+
+- **A separate workflow**, triggered by `workflow_run` when the Gate completes successfully on
+  the integration branch. A job in `gate.yml` after `promote` would work too, but a failure there
+  would turn the Gate's run, and the README badge, red although the promotion succeeded.
+- **Toolchain:** Ubuntu 24.04's `gcc-arm-none-eabi` (GCC 13.2, newlib) and `qemu-system-arm`,
+  both from apt: about a minute to install, then seconds to build and run.
+- **Startup code:** a vector table, a linker script for the machine's memory map, and a reset
+  handler that sets up `.data` and `.bss` and calls the test runner. The vector table is an array
+  of function pointers the hardware requires; like FreeRTOS's task entries, it would be a named
+  exemption in its own shell file, marked for the function-pointer check.
+
+**What it would not prove.** QEMU executes instructions, not cycles: no worst-case execution
+time, no cache or bus timing, no real interrupt latency, and no peripherals beyond the machine's
+model. It proves the code compiles cleanly for the target, fits its stack limits, and gives the
+same answers there; timing still needs real hardware.
+
+**Decisions needed before building it:**
+
+1. **The tests on the target.** GoogleTest needs C++, exceptions and a large libstdc++: it can
+   run under newlib and semihosting, but it is heavy, and the thread-based pinsetter tests can't.
+   The alternative is a small C test runner (Unity, say) for the pure core only, which is what
+   the target would really run. Recommendation: the C runner for the core; GoogleTest stays on
+   the host.
+2. **The machine.** `mps2-an385` (Cortex-M3), `mps2-an386` (M4, with its FPU) or `mps2-an505`
+   (Cortex-M33, TrustZone). Recommendation: the one closest to the real product's MCU.
+3. **Its own workflow, or a job after `promote`.** Recommendation: its own workflow, for the badge
+   reason above.
+4. **The vector-table exemption** to the no-function-pointer rule, in a startup file of its own.
