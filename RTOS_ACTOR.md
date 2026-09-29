@@ -529,7 +529,36 @@ deepest chain is larger. Measuring chains is the call-graph analysis decided for
 
 ### Mutation feedback at the phase stop
 
-(Recorded when the run finishes.)
+| Mode | Mutants | Killed | Timed out | Survived | Score | Mutants' time |
+|---|---|---|---|---|---|---|
+| debug | 408 | 367 | 15 | 26 | 93.6% | 1 m 25 s |
+| release | 402 | 354 | 26 | 22 | 94.5% | 1 m 47 s |
+
+Every survivor is in a class already recorded: 7 equivalent through `bool`, 11 equivalent by
+the code around them, 5 behind an `assert` or only for one (which the release run reaches), 2
+in `Fault_Stop`, and 3 that read memory the walk didn't write and happen to pass (a memory
+sanitizer would see them).
+
+**Getting it this fast.** The first run at this stop took 46 minutes, and a clean run of the
+test binary under Mull took about as long as its 30-second timeout, so a slow run could be
+scored as a timed-out mutant: a kill that wasn't one. Per test, 78% of a run was kay-oo's four
+property tests of the `Game` facade's edits (8.9 s of 11.3 s; the other 149 tests took 0.07 s).
+Leaving them out lost three kills, and each was dealt with:
+
+- A facade deletion that passes no pins at all: now an example test, which kills its mutant.
+- Two mutants of the facade's bound check, `index < frame count`, that let the reporter ask
+  about frames not started. `Scorer_Frame` then read frames the walk never wrote: undefined
+  behavior, which the property tests' random games only sometimes turned into a wrong answer. The
+  fix went into the core: `Scorer_Frame` now answers "not complete, 0" for any frame not
+  started (the UBSan build trapped on its new test before the fix). The two mutants are now
+  equivalent, and an example test pins the behavior.
+
+So `tools/mutation.sh` leaves those four tests out by default, the timeout is back to 10 s, and
+the CPU cap on looping mutants is 30 s: a run of the binary takes about 2.5 s. A `diff <ref>`
+mode mutates only the lines changed since a ref: against `rtos-actor`, after the `Scorer_Frame`
+fix, it found 4 mutants and killed 3 in 1.6 s (9 s with the build), and the survivor was that
+fix's own bound, `>=` to `>`, which reads one frame not written: the undefined-behavior class
+above.
 
 ### Decisions for phase 2
 
