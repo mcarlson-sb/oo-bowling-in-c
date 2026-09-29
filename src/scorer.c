@@ -212,17 +212,27 @@ static Pins Scorer_CountPins(const Scorer *self, Pins standing, Pins pins)
     }
 }
 
+static void Lane_Start(Lane *lane, const VariantRules *rules)
+{
+    lane->frames_started = 0U;
+    Lane_ResetRack(lane, rules);
+    lane->phase = LANE_TAKING_FRAMES;
+    lane->fill_balls_left = 0U;
+}
+
+static void Lane_TakeBall(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins counted)
+{
+    lane->counted_pins[ball_index] = counted;
+    Lane_Throw(lane, rules, ball_index, counted);
+}
+
 static Lane Scorer_Lane(const Scorer *self)
 {
     const VariantRules *rules = Scorer_Rules(self);
     Lane lane;
-    lane.frames_started = 0U;
-    lane.standing = rules->pins_per_rack;
-    lane.phase = LANE_TAKING_FRAMES;
-    lane.fill_balls_left = 0U;
+    Lane_Start(&lane, rules);
     for (uint8_t i = 0U; i < self->ball_count; i++) {
-        lane.counted_pins[i] = Scorer_CountPins(self, lane.standing, self->balls[i]);
-        Lane_Throw(&lane, rules, i, lane.counted_pins[i]);
+        Lane_TakeBall(&lane, rules, i, Scorer_CountPins(self, lane.standing, self->balls[i]));
     }
     return lane;
 }
