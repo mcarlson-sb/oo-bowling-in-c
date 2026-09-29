@@ -442,3 +442,103 @@ green and promoted `rtos-actor` to it
 ([36509487693](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36509487693)), with
 the notice "time to green unavailable (URLError: Name or service not known)". The next commit
 took the bad URL out again.
+
+## Phase 1 report: a pure, data-driven core, and candlepin
+
+**What changed.** One generic scorer, `include/scorer.h` and `src/scorer.c`, replaced
+kay-oo's State pattern: the frame classes, their vtables and state-family factories, and
+`RollList`. It is a plain value, the variant and rule it plays and the balls it has taken, and
+it answers every question by walking those balls through one `static const` row of rules, with
+the lane's phase as an enum and a `switch`. It has no callbacks: a roll or an edit returns its
+status and writes the frames it changed to a buffer the caller supplies. The counting rule is
+data too: `CountRule`, an enum (`SCORER_COUNT_PINS_DOWN`, `SCORER_COUNT_NO_TAP`), where kay-oo
+took a caller's function. The `Game` facade runs on the core through `Scorecard`, now an
+adapter, and every existing test passes unchanged. Candlepin is a second row.
+
+### The hypothesis: both games from the same few parameters
+
+**It held.** Both games are described by exactly the parameters proposed: balls per frame,
+pins per rack, frames per game, the most balls a game can take, and the bonus balls owed by
+the ball that cleared the rack (ten-pin 2, 1; candlepin 2, 1, 0). The tenth frame needed no
+parameter of its own: its fill balls are the same bonus, "after clearing on ball k, throw
+bonus(k) more", on a fresh rack whenever one is cleared.
+
+The evidence: with the candlepin row added, all 22 of the brief's acceptance examples
+passed with no code change, and so did 10,000 random games against an independent candlepin
+reference, checked after every ball. Because they passed at once, each field of the row was
+broken in turn to see them fail: balls per frame 3 to 2 (17 tests fail), a strike earning one
+bonus ball (8), a ten-box earning one (4), 9 frames (16). The one that failed nothing was the
+maximum, 30 to 29, which exposed a missing test: an edit that leaves exactly 30 balls. It was
+added, and now fails that mutation.
+
+### Replacing `PinCountRule` with data: what it loses
+
+- **An open set becomes a closed one.** A caller could write any rule; now a rule exists only if
+  the library has an enum value and a `case` for it. Nine-pin no-tap and "one pin left clears
+  the rack" are both expressible, but adding a third means changing the library. In Cook's
+  terms, the rule went from an object to an ADT.
+- **What it gains:** a rule can't be impure, count out of range, or call back into the game. The
+  tests that exist because rules are code (`GAME_ERR_RULE_OUT_OF_RANGE`, the `NULL` rule, the
+  impure rule's fail-stop, a rule that rolls or subscribes from inside itself) describe states
+  the core can't reach. They still pass, because the `Game` facade still takes a
+  `PinCountRule`: that is the strangled API, kept until callers switch.
+
+### Metrics against the baseline (kay-oo at ad857ff)
+
+| | Baseline | Now |
+|---|---|---|
+| Tests (debug / release) | 114 / 112 | 159 / 158 |
+| Functions (lizard) | 143 | 117 |
+| Average / maximum cyclomatic complexity | 1.6 / 5 | 1.9 / 6 (`Scorer_CheckEdit`) |
+| Average / maximum NLOC per function | 6.4 / 16 | 7.6 / 21 (`Scorer_Roll`) |
+| Maximum parameters | 4 | 4 |
+| Maximum cognitive complexity | 4 | 5 (`Scorer_CheckEdit`, `Scorer_ReportAll`) |
+| Largest stack frame, release (GCC 16) | 224, `Game_CorrectRoll` | 256, `Scorer_Edit` (`Game_CorrectRoll` still 224) |
+| Release line / branch coverage | 99.8% / 98.9% | 99.5% / 99.1% |
+| Lines in `src/` and `include/` (files) | 1,925 (41) | 1,729 (27) |
+| Function-pointer types / uses / files | 6 / 31 / 13 | 2 / 13 / 6, all the callback facade |
+
+Every gate is inside its limit. The two uncovered lines are `case LANE_OVER` in the lane's
+`switch`, which no walk reaches (`Scorer_Roll` refuses a ball once the game is over); the case
+is kept because `-Wswitch` wants every value handled. Stack figures are single frames, not
+call chains: `Scorer_Edit` calls the replay, which calls `Scorer_Roll` and its lane, so the
+deepest chain is larger. Measuring chains is the call-graph analysis decided for phase 2.
+
+**Lines deleted against added** (kay-oo to now): `src/` and `include/` +560, -756; the tests
++880, -163.
+
+### Surprises
+
+1. **The perfect-game test passed in debug and release by accident**, writing an 11th and 12th
+   frame past an array. Only the UBSan build caught it.
+2. **The stack tripwire fired on a data change.** Keeping each ball's counted value made the
+   lane 30 bytes bigger, and `Scorer_Edit`, with two lanes live at once, went to 336 bytes
+   against the 320 limit. Counting before the replay, so only one is live, brought it to 256.
+3. **Recomputing is a real cost.** The core works everything out from the balls on every
+   question: it is what makes it a copyable value, and what made the rejected edit's undo free
+   (a scratch copy, which phase 5b couldn't use). Through the adapter, kay-oo's property tests
+   made the test binary about 10 times slower under Mull's instrumentation. With at most 30
+   balls each walk is short, but it is a worst-case execution time question for ENG-1.3.
+4. **Candlepin needed no code.** The whole variant is a row, and the tests that describe it went
+   green before any line of the scorer changed.
+5. **The constitution argues the other way.** ENG-3.1's own remedy for a growing `switch` is "a
+   function-pointer table", exactly what this experiment forbids. The `switch`es here stay small
+   (three phases, two rules) because the variation moved into data, not into cases.
+6. **The FreeRTOS POSIX port can't measure a task's stack** (`uxTaskGetStackHighWaterMark`
+   reads a buffer the task never runs on): found early, and settled in the decisions above.
+
+### Mutation feedback at the phase stop
+
+(Recorded when the run finishes.)
+
+### Decisions for phase 2
+
+1. **When the callers switch** from the callback facade (`PinCountRule`, `FrameChangedCallback`)
+   to the new interface, which removes the last six allowlisted files. Phase 2's subscriber
+   queues are the natural point. The tests that only exist because rules and listeners are code
+   would then be deleted, each with the hazard it guarded, as the frame classes' were.
+2. **The recompute cost:** accept it (at most 30 balls a walk), or have the scorer keep its
+   frames as it goes. That keeps it a value, but it is more state to keep right. Measuring WCET
+   on a target would decide it; that stage is deferred.
+3. **A23** (a frame listener hears frame 1 change from 13 to 10) is phase 2's: in the pure core
+   it is already an edit's frame events, and a subscriber queue is where it becomes a listener.
