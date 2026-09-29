@@ -441,3 +441,12 @@ TEST(CandlepinTest, A06_should_a_strike_a_spare_and_a_ten_box_score_42)
     EXPECT_TRUE(Scorer_IsOver(&scorer));
     EXPECT_EQ(42U, Scorer_Score(&scorer)); /* (10 + 7 + 3) + (10 + 2) + 10 */
 }
+
+TEST(CandlepinTest, A07_should_three_strikes_in_the_tenth_score_30)
+{
+    Scorer scorer = MakeCandlepin();
+    RollMany(&scorer, 27, 0U);
+    RollAll(&scorer, {10U, 10U, 10U});
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+    EXPECT_EQ(30U, Scorer_Score(&scorer));
+}
