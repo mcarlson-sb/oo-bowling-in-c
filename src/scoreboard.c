@@ -16,6 +16,7 @@ static const ScoreboardRequest k_scoreboard_protocol[MSG_SELECTOR_COUNT] = {
 void Scoreboard_Init(Scoreboard *self, ActorId id)
 {
     self->id = id;
+    self->not_understood = 0U;
     for (uint8_t i = 0U; i < SCORER_MAX_FRAMES; i++) {
         self->scores[i] = 0U;
         self->complete[i] = false;
@@ -59,6 +60,8 @@ void Scoreboard_Handle(Scoreboard *self, const Message *message, Outbox *outbox)
         Outbox_Reply(outbox, message, GAME_OK, Scoreboard_Total(self));
         break;
     case SCOREBOARD_DOES_NOT_UNDERSTAND:
+        self->not_understood++;
+        Outbox_NotUnderstood(outbox, self->id, message);
         break;
     }
 }

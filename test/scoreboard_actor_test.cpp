@@ -67,3 +67,19 @@ TEST(ScoreboardTest, should_answer_the_total_of_the_frames_it_has_heard_complete
     EXPECT_EQ(GAME_OK, reply.payload.reply.status);
     EXPECT_EQ(19U, reply.payload.reply.score);
 }
+
+TEST(ScoreboardTest, should_not_understand_a_roll_and_count_it)
+{
+    Scoreboard board = MakeBoard();
+    Message roll = {};
+    roll.envelope.selector = MSG_ROLL;
+    roll.envelope.from = kAsker;
+    roll.envelope.to = kBoard;
+    roll.envelope.seq = 6U;
+    const Outbox outbox = Send(&board, {roll});
+    ASSERT_EQ(1U, outbox.count);
+    EXPECT_EQ(MSG_NOT_UNDERSTOOD, outbox.items[0].envelope.selector);
+    EXPECT_EQ(kAsker, outbox.items[0].envelope.to);
+    EXPECT_EQ(MSG_ROLL, outbox.items[0].payload.not_understood.selector);
+    EXPECT_EQ(1U, board.not_understood);
+}
