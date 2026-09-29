@@ -3,12 +3,46 @@
 #include <assert.h>
 #include <stddef.h>
 
+static void HeldRolls_Init(HeldRolls *held)
+{
+    held->count = 0U;
+    held->first_refused_for = GAME_OK;
+}
+
+static bool HeldRolls_IsEmpty(const HeldRolls *held)
+{
+    return held->count == 0U;
+}
+
+static bool HeldRolls_IsFull(const HeldRolls *held)
+{
+    return held->count == SCORER_MAX_BALLS;
+}
+
+static void HeldRolls_Push(HeldRolls *held, Pins pins)
+{
+    held->pins[held->count] = pins;
+    held->count++;
+}
+
+static uint8_t HeldRolls_Newest(const HeldRolls *held)
+{
+    return (uint8_t)(held->count - 1U);
+}
+
+static void HeldRolls_DropFirst(HeldRolls *held)
+{
+    held->count--;
+    for (uint8_t i = 0U; i < held->count; i++) {
+        held->pins[i] = held->pins[i + 1U];
+    }
+}
+
 void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule)
 {
     Scorer_InitWithRule(&self->scorer, variant, rule);
     self->subscriber_count = 0U;
-    self->held_count = 0U;
-    self->first_held_refused_for = GAME_OK;
+    HeldRolls_Init(&self->held);
     self->lost_to_full_queue = 0U;
     self->lost_to_full_held_list = 0U;
 }
@@ -66,10 +100,10 @@ static void GameActor_PublishHeld(const GameActor *self, uint8_t index, GameOutb
 {
     for (uint8_t s = 0U; s < self->subscriber_count; s++) {
         GameOutput *out = GameOutbox_Next(outbox, GAME_OUT_ROLL_HELD, self->subscribers[s]);
-        out->pins = self->held[index];
+        out->pins = self->held.pins[index];
         out->position = GameActor_HeldBallNumber(self, index);
-        out->held = self->held_count;
-        out->status = self->first_held_refused_for;
+        out->held = self->held.count;
+        out->status = self->held.first_refused_for;
     }
 }
 
@@ -83,9 +117,8 @@ static void GameActor_PublishLost(const GameActor *self, GameOutbox *outbox)
 
 static void GameActor_Hold(GameActor *self, Pins pins, GameOutbox *outbox)
 {
-    self->held[self->held_count] = pins;
-    self->held_count++;
-    GameActor_PublishHeld(self, (uint8_t)(self->held_count - 1U), outbox);
+    HeldRolls_Push(&self->held, pins);
+    GameActor_PublishHeld(self, HeldRolls_Newest(&self->held), outbox);
 }
 
 static void GameActor_Lose(GameActor *self, GameOutbox *outbox)
@@ -96,37 +129,24 @@ static void GameActor_Lose(GameActor *self, GameOutbox *outbox)
 
 static void GameActor_HoldOrLose(GameActor *self, Pins pins, GameOutbox *outbox)
 {
-    if (self->held_count == SCORER_MAX_BALLS) {
+    if (HeldRolls_IsFull(&self->held)) {
         GameActor_Lose(self, outbox);
     } else {
         GameActor_Hold(self, pins, outbox);
     }
 }
 
-static bool GameActor_IsHoldingRolls(const GameActor *self)
-{
-    return self->held_count > 0U;
-}
-
-static void GameActor_DropFirstHeld(GameActor *self)
-{
-    self->held_count--;
-    for (uint8_t i = 0U; i < self->held_count; i++) {
-        self->held[i] = self->held[i + 1U];
-    }
-}
-
 static void GameActor_LetHeldRollsThrough(GameActor *self, GameOutbox *outbox)
 {
-    while (GameActor_IsHoldingRolls(self)) {
+    while (!HeldRolls_IsEmpty(&self->held)) {
         FrameEvents events;
-        const GameStatus status = Scorer_Roll(&self->scorer, self->held[0], &events);
+        const GameStatus status = Scorer_Roll(&self->scorer, self->held.pins[0], &events);
         if (status != GAME_OK) {
-            self->first_held_refused_for = status;
+            self->held.first_refused_for = status;
             GameActor_PublishHeld(self, 0U, outbox);
             return;
         }
-        GameActor_DropFirstHeld(self);
+        HeldRolls_DropFirst(&self->held);
         GameActor_Publish(self, &events, outbox);
     }
 }
@@ -142,14 +162,14 @@ static void GameActor_Roll(GameActor *self, const GameMessage *message, GameOutb
 static void GameActor_PinsetterRoll(GameActor *self, const GameMessage *message,
                                     GameOutbox *outbox)
 {
-    if (GameActor_IsHoldingRolls(self)) {
+    if (!HeldRolls_IsEmpty(&self->held)) {
         GameActor_HoldOrLose(self, message->pins, outbox);
         return;
     }
     FrameEvents events;
     const GameStatus status = Scorer_Roll(&self->scorer, message->pins, &events);
     if (status != GAME_OK) {
-        self->first_held_refused_for = status;
+        self->held.first_refused_for = status;
         GameActor_HoldOrLose(self, message->pins, outbox);
         return;
     }
@@ -180,12 +200,12 @@ static void GameActor_Edit(GameActor *self, const GameMessage *message, GameOutb
 static void GameActor_DiscardHeld(GameActor *self, const GameMessage *message,
                                   GameOutbox *outbox)
 {
-    if (!GameActor_IsHoldingRolls(self)) {
+    if (HeldRolls_IsEmpty(&self->held)) {
         GameOutbox_Reply(outbox, message, GAME_ERR_NO_SUCH_ROLL, 0U);
         return;
     }
     GameOutput *reply = GameOutbox_BeginReply(outbox, message);
-    GameActor_DropFirstHeld(self);
+    HeldRolls_DropFirst(&self->held);
     GameActor_LetHeldRollsThrough(self, outbox);
     GameReply_Finish(reply, GAME_OK, Scorer_Score(&self->scorer));
 }

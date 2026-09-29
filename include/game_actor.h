@@ -94,12 +94,16 @@ typedef struct {
 } GameOutbox;
 
 typedef struct {
+    Pins pins[SCORER_MAX_BALLS];
+    uint8_t count;
+    GameStatus first_refused_for;
+} HeldRolls;
+
+typedef struct {
     Scorer scorer;
     void *subscribers[GAME_MAX_SUBSCRIBERS];
     uint8_t subscriber_count;
-    Pins held[SCORER_MAX_BALLS];
-    uint8_t held_count;
-    GameStatus first_held_refused_for;
+    HeldRolls held;
     uint16_t lost_to_full_queue;
     uint16_t lost_to_full_held_list;
 } GameActor;
