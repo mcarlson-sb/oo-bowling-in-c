@@ -3,34 +3,41 @@
 #include <assert.h>
 #include <stddef.h>
 
-/* A frame takes at most this many balls of its own, in any variant. */
 #define SCORER_MAX_BALLS_PER_FRAME 3U
 
-/* Everything that differs between variants: data, not code. */
+typedef enum {
+    CLEARED_BY_STRIKE,
+    CLEARED_BY_SPARE,
+    CLEARED_BY_TEN_BOX
+} ClearingBall;
+
 typedef struct {
     uint8_t frames;
     uint8_t balls_per_frame;
     Pins pins_per_rack;
-    uint8_t max_balls; /* in a whole game */
-    /* Bonus balls owed by a frame that clears the rack, by the ball that cleared it: [0] is the
-     * first ball (a strike), [1] the second (a spare). */
-    uint8_t bonus_balls[SCORER_MAX_BALLS_PER_FRAME];
+    uint8_t max_balls_per_game;
+    uint8_t bonus_balls_by_clearing_ball[SCORER_MAX_BALLS_PER_FRAME];
 } VariantRules;
 
-/* The most balls a game can take: every frame's own balls, and the last frame's fill balls. */
-#define TEN_PIN_MAX_BALLS 21U   /* 9 frames of 2, then 3 in the tenth */
-#define CANDLEPIN_MAX_BALLS 30U /* 10 frames of 3: a strike or a spare in the tenth takes fill
-                                 * balls up to the same 3 */
+/* The last frame takes fill balls up to the same SCORER_MAX_BALLS_PER_FRAME, in any variant. */
+#define LONGEST_GAME(frames, balls_per_frame) \
+    ((((frames) - 1U) * (balls_per_frame)) + SCORER_MAX_BALLS_PER_FRAME)
+#define TEN_PIN_MAX_BALLS LONGEST_GAME(10U, 2U)
+#define CANDLEPIN_MAX_BALLS LONGEST_GAME(10U, 3U)
 
 _Static_assert(TEN_PIN_MAX_BALLS <= SCORER_MAX_BALLS, "ten-pin must fit the scorer's storage");
 _Static_assert(CANDLEPIN_MAX_BALLS <= SCORER_MAX_BALLS, "candlepin must fit the scorer's storage");
 
 static const VariantRules k_variant_rules[] = {
     [SCORER_TEN_PIN] = { .frames = 10U, .balls_per_frame = 2U, .pins_per_rack = 10U,
-                         .max_balls = TEN_PIN_MAX_BALLS, .bonus_balls = { 2U, 1U, 0U } },
-    /* The third ball can clear the rack too, a ten-box, which earns no bonus. */
+                         .max_balls_per_game = TEN_PIN_MAX_BALLS,
+                         .bonus_balls_by_clearing_ball = { [CLEARED_BY_STRIKE] = 2U,
+                                                           [CLEARED_BY_SPARE] = 1U } },
     [SCORER_CANDLEPIN] = { .frames = 10U, .balls_per_frame = 3U, .pins_per_rack = 10U,
-                           .max_balls = CANDLEPIN_MAX_BALLS, .bonus_balls = { 2U, 1U, 0U } },
+                           .max_balls_per_game = CANDLEPIN_MAX_BALLS,
+                           .bonus_balls_by_clearing_ball = { [CLEARED_BY_STRIKE] = 2U,
+                                                             [CLEARED_BY_SPARE] = 1U,
+                                                             [CLEARED_BY_TEN_BOX] = 0U } },
 };
 
 /* Where a frame's balls are in the game's list, and how many bonus balls it is owed. A closed
@@ -90,12 +97,15 @@ static FrameShape *Lane_FrameTakingBall(Lane *lane, uint8_t ball_index)
     return &lane->frames[lane->frame_count - 1U];
 }
 
-/* A frame that clears the rack closes owing the bonus its clearing ball earns: a strike's,
- * a spare's, or, on candlepin's third ball, a ten-box's none. */
+static ClearingBall FrameShape_ClearingBall(const FrameShape *frame)
+{
+    return (ClearingBall)(frame->own_balls - 1U);
+}
+
 static void FrameShape_CloseClearingTheRack(FrameShape *frame, const VariantRules *rules)
 {
     frame->closed = true;
-    frame->bonus_balls = rules->bonus_balls[frame->own_balls - 1U];
+    frame->bonus_balls = rules->bonus_balls_by_clearing_ball[FrameShape_ClearingBall(frame)];
 }
 
 static bool Lane_IsLastFrame(const Lane *lane, const VariantRules *rules)
@@ -358,7 +368,7 @@ static GameStatus Scorer_CheckEdit(const Scorer *self, const RollEdit *edit)
     if (RollEdit_PromisesBallsWithoutPins(edit)) {
         return GAME_ERR_INVALID_EDIT;
     }
-    if (RollEdit_BallsAfter(edit, self->ball_count) > Scorer_Rules(self)->max_balls) {
+    if (RollEdit_BallsAfter(edit, self->ball_count) > Scorer_Rules(self)->max_balls_per_game) {
         return GAME_ERR_TOO_MANY_ROLLS;
     }
     return GAME_OK;
