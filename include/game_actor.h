@@ -11,6 +11,7 @@
 
 #include "actor_id.h"
 #include "message.h"
+#include "outbox.h"
 #include "scorer.h"
 
 #ifdef __cplusplus
@@ -22,10 +23,6 @@ extern "C" {
 #define GAME_EVENTS_PER_MESSAGE ((2U * SCORER_MAX_EVENTS) + 1U)
 #define GAME_OUTBOX_CAPACITY (1U + (GAME_MAX_SUBSCRIBERS * GAME_EVENTS_PER_MESSAGE))
 
-typedef struct {
-    Message items[GAME_OUTBOX_CAPACITY];
-    uint8_t count;
-} GameOutbox;
 
 typedef struct {
     Pins pins[SCORER_MAX_BALLS];
@@ -60,7 +57,7 @@ typedef struct {
 void GameActor_Init(GameActor *self, ActorId id);
 
 /* Handles one message. The outbox is emptied first, then filled. */
-void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbox);
+void GameActor_Handle(GameActor *self, const Message *message, Outbox *outbox);
 
 #ifdef __cplusplus
 }

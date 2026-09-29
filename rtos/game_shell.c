@@ -40,7 +40,7 @@ typedef struct {
     StaticQueue_t mailbox_queue;
     uint8_t mailbox_storage[GAME_SHELL_MAILBOX * sizeof(Message)];
     Message message;
-    GameOutbox outbox;
+    Outbox outbox;
     PosixStack stack_paint;
     TaskHandle_t task;
     StaticTask_t task_buffer;
@@ -89,7 +89,7 @@ static bool GameShell_Post(const GameShell *self, const Message *message, TickTy
     return true;
 }
 
-static void GameShell_Deliver(GameShell *self, const GameOutbox *outbox)
+static void GameShell_Deliver(GameShell *self, const Outbox *outbox)
 {
     for (uint8_t i = 0U; i < outbox->count; i++) {
         if (!GameShell_Post(self, &outbox->items[i], 0U)) {
@@ -100,7 +100,7 @@ static void GameShell_Deliver(GameShell *self, const GameOutbox *outbox)
 
 /* The one late-binding point: the kind bound at the message's "to" decides what it means, and
  * which instance's receive function hears it. */
-static void GameShell_Dispatch(GameShell *self, const Message *message, GameOutbox *outbox)
+static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *outbox)
 {
     const GameShellRoute *route = GameShell_RouteTo(self, message->envelope.to);
     outbox->count = 0U;
