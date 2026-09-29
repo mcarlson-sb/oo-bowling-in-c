@@ -1014,7 +1014,7 @@ instrumentation they take the test binary past its timeout.
 | Tests, host / with the POSIX port | 82 / 90 | 101 / 111 |
 | Largest cyclomatic complexity | 9, `GameActor_Handle` | 10, `GameActor_Receive` (limit 10); `GameActor_Handle` 4 |
 | Stack contract, game task, release / debug | 3952 / 4224 | 3936 / 4320 (budget 4608) |
-| Release line coverage | 99.6% | 99.0% |
+| Release line coverage | 99.6% | 99.3% (99.0% before the two tests below) |
 
 The misses:
 - **The shell's dispatch of a message to a kind it doesn't run.** It's unreachable, because a
