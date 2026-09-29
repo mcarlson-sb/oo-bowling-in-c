@@ -5,12 +5,14 @@
 typedef enum {
     SCOREBOARD_DOES_NOT_UNDERSTAND = 0,
     SCOREBOARD_FRAME_CHANGED,
-    SCOREBOARD_QUERY_SCORE
+    SCOREBOARD_QUERY_SCORE,
+    SCOREBOARD_REPLY
 } ScoreboardRequest;
 
 static const ScoreboardRequest k_scoreboard_protocol[MSG_SELECTOR_COUNT] = {
     [MSG_FRAME_CHANGED] = SCOREBOARD_FRAME_CHANGED,
     [MSG_QUERY_SCORE] = SCOREBOARD_QUERY_SCORE,
+    [MSG_REPLY] = SCOREBOARD_REPLY,
 };
 
 void Scoreboard_Init(Scoreboard *self, ActorId id)
@@ -59,6 +61,8 @@ void Scoreboard_Handle(Scoreboard *self, const Message *message, Outbox *outbox)
     case SCOREBOARD_QUERY_SCORE:
         Outbox_Reply(outbox, message, GAME_OK, Scoreboard_Total(self));
         break;
+    case SCOREBOARD_REPLY:
+        break; /* to its subscription: nothing to do */
     case SCOREBOARD_DOES_NOT_UNDERSTAND:
         self->not_understood++;
         Outbox_NotUnderstood(outbox, self->id, message);

@@ -83,3 +83,16 @@ TEST(ScoreboardTest, should_not_understand_a_roll_and_count_it)
     EXPECT_EQ(MSG_ROLL, outbox.items[0].payload.not_understood.selector);
     EXPECT_EQ(1U, board.not_understood);
 }
+
+TEST(ScoreboardTest, should_take_the_reply_to_its_subscription_in_silence)
+{
+    /* Subscribed on its behalf, it hears the game's reply first: not a request to answer. */
+    Scoreboard board = MakeBoard();
+    Message reply = {};
+    reply.envelope.selector = MSG_REPLY;
+    reply.envelope.from = kGame;
+    reply.envelope.to = kBoard;
+    const Outbox outbox = Send(&board, {reply});
+    EXPECT_EQ(0U, outbox.count);
+    EXPECT_EQ(0U, board.not_understood);
+}
