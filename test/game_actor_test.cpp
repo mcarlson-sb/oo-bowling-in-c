@@ -283,3 +283,34 @@ TEST(GameActorPinsetterTest, should_hold_an_impossible_roll_and_those_after_it_u
     EXPECT_EQ(13U, outbox.items[0].score); /* 2 then 8, a spare, with the 3 as its bonus */
     EXPECT_EQ((std::vector<Held>{}), HeldEventsIn(outbox));
 }
+
+namespace {
+
+GameMessage DiscardHeldRequest(RequestSeq seq)
+{
+    GameMessage message = {};
+    message.kind = GAME_MSG_DISCARD_HELD;
+    message.seq = seq;
+    message.reply_to = &s_reply_queue;
+    return message;
+}
+
+} // namespace
+
+TEST(GameActorPinsetterTest, should_let_the_scorer_discard_a_held_roll_that_really_was_a_glitch)
+{
+    /* 11 pins can't fall: this time the machine is wrong, not an earlier roll. */
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Send(&actor, PinsetterRoll(11U), &outbox);
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    Send(&actor, PinsetterRoll(4U), &outbox);
+    EXPECT_EQ(0U, ScoreOf(&actor));
+
+    Send(&actor, DiscardHeldRequest(1U), &outbox);
+    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+    EXPECT_EQ(7U, outbox.items[0].score); /* the 3 and the 4 went through */
+
+    Send(&actor, DiscardHeldRequest(2U), &outbox);
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, outbox.items[0].status); /* nothing is held */
+}

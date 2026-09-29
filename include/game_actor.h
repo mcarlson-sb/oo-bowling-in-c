@@ -36,7 +36,10 @@ typedef enum {
      * game rejects is held, with every pinsetter roll after it, until a correction lets it
      * through; see GameActor. */
     GAME_MSG_PINSETTER_ROLL,
-    GAME_MSG_QUERY_SCORE
+    GAME_MSG_QUERY_SCORE,
+    /* Throws away the first held roll, a glitch, and lets the rest through as far as they go
+     * (kay-oo's Pinsetter_DiscardOldest). GAME_ERR_NO_SUCH_ROLL if nothing is held. */
+    GAME_MSG_DISCARD_HELD
 } GameMessageKind;
 
 typedef struct {
@@ -86,8 +89,8 @@ typedef struct {
 } GameOutbox;
 
 /* The actor's state: the game, its subscribers, and the pinsetter rolls it is holding. A held
- * roll waits, in the order it came, for a correction to let it through; the first of them was
- * rejected with held_status. */
+ * roll waits, in the order it came, for a correction or a discard to let it through; the first
+ * of them was rejected with held_status. */
 typedef struct {
     Scorer scorer;
     void *subscribers[GAME_MAX_SUBSCRIBERS];

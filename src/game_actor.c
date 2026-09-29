@@ -138,6 +138,19 @@ static void GameActor_Edit(GameActor *self, const GameMessage *message, GameOutb
     reply->score = Scorer_Score(&self->scorer);
 }
 
+static void GameActor_DiscardHeld(GameActor *self, const GameMessage *message,
+                                  GameOutbox *outbox)
+{
+    if (self->held_count == 0U) {
+        GameOutbox_Reply(outbox, message, GAME_ERR_NO_SUCH_ROLL, Scorer_Score(&self->scorer));
+        return;
+    }
+    GameOutput *reply = GameOutbox_Reply(outbox, message, GAME_OK, 0U);
+    GameActor_DropFirstHeld(self);
+    GameActor_ReplayHeld(self, outbox);
+    reply->score = Scorer_Score(&self->scorer);
+}
+
 /* The frames complete so far, for a subscriber that has just joined. */
 static void GameActor_CatchUp(const GameActor *self, void *subscriber, GameOutbox *outbox)
 {
@@ -175,6 +188,9 @@ void GameActor_Handle(GameActor *self, const GameMessage *message, GameOutbox *o
         break;
     case GAME_MSG_PINSETTER_ROLL:
         GameActor_PinsetterRoll(self, message, outbox);
+        break;
+    case GAME_MSG_DISCARD_HELD:
+        GameActor_DiscardHeld(self, message, outbox);
         break;
     case GAME_MSG_QUERY_SCORE:
         GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
