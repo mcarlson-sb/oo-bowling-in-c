@@ -67,6 +67,12 @@ void FirePinsetter(std::initializer_list<Pins> rolls)
     xTaskNotifyGive(s_interrupt);
 }
 
+void FirePinsetter(int count, Pins pins)
+{
+    s_interrupt_rolls.assign(static_cast<size_t>(count), pins);
+    xTaskNotifyGive(s_interrupt);
+}
+
 StaticTask_t s_client_task;
 StackType_t s_client_stack[configMINIMAL_STACK_SIZE];
 void (*s_client_body)();
@@ -162,4 +168,40 @@ TEST(GameShellTest, should_tell_a_subscriber_the_frame_the_pinsetters_rolls_comp
     EXPECT_EQ(1U, s_event.frame.frame_number);
     EXPECT_EQ(7U, s_event.frame.frame_score);
     EXPECT_TRUE(s_event.frame.frame_complete);
+}
+
+namespace {
+
+/* Every output the subscriber hears, until it has heard `kind` or gone quiet for kPatience. */
+std::vector<GameOutput> HearUntil(GameOutputKind kind)
+{
+    std::vector<GameOutput> heard;
+    GameOutput out;
+    while (xQueueReceive(s_subscriber.handle, &out, kPatience) == pdPASS) {
+        heard.push_back(out);
+        if (out.kind == kind) {
+            break;
+        }
+    }
+    return heard;
+}
+
+std::vector<GameOutput> s_heard;
+
+} // namespace
+
+TEST(GameShellTest, should_count_a_roll_lost_to_the_pinsetters_full_queue_and_tell_the_subscriber)
+{
+    /* The interrupt outruns the game task: 33 rolls into a queue of 32. */
+    RunClient([] {
+        const GameMessage subscribe = SubscribeRequest(1U);
+        s_sent = GameShell_Send(&subscribe, 0U);
+        GameOutput reply;
+        (void)xQueueReceive(s_subscriber.handle, &reply, kPatience);
+        FirePinsetter(33, 0U);
+        s_heard = HearUntil(GAME_OUT_ROLLS_LOST);
+    });
+    ASSERT_FALSE(s_heard.empty());
+    EXPECT_EQ(GAME_OUT_ROLLS_LOST, s_heard.back().kind);
+    EXPECT_EQ(1U, s_heard.back().lost);
 }

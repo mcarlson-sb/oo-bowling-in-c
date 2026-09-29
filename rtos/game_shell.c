@@ -18,6 +18,10 @@ typedef struct {
     QueueHandle_t pinsetter;
     StaticQueue_t pinsetter_queue;
     uint8_t pinsetter_storage[GAME_SHELL_PINSETTER_ROLLS * sizeof(Pins)];
+    uint16_t lost_to_full_queue; /* the interrupt's own: nothing else touches it */
+    QueueHandle_t lost_report;
+    StaticQueue_t lost_report_queue;
+    uint8_t lost_report_storage[sizeof(uint16_t)];
     TaskHandle_t task;
     StaticTask_t task_buffer;
     StackType_t stack[configMINIMAL_STACK_SIZE];
@@ -44,10 +48,22 @@ static bool GameShell_TakePinsetterRoll(GameShell *self, GameMessage *message)
     return true;
 }
 
-/* The pinsetter's rolls before a command waiting with them. */
+static bool GameShell_TakeLostReport(GameShell *self, GameMessage *message)
+{
+    uint16_t lost;
+    if (xQueueReceive(self->lost_report, &lost, 0U) != pdPASS) {
+        return false;
+    }
+    message->kind = GAME_MSG_ROLLS_LOST;
+    message->lost = lost;
+    return true;
+}
+
+/* The pinsetter's rolls, then its count of those it lost, before a command waiting with them. */
 static bool GameShell_TakeMessage(GameShell *self, GameMessage *message)
 {
     return GameShell_TakePinsetterRoll(self, message) ||
+           GameShell_TakeLostReport(self, message) ||
            (xQueueReceive(self->commands, message, 0U) == pdPASS);
 }
 
@@ -76,6 +92,9 @@ void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority
                                         self->commands_storage, &self->commands_queue);
     self->pinsetter = xQueueCreateStatic(GAME_SHELL_PINSETTER_ROLLS, sizeof(Pins),
                                          self->pinsetter_storage, &self->pinsetter_queue);
+    self->lost_to_full_queue = 0U;
+    self->lost_report = xQueueCreateStatic(1U, sizeof(uint16_t), self->lost_report_storage,
+                                           &self->lost_report_queue);
     /* FUNCTION POINTER EXEMPTION: FreeRTOS takes a task's entry function by address. */
     self->task = xTaskCreateStatic(&GameShell_Task, "game", configMINIMAL_STACK_SIZE, self,
                                    priority, self->stack, &self->task_buffer);
@@ -93,7 +112,10 @@ BaseType_t GameShell_Send(const GameMessage *message, TickType_t wait)
 void GameShell_PinsetterCountedFromIsr(Pins pins)
 {
     BaseType_t woken = pdFALSE;
-    (void)xQueueSendFromISR(s_shell.pinsetter, &pins, &woken);
+    if (xQueueSendFromISR(s_shell.pinsetter, &pins, &woken) != pdPASS) {
+        s_shell.lost_to_full_queue++; /* the newest roll is the one dropped */
+        (void)xQueueOverwriteFromISR(s_shell.lost_report, &s_shell.lost_to_full_queue, &woken);
+    }
     vTaskNotifyGiveFromISR(s_shell.task, &woken);
     portYIELD_FROM_ISR(woken);
 }
