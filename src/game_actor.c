@@ -239,7 +239,6 @@ void GameActor_Handle(GameActor *self, const GameMessage *message, GameOutbox *o
         GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
         break;
     case GAME_MSG_ROLL:
-    default:
         GameActor_Roll(self, message, outbox);
         break;
     }
