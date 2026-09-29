@@ -411,3 +411,28 @@ same answers there; timing still needs real hardware.
 3. **Its own workflow, or a job after `promote`.** Recommendation: its own workflow, for the badge
    reason above.
 4. **The vector-table exemption** to the no-function-pointer rule, in a startup file of its own.
+
+### `promote`: nothing can fail after the push
+
+Once `rtos-actor` has moved, the run that moved it must be green: a red run over a promoted
+commit would say the line is broken when it isn't. So the push is `promote`'s last step, and
+everything that can fail comes before it: downloading the gated library, writing the summary,
+and uploading the release. The summary and the time to green can't fail at all:
+`time_to_green.py` catches any error and prints "time to green unavailable", and the shell
+around it falls back the same way. The release upload comes before the push too, so if the push
+is then refused (a non-fast-forward), `bowling-<sha>` exists for a commit that wasn't promoted,
+and that run is red.
+
+**Runs can finish out of order.** Two pushes to the integration branch start two runs, and the
+older one can reach `promote` after the newer one has already moved `rtos-actor` past it (the
+`promote-rtos-actor` concurrency group runs one promotion at a time, but in the order they
+arrive). The older commit is then an ancestor of `rtos-actor`: there is nothing to promote, and
+a push would be refused as a non-fast-forward, turning a good run red. So `promote` first checks
+`git merge-base --is-ancestor HEAD origin/rtos-actor`, and if it holds, notes "already promoted
+by a later run" and stops, green, without pushing. (`CLAUDE.md` says to wait for each gate before
+pushing again, which should keep this from happening; the check is for when it does.)
+
+**The release artifacts expire.** `bowling-<sha>` is a workflow artifact, kept for GitHub's
+default of 90 days, the most a public repository allows. It is a convenient download for recent
+promotions, not a permanent record of releases: the record is `rtos-actor`'s history, and any
+release can be rebuilt from its SHA.
