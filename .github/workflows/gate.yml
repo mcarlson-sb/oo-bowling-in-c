@@ -40,6 +40,18 @@ jobs:
         run: cmake --build build --parallel
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      # The release build's library and headers, handed to promote: the artifact it publishes is
+      # the library this gate built and tested, not a rebuild.
+      - name: Keep the gated release library
+        if: matrix.config == 'release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: gated-release-${{ github.sha }}
+          path: |
+            build/libbowling.a
+            include/*.h
+          if-no-files-found: error
+          retention-days: 1
 
   tsan:
     name: tsan
@@ -192,6 +204,11 @@ jobs:
             echo "::error::rtos-actor moved: it is no longer an ancestor of this commit. Rebase integration/rtos-actor onto rtos-actor and push again, so the result is gated."
             exit 1
           fi
+      - name: The gated release library
+        uses: actions/download-artifact@v8
+        with:
+          name: gated-release-${{ github.sha }}
+          path: release
       - name: Summary
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -206,6 +223,14 @@ jobs:
             echo "$NEEDS" | python3 -c 'import json, sys; [print("| %s | %s |" % (k, v["result"])) for k, v in sorted(json.load(sys.stdin).items())]'
             echo
             echo "$time_to_green"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee release/gate-summary.md >> "$GITHUB_STEP_SUMMARY"
           # Also as an annotation, which the Actions API shows without signing in.
           echo "::notice title=Time to green::$time_to_green"
+      # The release: the library and headers this gate built and tested, and its summary, named by
+      # the commit now at the tip of rtos-actor.
+      - name: Upload the release
+        uses: actions/upload-artifact@v7
+        with:
+          name: bowling-${{ github.sha }}
+          path: release
+          if-no-files-found: error
