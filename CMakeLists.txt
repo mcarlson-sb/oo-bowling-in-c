@@ -165,13 +165,17 @@ if(OO_C_RTOS)
     find_package(Threads REQUIRED)
     target_link_libraries(freertos PUBLIC Threads::Threads bowling) # bowling: Fault_Stop
 
-    # The RTOS shell: everything that touches FreeRTOS, under the library's warnings. For now,
-    # only the kernel's hooks, above.
-    add_library(rtos_shell INTERFACE)
-    target_link_libraries(rtos_shell INTERFACE freertos bowling)
+    # The RTOS shell: everything that touches FreeRTOS, under the library's warnings.
+    add_library(rtos_shell STATIC
+        rtos/game_shell.c
+    )
+    target_include_directories(rtos_shell PUBLIC rtos)
+    target_compile_options(rtos_shell PRIVATE ${OO_C_WARNINGS})
+    target_link_libraries(rtos_shell PUBLIC freertos bowling)
 
     add_executable(rtos_tests
         test/rtos_skeleton_test.cpp
+        test/game_shell_test.cpp
     )
     target_link_libraries(rtos_tests PRIVATE rtos_shell GTest::gtest_main)
     target_compile_options(rtos_tests PRIVATE ${OO_TEST_WARNINGS})
