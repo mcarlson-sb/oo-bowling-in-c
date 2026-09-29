@@ -1,0 +1,204 @@
+# The gate: nothing reaches rtos-actor unless every gate passed on that exact commit. Work is
+# pushed to integration/rtos-actor; when every gate job is green, promote fast-forwards
+# rtos-actor to the same SHA. rtos-actor itself has no push trigger: what lands there was
+# already tested. A ruleset on rtos-actor requires each gate job below by name.
+#
+# Mutation testing is not a gate: it is feedback, run by hand at phase stops (tools/mutation.sh).
+name: Gate
+
+on:
+  push:
+    branches: [integration/rtos-actor]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build-${{ matrix.config }}
+    # Pinned, not ubuntu-latest: that label moves to Ubuntu 26, with a newer GCC, from
+    # 2026-10-19. Warnings are errors, so a new compiler could fail the build with no change to
+    # the code. Moving to a newer image should be a change of its own.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: debug
+            flags: ""
+          - config: release
+            flags: "-DCMAKE_BUILD_TYPE=Release"
+          - config: ubsan
+            flags: "-DOO_C_SANITIZE=ON"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ${{ matrix.flags }}
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  tsan:
+    name: tsan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # ThreadSanitizer can't map its shadow memory with the runner's default address-space
+      # randomization, and aborts before the first test.
+      - name: Allow ThreadSanitizer's memory layout
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DOO_C_TSAN=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # The library's line coverage in a release build, at least 95%.
+  coverage:
+    name: coverage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: >-
+          cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          -DCMAKE_BUILD_TYPE=Release -DOO_C_COVERAGE=ON
+      - name: Run the tests with coverage
+        run: |
+          set -o pipefail
+          cmake --build build --target coverage | tee coverage.txt
+      - name: At least 95% of the library's lines
+        run: |
+          set -o pipefail
+          python3 tools/coverage_gate.py coverage.txt --min-lines 95 | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ENG-3.1's limits: cyclomatic complexity at most 10, functions at most 50 lines, at most 4
+  # parameters.
+  lizard:
+    name: lizard
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: ENG-3.1's limits with lizard
+        run: pipx run --spec lizard==1.24.0 lizard -C 10 -L 50 -a 4 -w src include
+
+  # ENG-3.1's cognitive-complexity limit, 7, including the inline functions in the headers.
+  cognitive-complexity:
+    name: cognitive-complexity
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cognitive complexity with clang-tidy
+        run: >-
+          pipx run --spec clang-tidy==18.1.8 clang-tidy
+          -checks='-*,readability-function-cognitive-complexity'
+          -config='{CheckOptions: {readability-function-cognitive-complexity.Threshold: 7}}'
+          -header-filter='(src|include)/.*' -warnings-as-errors='*'
+          src/*.c -- -std=c11 -Iinclude -Isrc
+
+  # ENG-1.3's stack tripwires on GCC 13, the contract toolchain: CMakeLists.txt sets
+  # -Wstack-usage (320 bytes; the interrupt side's file per build type) and warnings are errors,
+  # so the library's build fails on any frame over its limit. The largest frames go to the
+  # summary.
+  stack-usage:
+    name: stack-usage-${{ matrix.config }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The case matters: CMakeLists.txt picks the interrupt side's release limit by
+          # comparing CMAKE_BUILD_TYPE with "Release".
+          - config: debug
+            build_type: Debug
+          - config: release
+            build_type: Release
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the library with the stack tripwires
+        run: |
+          gcc --version | head -1
+          cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_C_FLAGS=-fstack-usage
+          cmake --build build --target bowling
+      - name: The largest frames
+        run: |
+          echo "### Largest stack frames, ${{ matrix.build_type }}" >> "$GITHUB_STEP_SUMMARY"
+          find build -name '*.su' -exec cat {} + | sort -t"$(printf '\t')" -k2 -n | tail -5 \
+            | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+
+  # No function pointers in src/ or include/ outside the files still being strangled and what
+  # FreeRTOS itself requires: over clang's AST, so typedefs and decays can't hide one.
+  function-pointers:
+    name: function-pointers
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check for function pointers
+        run: python3 tools/check_function_pointers.py --clang clang
+
+  # Every commit since rtos-actor builds and passes its tests, not just the last one: one debug
+  # build, reused from commit to commit, so each is an incremental build.
+  every-commit:
+    name: every-commit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Build and test each commit
+        run: |
+          git fetch --no-tags origin rtos-actor
+          commits=$(git rev-list --reverse origin/rtos-actor..HEAD)
+          echo "Commits to check: $(echo "$commits" | grep -c . || true)"
+          for sha in $commits; do
+            subject=$(git log -1 --format='%h %s' "$sha")
+            echo "::group::$subject"
+            git checkout -q "$sha"
+            cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ > /dev/null
+            if ! cmake --build build --parallel; then
+              echo "::error::$subject does not build"; exit 1
+            fi
+            if ! ctest --test-dir build --output-on-failure; then
+              echo "::error::$subject fails its tests"; exit 1
+            fi
+            echo "::endgroup::"
+          done
+
+  promote:
+    name: promote
+    needs: [build, tsan, coverage, lizard, cognitive-complexity, stack-usage, function-pointers, every-commit]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/integration/rtos-actor'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: promote-rtos-actor
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # No --force: GitHub itself rejects anything that isn't a fast-forward of rtos-actor. The
+      # push is made with GITHUB_TOKEN, so it starts no run of its own: the SHA is already tested.
+      - name: Fast-forward rtos-actor to this commit
+        run: |
+          if ! git push origin HEAD:refs/heads/rtos-actor; then
+            echo "::error::rtos-actor moved: it is no longer an ancestor of this commit. Rebase integration/rtos-actor onto rtos-actor and push again, so the result is gated."
+            exit 1
+          fi
+      - name: Summary
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          {
+            echo "### Promoted \`${GITHUB_SHA}\` to rtos-actor"
+            echo
+            echo "| Gate | Result |"
+            echo "|---|---|"
+            echo "$NEEDS" | python3 -c 'import json, sys; [print("| %s | %s |" % (k, v["result"])) for k, v in sorted(json.load(sys.stdin).items())]'
+          } >> "$GITHUB_STEP_SUMMARY"
