@@ -361,6 +361,23 @@ static bool GameActor_IsPlayingAGame(const GameActor *self)
     return (self->lifecycle == GAME_IN_PLAY) && !Scorer_IsOver(&self->scorer);
 }
 
+/* The old game's complete frames, each as no longer complete: what the new game's start does to
+ * a subscriber's view. None before the first game. */
+static void GameActor_ReopenEveryFrame(const GameActor *self, FrameEvents *reopened)
+{
+    reopened->count = 0U;
+    if (self->lifecycle != GAME_IN_PLAY) {
+        return;
+    }
+    for (uint8_t i = 0U; i < SCORER_MAX_FRAMES; i++) {
+        if (Scorer_Frame(&self->scorer, i).complete) {
+            const FrameEvent event = { (FrameNumber)(i + 1U), 0U, false };
+            reopened->events[reopened->count] = event;
+            reopened->count++;
+        }
+    }
+}
+
 static void GameActor_NewGame(GameActor *self, const Message *message, GameOutbox *outbox)
 {
     if (GameActor_IsPlayingAGame(self)) {
@@ -368,12 +385,15 @@ static void GameActor_NewGame(GameActor *self, const Message *message, GameOutbo
         return;
     }
     Message *reply = GameOutbox_BeginReply(outbox, message);
+    FrameEvents reopened;
+    GameActor_ReopenEveryFrame(self, &reopened);
     const GameStatus status = Scorer_Start(&self->scorer, &message->payload.new_game.rules);
     if (status != GAME_OK) {
         GameReply_Finish(reply, status, 0U);
         return;
     }
     self->lifecycle = GAME_IN_PLAY;
+    GameActor_Publish(self, &reopened, outbox);
     GameActor_LetHeldRollsThrough(self, outbox);
     GameReply_Finish(reply, GAME_OK, Scorer_Score(&self->scorer));
 }

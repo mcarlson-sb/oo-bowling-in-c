@@ -749,3 +749,18 @@ TEST(GameActorLifecycleTest, should_hold_the_pinsetters_rolls_before_any_game_an
     EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
     EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
 }
+
+TEST(GameActorLifecycleTest, should_tell_subscribers_every_frame_of_the_old_game_reopened)
+{
+    /* A scoreboard kept up by the events would otherwise show the last game's frames. */
+    GameActor actor = MakeActor(rules::kTenPin);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
+    BowlAGutterGame(&actor);
+    Send(&actor, NewGameRequest(21U, rules::kTenPin), &outbox);
+    std::vector<Sent> reopened;
+    for (int frame = 1; frame <= 10; ++frame) {
+        reopened.push_back({MSG_FRAME_CHANGED, kSubscriber, frame, 0, false});
+    }
+    EXPECT_EQ(reopened, FrameEventsIn(outbox));
+}
