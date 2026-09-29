@@ -176,6 +176,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: read # earlier runs, for the time to green
     concurrency:
       group: promote-rtos-actor
       cancel-in-progress: false
@@ -194,11 +195,17 @@ jobs:
       - name: Summary
         env:
           NEEDS: ${{ toJSON(needs) }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
+          time_to_green=$(python3 tools/time_to_green.py "$GITHUB_REPOSITORY" gate.yml "$GITHUB_REF_NAME" "$GITHUB_RUN_ID")
           {
             echo "### Promoted \`${GITHUB_SHA}\` to rtos-actor"
             echo
             echo "| Gate | Result |"
             echo "|---|---|"
             echo "$NEEDS" | python3 -c 'import json, sys; [print("| %s | %s |" % (k, v["result"])) for k, v in sorted(json.load(sys.stdin).items())]'
+            echo
+            echo "$time_to_green"
           } >> "$GITHUB_STEP_SUMMARY"
+          # Also as an annotation, which the Actions API shows without signing in.
+          echo "::notice title=Time to green::$time_to_green"
