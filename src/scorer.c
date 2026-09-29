@@ -237,10 +237,17 @@ static bool ScorerRules_HasFramesItHolds(const ScorerRules *rules)
     return (rules->frames != 0U) && (rules->frames <= SCORER_MAX_FRAMES);
 }
 
-/* Rules the scorer can hold and play. Only once there are frames: the longest game counts them. */
+static bool ScorerRules_HasBallsItHolds(const ScorerRules *rules)
+{
+    return (rules->balls_per_frame != 0U) &&
+           (rules->balls_per_frame <= SCORER_MAX_BALLS_PER_FRAME);
+}
+
+/* Rules the scorer can hold and play. Only once their frames and balls fit: the longest game
+ * counts both, and reads a bonus for each ball of the frame. */
 static bool ScorerRules_AreValid(const ScorerRules *rules)
 {
-    return ScorerRules_HasFramesItHolds(rules) &&
+    return ScorerRules_HasFramesItHolds(rules) && ScorerRules_HasBallsItHolds(rules) &&
            (ScorerRules_LongestGame(rules) <= SCORER_MAX_BALLS);
 }
 

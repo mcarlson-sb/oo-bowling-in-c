@@ -924,3 +924,9 @@ TEST(ScorerRulesTest, should_refuse_no_frames_or_more_frames_than_it_holds)
     ExpectRefused({0U, 2U, 10U, {2U, 1U, 0U}, 0U});
     ExpectRefused({11U, 2U, 10U, {2U, 1U, 0U}, 0U}); /* 23 balls, but 11 frames */
 }
+
+TEST(ScorerRulesTest, should_refuse_no_balls_a_frame_or_more_than_its_bonus_table_has)
+{
+    ExpectRefused({5U, 0U, 10U, {0U, 0U, 0U}, 0U});
+    ExpectRefused({5U, 4U, 10U, {0U, 0U, 0U}, 0U}); /* a bonus for the fourth ball: none */
+}
