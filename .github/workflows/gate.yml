@@ -121,7 +121,7 @@ jobs:
           -Ibuild/_deps/freertos_kernel-src/portable/ThirdParty/GCC/Posix
 
   # ENG-1.3's stack tripwires on GCC 13, the contract toolchain: CMakeLists.txt sets
-  # -Wstack-usage (320 bytes; the interrupt side's file per build type) and warnings are errors,
+  # -Wstack-usage (320 bytes; 96 for the interrupt side's file) and warnings are errors,
   # so the library's and the RTOS shell's builds fail on any frame over its limit. The largest
   # frames go to the summary.
   stack-usage:
@@ -131,8 +131,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The case matters: CMakeLists.txt picks the interrupt side's release limit by
-          # comparing CMAKE_BUILD_TYPE with "Release".
           - config: debug
             build_type: Debug
           - config: release

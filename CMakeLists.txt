@@ -19,8 +19,8 @@ if(OO_C_SANITIZE)
     add_link_options(-fsanitize=undefined -fsanitize-trap=undefined)
 endif()
 
-# Data races between the pinsetter's interrupt side and the main loop. ThreadSanitizer needs
-# its runtime library, which MinGW doesn't ship, so this build runs in CI on Linux.
+# Data races between the RTOS shell's tasks and its interrupt side. ThreadSanitizer needs its
+# runtime library, which MinGW doesn't ship, so this build runs in CI on Linux.
 option(OO_C_TSAN "Build with -fsanitize=thread" OFF)
 if(OO_C_TSAN)
     add_compile_options(-fsanitize=thread -O1 -g)
@@ -33,9 +33,6 @@ add_library(bowling STATIC
     src/frame_listeners.c
     src/frame_reporter.c
     src/game.c
-    src/pinsetter.c
-    src/pinsetter_hooks.c
-    src/pinsetter_isr.c
     src/roll_edit.c
     src/roll_log.c
     src/scorecard.c
@@ -52,26 +49,12 @@ target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
 # GCC 16, which builds here too:
 #   - everything but the interrupt side: 320 bytes, over Game_CorrectRoll's and
 #     Game_EditRolls's 224.
-#   - the interrupt side's own file, pinsetter_isr.c: a limit per build type, because GCC's
-#     limit is per file and its frames differ so much between builds. Pinsetter_Post is 8 bytes
-#     in release (both compilers); 80 (GCC 13) or 96 (GCC 16) under ThreadSanitizer; at -O0,
-#     where Pinsetter_Enqueue isn't inlined, Enqueue is 96 or 128. Coverage builds are -O0.
+#   - the interrupt side's own file, rtos/game_shell_isr.c: its own limit, with the RTOS shell.
 set(OO_C_STACK_LIMIT 320)
-if(OO_C_TSAN)
-    set(OO_C_INTERRUPT_STACK_LIMIT 128)
-elseif(OO_C_COVERAGE)
-    set(OO_C_INTERRUPT_STACK_LIMIT 160)
-elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(OO_C_INTERRUPT_STACK_LIMIT 32)
-else()
-    set(OO_C_INTERRUPT_STACK_LIMIT 160)
-endif()
 # GCC's option: clang has no -Wstack-usage. Every build that gates on it uses GCC; clang only
 # builds the mutation-testing configuration below.
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     target_compile_options(bowling PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
-    set_source_files_properties(src/pinsetter_isr.c PROPERTIES
-        COMPILE_OPTIONS -Wstack-usage=${OO_C_INTERRUPT_STACK_LIMIT})
 endif()
 
 # Mutation testing with Mull (tools/mull.yml, tools/mutation.sh): clang compiles the library
@@ -107,18 +90,14 @@ add_executable(bowling_tests
     test/nine_pin_no_tap_test.cpp
     test/scoreboard_test.cpp
     test/correction_test.cpp
-    test/pinsetter_test.cpp
-    test/remote_scoreboard_test.cpp
     test/reference_scorer_test.cpp
-    test/pinsetter_overlap_test.cpp
     test/scorer_test.cpp
     test/fault_test.cpp
     test/game_actor_test.cpp
 )
-find_package(Threads REQUIRED) # the pinsetter test runs a second thread
-target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main Threads::Threads)
-# roll_log_test.cpp, slot_pool_test.cpp, frame_listeners_test.cpp and pinsetter_overlap_test.cpp
-# test private types or hooks directly, so they need the private headers.
+target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
+# roll_log_test.cpp, slot_pool_test.cpp and frame_listeners_test.cpp test private types
+# directly, so they need the private headers.
 target_include_directories(bowling_tests PRIVATE src)
 target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 
