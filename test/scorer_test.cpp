@@ -498,3 +498,13 @@ TEST(CandlepinTest, A12_should_6_then_5_is_rejected_too_many_pins_and_changes_no
     EXPECT_EQ(4U, Scorer_PinsStanding(&scorer));
     EXPECT_EQ(1U, Scorer_FrameCount(&scorer));
 }
+
+TEST(CandlepinTest, A13_should_a_strike_in_the_tenth_then_6_then_5_is_rejected_too_many_pins)
+{
+    Scorer scorer = MakeCandlepin();
+    RollMany(&scorer, 27, 0U);
+    RollAll(&scorer, {10U, 6U});
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Roll(&scorer, 5U, &events)); /* 4 standing */
+    EXPECT_FALSE(Scorer_IsOver(&scorer));
+}
