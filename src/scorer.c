@@ -160,17 +160,21 @@ static Pins Scorer_Count(const Scorer *self, Pins standing, Pins pins)
     }
 }
 
-static void Lane_Walk(Lane *lane, const Scorer *self)
+/* The lane as it stands after every ball so far: the frames, the pins, and what it takes next.
+ * Worked out from the balls each time, which is what keeps a Scorer a plain value. */
+static Lane Scorer_Lane(const Scorer *self)
 {
     const VariantRules *rules = Scorer_Rules(self);
-    lane->frame_count = 0U;
-    lane->standing = rules->pins_per_rack;
-    lane->phase = LANE_TAKING_FRAMES;
-    lane->fill_balls_left = 0U;
+    Lane lane;
+    lane.frame_count = 0U;
+    lane.standing = rules->pins_per_rack;
+    lane.phase = LANE_TAKING_FRAMES;
+    lane.fill_balls_left = 0U;
     for (uint8_t i = 0U; i < self->ball_count; i++) {
-        lane->counted[i] = Scorer_Count(self, lane->standing, self->balls[i]);
-        Lane_Throw(lane, rules, i, lane->counted[i]);
+        lane.counted[i] = Scorer_Count(self, lane.standing, self->balls[i]);
+        Lane_Throw(&lane, rules, i, lane.counted[i]);
     }
+    return lane;
 }
 
 /* A frame's balls, then its bonus balls: one rule for open frames, spares and strikes. */
@@ -222,8 +226,7 @@ static uint8_t Scorer_CompleteFrames(const Scorer *self, const Lane *lane)
 
 static uint8_t Scorer_CompleteFrameCount(const Scorer *self)
 {
-    Lane lane;
-    Lane_Walk(&lane, self);
+    const Lane lane = Scorer_Lane(self);
     return Scorer_CompleteFrames(self, &lane);
 }
 
@@ -236,33 +239,52 @@ static void FrameEvents_Add(FrameEvents *events, uint8_t index, Score score, boo
     events->count++;
 }
 
-GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events)
+/* Whether the lane takes this ball: not once the game is over, nor more pins than stand. */
+static GameStatus Lane_CheckBall(const Lane *lane, Pins pins)
 {
-    events->count = 0U;
-    Lane lane;
-    Lane_Walk(&lane, self);
-    if (lane.phase == LANE_OVER) {
+    if (lane->phase == LANE_OVER) {
         return GAME_ERR_GAME_OVER;
     }
-    if (pins > lane.standing) {
+    if (pins > lane->standing) {
         return GAME_ERR_INVALID_PINS;
     }
-    const uint8_t were_complete = Scorer_CompleteFrames(self, &lane);
+    return GAME_OK;
+}
+
+static void Scorer_AddBall(Scorer *self, Pins pins)
+{
     self->balls[self->ball_count] = pins;
     self->ball_count++;
+}
 
-    Lane_Walk(&lane, self);
+/* The frames that are complete now but weren't before, oldest first. */
+static void Scorer_ReportNewlyComplete(const Scorer *self, uint8_t were_complete,
+                                       FrameEvents *events)
+{
+    const Lane lane = Scorer_Lane(self);
     const uint8_t now_complete = Scorer_CompleteFrames(self, &lane);
     for (uint8_t i = were_complete; i < now_complete; i++) {
         FrameEvents_Add(events, i, Lane_FrameScore(&lane, &lane.frames[i]), true);
     }
+}
+
+GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events)
+{
+    events->count = 0U;
+    const Lane before = Scorer_Lane(self);
+    const GameStatus checked = Lane_CheckBall(&before, pins);
+    if (checked != GAME_OK) {
+        return checked;
+    }
+    const uint8_t were_complete = Scorer_CompleteFrames(self, &before);
+    Scorer_AddBall(self, pins);
+    Scorer_ReportNewlyComplete(self, were_complete, events);
     return GAME_OK;
 }
 
 Score Scorer_Score(const Scorer *self)
 {
-    Lane lane;
-    Lane_Walk(&lane, self);
+    const Lane lane = Scorer_Lane(self);
     Score score = 0U;
     for (uint8_t i = 0U; i < lane.frame_count; i++) {
         if (Scorer_IsFrameComplete(self, &lane.frames[i])) {
@@ -346,8 +368,7 @@ static GameStatus Scorer_ReplayEdited(const Scorer *self, const RollEdit *edit, 
  * but no longer is with complete = false. */
 static void Scorer_ReportAll(const Scorer *self, uint8_t were_complete, FrameEvents *events)
 {
-    Lane lane;
-    Lane_Walk(&lane, self);
+    const Lane lane = Scorer_Lane(self);
     const uint8_t now_complete = Scorer_CompleteFrames(self, &lane);
     const uint8_t frames = (were_complete > now_complete) ? were_complete : now_complete;
     for (uint8_t i = 0U; i < frames; i++) {
@@ -381,15 +402,13 @@ GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events)
 
 uint8_t Scorer_FrameCount(const Scorer *self)
 {
-    Lane lane;
-    Lane_Walk(&lane, self);
+    const Lane lane = Scorer_Lane(self);
     return lane.frame_count;
 }
 
 ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index)
 {
-    Lane lane;
-    Lane_Walk(&lane, self);
+    const Lane lane = Scorer_Lane(self);
     ScorerFrame result = { 0U, false };
     if (index >= lane.frame_count) {
         return result; /* not started: only the frames the walk wrote are read */
@@ -404,14 +423,12 @@ ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index)
 
 Pins Scorer_PinsStanding(const Scorer *self)
 {
-    Lane lane;
-    Lane_Walk(&lane, self);
+    const Lane lane = Scorer_Lane(self);
     return lane.standing;
 }
 
 bool Scorer_IsOver(const Scorer *self)
 {
-    Lane lane;
-    Lane_Walk(&lane, self);
+    const Lane lane = Scorer_Lane(self);
     return lane.phase == LANE_OVER;
 }
