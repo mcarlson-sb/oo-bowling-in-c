@@ -42,11 +42,16 @@ typedef struct {
 
 static GameShell s_shell;
 
+static bool GameShell_SendTo(const GameShell *self, const GameOutput *out)
+{
+    const QueueHandle_t queue = self->routes[out->to];
+    return (queue != NULL) && (xQueueSend(queue, out, 0U) == pdPASS);
+}
+
 static void GameShell_Deliver(GameShell *self)
 {
     for (uint8_t i = 0U; i < self->outbox.count; i++) {
-        const GameOutput *out = &self->outbox.items[i];
-        if (xQueueSend(self->routes[out->to], out, 0U) != pdPASS) {
+        if (!GameShell_SendTo(self, &self->outbox.items[i])) {
             (void)atomic_fetch_add_explicit(&self->outputs_dropped, 1U, memory_order_relaxed);
         }
     }
