@@ -262,3 +262,32 @@ asked, which is what makes it a copyable value. Through the adapter, kay-oo's pr
 thousands of edits each replayed ball by ball with the reporter asking about every frame, made
 the test binary about 10 times slower under Mull's instrumentation (0.9 s to 9.7 s; 0.54 s in a
 plain debug build). A worst-case execution time question for ENG-1.3, for the phase report.
+
+## Gated CI: rtos-actor is always releasable
+
+Work is pushed only to `integration/rtos-actor`. `.github/workflows/gate.yml` runs every gate
+there, as a job with a stable name, and its `promote` job fast-forwards `rtos-actor` to the
+same SHA only when all of them pass, with a plain `git push` (never forced), so anything that
+isn't a fast-forward is refused. `rtos-actor` has no push trigger of its own: what lands there
+was already tested. A ruleset on `rtos-actor` requires the gate jobs, and refuses force pushes
+and deletion.
+
+The gate jobs: `build-debug`, `build-release`, `build-ubsan`, `tsan`, `coverage` (at least 95%
+of the library's lines, release build), `lizard`, `cognitive-complexity`, `stack-usage-debug`,
+`stack-usage-release` (GCC 13), `function-pointers`, `every-commit` (each commit since
+`rtos-actor` builds and passes its tests). A whole run takes about 45 seconds of wall time:
+the jobs run in parallel, the slowest (`tsan`, `coverage`) at about 40 seconds.
+
+### Proofs: every gate has failed, and the promotion has been refused
+
+Scratch commits were pushed to the integration branch only, and reset away after their run;
+none reached `rtos-actor`, which stayed at `8e19adf` through proofs 1 and 2 and the gate
+proofs.
+
+| Proof | Run | Red | `promote` | `rtos-actor` |
+|---|---|---|---|---|
+| 5: a normal green push | [36505164995](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505164995) | none | fast-forwarded | `8e19adf`, the same SHA as integration |
+| 1: a failing test | [36505285384](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505285384) | `build-*`, `tsan`, `coverage`, `every-commit` | skipped | did not move |
+| Static gates: a function pointer, and a long, tangled, uncalled function | [36505443556](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505443556) | `function-pointers`, `lizard`, `cognitive-complexity`, `coverage` (at its 95% check), each at its own step; every build and test green | skipped | did not move |
+| Stack: a 400-byte frame | [36505554411](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505554411) | `stack-usage-debug`, `stack-usage-release`, and every other GCC build, which carries the same tripwire | skipped | did not move |
+| 2: a green tip on a red commit | [36505633406](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505633406) | `every-commit` only | skipped | did not move |
