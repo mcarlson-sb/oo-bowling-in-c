@@ -7,8 +7,13 @@
 #include "game_shell_ports.h"
 #include "posix_stack.h"
 
-#define GAME_SHELL_COMMANDS 4U
+/* How many messages a hosted actor's mailbox holds. */
+#define GAME_SHELL_MAILBOX 4U
 #define GAME_SHELL_PINSETTER_ROLLS 32U
+
+/* The actors the shell can host, each in a task of its own, and the instances of each kind. */
+#define GAME_SHELL_HOSTED 1U
+#define GAME_SHELL_GAMES 1U
 
 /* The POSIX port sizes the task's pthread stack from this, and a pthread stack is at least
  * PTHREAD_STACK_MIN, so the port's minimum. */
@@ -17,25 +22,37 @@
 _Static_assert(GAME_SHELL_PINSETTER_ROLLS >= SCORER_MAX_BALLS,
                "the pinsetter's queue holds a whole game of rolls");
 _Static_assert(GAME_SHELL_TASK_STACK_WORDS * sizeof(StackType_t) >= GAME_SHELL_TASK_STACK_BUDGET,
-               "the game task's stack holds its budget");
+               "a hosted actor's stack holds its budget");
 
-/* A row of the routing table: the kind at an id, the queue its messages go to, and the task to
- * wake, when the shell runs it. */
+/* A row of the routing table: the kind at an id, which of that kind's instances, the mailbox its
+ * messages go to, and the task to wake, when the shell hosts it. */
 typedef struct {
     ActorKind kind;
+    uint8_t instance;
     QueueHandle_t mailbox;
     TaskHandle_t task;
 } GameShellRoute;
 
+/* One hosted actor's task: its mailbox, the message it is handling and what that sends. */
 typedef struct {
-    GameActor actor;
-    GameOutbox outbox;
+    ActorId id;
+    QueueHandle_t mailbox;
+    StaticQueue_t mailbox_queue;
+    uint8_t mailbox_storage[GAME_SHELL_MAILBOX * sizeof(Message)];
     Message message;
+    GameOutbox outbox;
+    PosixStack stack_paint;
+    TaskHandle_t task;
+    StaticTask_t task_buffer;
+    StackType_t stack[GAME_SHELL_TASK_STACK_WORDS];
+} GameShellHosted;
+
+typedef struct {
     GameShellRoute routes[GAME_SHELL_ACTORS];
-    atomic_uint_least16_t outputs_dropped; /* written by the game task, read by any */
-    QueueHandle_t commands;
-    StaticQueue_t commands_queue;
-    uint8_t commands_storage[GAME_SHELL_COMMANDS * sizeof(Message)];
+    GameShellHosted hosted[GAME_SHELL_HOSTED];
+    uint8_t hosted_count;
+    GameActor games[GAME_SHELL_GAMES];
+    atomic_uint_least16_t outputs_dropped; /* written by the hosted tasks, read by any */
     QueueHandle_t pinsetter;
     StaticQueue_t pinsetter_queue;
     uint8_t pinsetter_storage[GAME_SHELL_PINSETTER_ROLLS * sizeof(Pins)];
@@ -43,14 +60,11 @@ typedef struct {
     StaticQueue_t lost_report_queue;
     uint8_t lost_report_storage[sizeof(uint16_t)];
     GameShellPorts ports;
-    TaskHandle_t task;
-    StaticTask_t task_buffer;
-    StackType_t stack[GAME_SHELL_TASK_STACK_WORDS];
 } GameShell;
 
 static GameShell s_shell;
 
-static const GameShellRoute s_no_route = { ACTOR_KIND_NONE, NULL, NULL };
+static const GameShellRoute s_no_route = { ACTOR_KIND_NONE, 0U, NULL, NULL };
 
 static const GameShellRoute *GameShell_RouteTo(const GameShell *self, ActorId id)
 {
@@ -75,28 +89,31 @@ static bool GameShell_Post(const GameShell *self, const Message *message, TickTy
     return true;
 }
 
-static void GameShell_Deliver(GameShell *self)
+static void GameShell_Deliver(GameShell *self, const GameOutbox *outbox)
 {
-    for (uint8_t i = 0U; i < self->outbox.count; i++) {
-        if (!GameShell_Post(self, &self->outbox.items[i], 0U)) {
+    for (uint8_t i = 0U; i < outbox->count; i++) {
+        if (!GameShell_Post(self, &outbox->items[i], 0U)) {
             GameShell_CountDropped(self);
         }
     }
 }
 
-/* The one late-binding point: the kind at the message's "to" decides who receives it. */
-static void GameShell_Dispatch(GameShell *self, const Message *message)
+/* The one late-binding point: the kind bound at the message's "to" decides what it means, and
+ * which instance's receive function hears it. */
+static void GameShell_Dispatch(GameShell *self, const Message *message, GameOutbox *outbox)
 {
-    switch (GameShell_RouteTo(self, message->envelope.to)->kind) {
+    const GameShellRoute *route = GameShell_RouteTo(self, message->envelope.to);
+    outbox->count = 0U;
+    switch (route->kind) {
     case ACTOR_KIND_GAME:
-        GameActor_Handle(&self->actor, message, &self->outbox);
-        GameShell_Deliver(self);
+        GameActor_Handle(&self->games[route->instance], message, outbox);
         break;
     case ACTOR_KIND_EXTERNAL:
     case ACTOR_KIND_NONE:
         GameShell_CountDropped(self);
         break;
     }
+    GameShell_Deliver(self, outbox);
 }
 
 /* From the pinsetter, which has no id: it hears no reply. */
@@ -130,54 +147,64 @@ static bool GameShell_TakeLostReport(GameShell *self, Message *message)
     return true;
 }
 
-/* The pinsetter's rolls, then its count of those it lost, before a command waiting with them. */
-static bool GameShell_TakeMessage(GameShell *self, Message *message)
+/* For the game, the pinsetter's rolls, then its count of those it lost, before a message waiting
+ * with them; for everyone, its own mailbox. */
+static bool GameShell_TakeMessage(GameShell *self, GameShellHosted *hosted)
 {
-    return GameShell_TakePinsetterRoll(self, message) ||
-           GameShell_TakeLostReport(self, message) ||
-           (xQueueReceive(self->commands, message, 0U) == pdPASS);
-}
-
-static void GameShell_HandleEverythingWaiting(GameShell *self)
-{
-    while (GameShell_TakeMessage(self, &self->message)) {
-        GameShell_Dispatch(self, &self->message);
-    }
+    const bool is_the_game = (hosted->id == GAME_SHELL_GAME_ID);
+    return (is_the_game && (GameShell_TakePinsetterRoll(self, &hosted->message) ||
+                            GameShell_TakeLostReport(self, &hosted->message))) ||
+           (xQueueReceive(hosted->mailbox, &hosted->message, 0U) == pdPASS);
 }
 
 static void GameShell_Task(void *parameter)
 {
-    GameShell *self = (GameShell *)parameter;
-    PosixStack_Paint();
+    GameShellHosted *hosted = (GameShellHosted *)parameter;
+    PosixStack_Paint(&hosted->stack_paint);
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        GameShell_HandleEverythingWaiting(self);
+        while (GameShell_TakeMessage(&s_shell, hosted)) {
+            GameShell_Dispatch(&s_shell, &hosted->message, &hosted->outbox);
+        }
     }
+}
+
+/* An actor of `kind` at `id`, in a task of its own. */
+static void GameShell_Host(ActorId id, ActorKind kind, uint8_t instance, UBaseType_t priority)
+{
+    GameShell *self = &s_shell;
+    configASSERT(self->hosted_count < GAME_SHELL_HOSTED);
+    GameShellHosted *hosted = &self->hosted[self->hosted_count];
+    self->hosted_count++;
+    hosted->id = id;
+    hosted->mailbox = xQueueCreateStatic(GAME_SHELL_MAILBOX, sizeof(Message),
+                                         hosted->mailbox_storage, &hosted->mailbox_queue);
+    /* FUNCTION POINTER EXEMPTION: FreeRTOS takes a task's entry function by address. */
+    hosted->task = xTaskCreateStatic(&GameShell_Task, "actor", GAME_SHELL_TASK_STACK_WORDS, hosted,
+                                     priority, hosted->stack, &hosted->task_buffer);
+    self->routes[id].kind = kind;
+    self->routes[id].instance = instance;
+    self->routes[id].mailbox = hosted->mailbox;
+    self->routes[id].task = hosted->task;
 }
 
 void GameShell_Start(UBaseType_t priority)
 {
     GameShell *self = &s_shell;
-    GameActor_Init(&self->actor, GAME_SHELL_GAME_ID);
     for (uint8_t id = 0U; id < GAME_SHELL_ACTORS; id++) {
         self->routes[id] = s_no_route;
     }
+    self->hosted_count = 0U;
     atomic_init(&self->outputs_dropped, 0U);
-    self->commands = xQueueCreateStatic(GAME_SHELL_COMMANDS, sizeof(Message),
-                                        self->commands_storage, &self->commands_queue);
     self->pinsetter = xQueueCreateStatic(GAME_SHELL_PINSETTER_ROLLS, sizeof(Pins),
                                          self->pinsetter_storage, &self->pinsetter_queue);
     self->lost_report = xQueueCreateStatic(1U, sizeof(uint16_t), self->lost_report_storage,
                                            &self->lost_report_queue);
-    /* FUNCTION POINTER EXEMPTION: FreeRTOS takes a task's entry function by address. */
-    self->task = xTaskCreateStatic(&GameShell_Task, "game", GAME_SHELL_TASK_STACK_WORDS, self,
-                                   priority, self->stack, &self->task_buffer);
-    self->routes[GAME_SHELL_GAME_ID].kind = ACTOR_KIND_GAME;
-    self->routes[GAME_SHELL_GAME_ID].mailbox = self->commands;
-    self->routes[GAME_SHELL_GAME_ID].task = self->task;
+    GameActor_Init(&self->games[0], GAME_SHELL_GAME_ID);
+    GameShell_Host(GAME_SHELL_GAME_ID, ACTOR_KIND_GAME, 0U, priority);
     self->ports.pinsetter = self->pinsetter;
     self->ports.lost_report = self->lost_report;
-    self->ports.game_task = self->task;
+    self->ports.game_task = self->routes[GAME_SHELL_GAME_ID].task;
     GameShell_ResetIsr();
 }
 
@@ -185,6 +212,7 @@ void GameShell_Bind(ActorId id, QueueHandle_t queue)
 {
     configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
     s_shell.routes[id].kind = ACTOR_KIND_EXTERNAL;
+    s_shell.routes[id].instance = 0U;
     s_shell.routes[id].mailbox = queue;
     s_shell.routes[id].task = NULL;
 }
@@ -201,7 +229,7 @@ uint16_t GameShell_OutputsDropped(void)
 
 size_t GameShell_TaskStackUsed(void)
 {
-    return PosixStack_DeepestUse();
+    return PosixStack_DeepestUse(&s_shell.hosted[0].stack_paint);
 }
 
 BaseType_t GameShell_Send(const Message *message, TickType_t wait)

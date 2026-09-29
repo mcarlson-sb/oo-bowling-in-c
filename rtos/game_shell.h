@@ -1,9 +1,10 @@
 #ifndef GAME_SHELL_H
 #define GAME_SHELL_H
 
-/* The RTOS shell: the one game actor, in a task of its own, fed by queues. Actors address each
- * other by id; the shell's routing table binds each id to the FreeRTOS queue of Message its
- * actor reads, so a reply or an event goes to whoever is bound at its "to" when it is sent. */
+/* The RTOS shell, an actor host. Actors address each other by id; the shell's routing table
+ * binds each id to a kind and an instance, hosted in a task of its own with a mailbox, or to the
+ * queue of an external actor that reads its own. A message goes to whoever is bound at its "to"
+ * when it is sent, and the kind bound there decides what it means. */
 
 #include <stddef.h>
 
@@ -30,7 +31,7 @@ extern "C" {
 #define GAME_SHELL_GAME_ID 1U
 
 /* What sits at an id, which decides what a message sent there means. An external actor reads
- * its own queue, outside the shell; the shell's own kinds are dispatched by its tasks. */
+ * its own queue, outside the shell; the kinds the shell hosts are dispatched by their tasks. */
 typedef enum {
     ACTOR_KIND_NONE,
     ACTOR_KIND_EXTERNAL,

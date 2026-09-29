@@ -10,10 +10,7 @@
 /* Left unpainted just below the painter, for memset's own frame. */
 #define POSIX_STACK_GUARD 512U
 
-static uintptr_t s_lowest;
-static uintptr_t s_painted_from;
-
-void PosixStack_Paint(void)
+void PosixStack_Paint(PosixStack *self)
 {
     pthread_attr_t attributes;
     void *lowest = NULL;
@@ -22,17 +19,17 @@ void PosixStack_Paint(void)
     (void)pthread_getattr_np(pthread_self(), &attributes);
     (void)pthread_attr_getstack(&attributes, &lowest, &size);
     (void)pthread_attr_destroy(&attributes);
-    s_lowest = (uintptr_t)lowest;
-    s_painted_from = (uintptr_t)&here;
-    memset(lowest, POSIX_STACK_PAINT, (s_painted_from - POSIX_STACK_GUARD) - s_lowest);
+    self->lowest = (uintptr_t)lowest;
+    self->painted_from = (uintptr_t)&here;
+    memset(lowest, POSIX_STACK_PAINT, (self->painted_from - POSIX_STACK_GUARD) - self->lowest);
 }
 
 /* Reads another thread's stack while it is blocked: ThreadSanitizer can't see what orders it. */
-__attribute__((no_sanitize_thread)) size_t PosixStack_DeepestUse(void)
+__attribute__((no_sanitize_thread)) size_t PosixStack_DeepestUse(const PosixStack *self)
 {
-    uintptr_t touched = s_lowest;
-    while ((touched < s_painted_from) && (*(const uint8_t *)touched == POSIX_STACK_PAINT)) {
+    uintptr_t touched = self->lowest;
+    while ((touched < self->painted_from) && (*(const uint8_t *)touched == POSIX_STACK_PAINT)) {
         touched++;
     }
-    return (size_t)(s_painted_from - touched);
+    return (size_t)(self->painted_from - touched);
 }
