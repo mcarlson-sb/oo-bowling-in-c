@@ -2,8 +2,9 @@
 """Fails if the library's line coverage is under a minimum.
 
 Reads the output of the CMake `coverage` target (gcov's summary, one "File" and one "Lines
-executed" line per source), totals every file under src/ and include/, and compares the whole
-library's line coverage with the minimum. Prints each file and the total either way.
+executed" line per source), totals every file under src/, include/ and rtos/ (the RTOS
+shell), and compares the whole library's line coverage with the minimum. Fetched code, under
+_deps/, is never counted, though FreeRTOS's own include/ is in it. Prints each file and the total either way.
 
 Usage: coverage_gate.py <coverage-target-output> --min-lines <percent>
 Exit status: 0 at or over the minimum, 1 under it, 2 if there was nothing to read.
@@ -17,9 +18,11 @@ LINES = re.compile(r"^Lines executed:([0-9.]+)% of ([0-9]+)$")
 
 
 def library_file(path):
-    """src/... or include/..., or None for anything else gcov reports on."""
+    """src/..., include/... or rtos/..., or None for anything else gcov reports on."""
     normalized = path.replace("\\", "/")
-    for part in ("/src/", "/include/"):
+    if "/_deps/" in normalized:
+        return None
+    for part in ("/src/", "/include/", "/rtos/"):
         if part in normalized:
             return part.strip("/") + "/" + normalized.split(part, 1)[1]
     return None

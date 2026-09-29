@@ -218,7 +218,14 @@ if(OO_C_COVERAGE)
     set(COVERAGE_TEST_TARGETS bowling_tests)
     if(TARGET rtos_tests)
         list(APPEND COVERAGE_TEST_TARGETS rtos_tests)
-        target_link_options(rtos_tests PRIVATE --coverage) # it links the instrumented library
+        # The shell is measured too; rtos_tests links it and the instrumented library.
+        target_compile_options(rtos_shell PRIVATE --coverage -O0)
+        target_link_options(rtos_tests PRIVATE --coverage)
+        get_target_property(SHELL_SOURCES rtos_shell SOURCES)
+        foreach(source IN LISTS SHELL_SOURCES)
+            list(APPEND COVERAGE_DATA
+                ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/rtos_shell.dir/${source}.gcda)
+        endforeach()
     endif()
     add_custom_target(coverage
         COMMAND ${CMAKE_COMMAND} -E rm -f ${COVERAGE_DATA}

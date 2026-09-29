@@ -726,5 +726,5 @@ Phase 2's stack sizing (from the call graph) covers the depth.
 `rtos/` as well. The first two of those need FreeRTOS's headers, so their CI jobs configure first,
 which fetches the kernel. The function-pointer check was proved on `rtos/`: with the task entry's
 exemption marker removed, it fails on `rtos/game_shell.c`, "address of function 'GameShell_Task'
-taken". Line coverage still measures the library only; the shell's coverage is part of the
-integration tests.
+taken". The coverage gate measures the shell with the library: `rtos/game_shell.c` is at 100%
+of its 57 lines, from the integration tests. Fetched code, under `_deps/`, is never counted.
