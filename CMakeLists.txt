@@ -168,11 +168,16 @@ if(OO_C_RTOS)
     # The RTOS shell: everything that touches FreeRTOS, under the library's warnings.
     add_library(rtos_shell STATIC
         rtos/game_shell.c
+        rtos/game_shell_isr.c
     )
     target_include_directories(rtos_shell PUBLIC rtos)
     target_compile_options(rtos_shell PRIVATE ${OO_C_WARNINGS})
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
         target_compile_options(rtos_shell PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
+        # The shell's interrupt side: GameShell_PinsetterCountedFromIsr is 64 bytes in every
+        # gated build on GCC 13 (debug, release, UBSan, TSan, coverage), so one limit over it.
+        set_source_files_properties(rtos/game_shell_isr.c PROPERTIES
+            COMPILE_OPTIONS -Wstack-usage=96)
     endif()
     target_link_libraries(rtos_shell PUBLIC freertos bowling)
 

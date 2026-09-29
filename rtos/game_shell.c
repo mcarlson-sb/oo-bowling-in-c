@@ -4,6 +4,8 @@
 
 #include "task.h"
 
+#include "game_shell_ports.h"
+
 #define GAME_SHELL_COMMANDS 4U
 #define GAME_SHELL_PINSETTER_ROLLS 32U
 
@@ -21,10 +23,10 @@ typedef struct {
     QueueHandle_t pinsetter;
     StaticQueue_t pinsetter_queue;
     uint8_t pinsetter_storage[GAME_SHELL_PINSETTER_ROLLS * sizeof(Pins)];
-    uint16_t lost_to_full_queue; /* the interrupt's own: nothing else touches it */
     QueueHandle_t lost_report;
     StaticQueue_t lost_report_queue;
     uint8_t lost_report_storage[sizeof(uint16_t)];
+    GameShellPorts ports;
     TaskHandle_t task;
     StaticTask_t task_buffer;
     StackType_t stack[configMINIMAL_STACK_SIZE];
@@ -98,12 +100,20 @@ void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority
                                         self->commands_storage, &self->commands_queue);
     self->pinsetter = xQueueCreateStatic(GAME_SHELL_PINSETTER_ROLLS, sizeof(Pins),
                                          self->pinsetter_storage, &self->pinsetter_queue);
-    self->lost_to_full_queue = 0U;
     self->lost_report = xQueueCreateStatic(1U, sizeof(uint16_t), self->lost_report_storage,
                                            &self->lost_report_queue);
     /* FUNCTION POINTER EXEMPTION: FreeRTOS takes a task's entry function by address. */
     self->task = xTaskCreateStatic(&GameShell_Task, "game", configMINIMAL_STACK_SIZE, self,
                                    priority, self->stack, &self->task_buffer);
+    self->ports.pinsetter = self->pinsetter;
+    self->ports.lost_report = self->lost_report;
+    self->ports.game_task = self->task;
+    GameShell_ResetIsr();
+}
+
+const GameShellPorts *GameShell_Ports(void)
+{
+    return &s_shell.ports;
 }
 
 uint16_t GameShell_OutputsDropped(void)
@@ -118,15 +128,4 @@ BaseType_t GameShell_Send(const GameMessage *message, TickType_t wait)
         xTaskNotifyGive(s_shell.task);
     }
     return sent;
-}
-
-void GameShell_PinsetterCountedFromIsr(Pins pins)
-{
-    BaseType_t woken = pdFALSE;
-    if (xQueueSendFromISR(s_shell.pinsetter, &pins, &woken) != pdPASS) {
-        s_shell.lost_to_full_queue++; /* the newest roll is the one dropped */
-        (void)xQueueOverwriteFromISR(s_shell.lost_report, &s_shell.lost_to_full_queue, &woken);
-    }
-    vTaskNotifyGiveFromISR(s_shell.task, &woken);
-    portYIELD_FROM_ISR(woken);
 }
