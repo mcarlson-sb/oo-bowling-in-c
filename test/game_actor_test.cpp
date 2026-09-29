@@ -545,3 +545,42 @@ TEST(GameActorTest, should_fill_the_outbox_exactly_with_the_most_one_message_can
     Send(&actor, EditRequest(22U, 1U, 12U, {}), &outbox); /* every ball out */
     EXPECT_EQ(GAME_OUTBOX_CAPACITY, outbox.count);
 }
+
+/* ---- Pinned at the phase 2 stop, from mutation testing and coverage --------------------- */
+
+TEST(GameActorPinsetterTest, should_tell_the_new_reason_when_a_held_roll_is_refused_for_another)
+{
+    /* Held because the game was over; an edit reopens the tenth frame, and the replay then
+     * refuses the second 6 for too many pins: the subscribers hear the new reason. */
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    BowlAGutterGame(&actor);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(21U, &s_subscriber_queue), &outbox);
+    Send(&actor, PinsetterRoll(6U), &outbox);
+    Send(&actor, PinsetterRoll(6U), &outbox);
+    Send(&actor, EditRequest(22U, 19U, 2U, {}), &outbox); /* balls 19 and 20 out */
+    EXPECT_EQ((std::vector<Held>{{6, 20, 1, GAME_ERR_INVALID_PINS}}), HeldEventsIn(outbox));
+}
+
+TEST(GameActorTest, should_start_a_fresh_game_with_nothing_held_when_initialized_again)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    BowlAGutterGame(&actor);
+    GameOutbox outbox;
+    Send(&actor, PinsetterRoll(3U), &outbox); /* held: the game is over */
+    GameActor_Init(&actor, SCORER_TEN_PIN, SCORER_COUNT_PINS_DOWN);
+    Send(&actor, DiscardHeldRequest(1U), &outbox);
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, outbox.items[0].status);
+}
+
+TEST(GameActorTest, should_catch_a_subscriber_joining_mid_frame_up_on_the_complete_frames_only)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Send(&actor, RollRequest(1U, 3U), &outbox);
+    Send(&actor, RollRequest(2U, 4U), &outbox);
+    Send(&actor, RollRequest(3U, 5U), &outbox); /* frame 2 started, not complete */
+    Send(&actor, SubscribeRequest(4U, &s_subscriber_queue), &outbox);
+    EXPECT_EQ((std::vector<Sent>{{GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 1, 7, true}}),
+              FrameEventsIn(outbox));
+}
