@@ -3,6 +3,8 @@
 
 #include <gtest/gtest.h>
 
+#include "test_outbox.h"
+
 #include <cstring>
 
 #include <initializer_list>
@@ -45,9 +47,9 @@ Message Query(RequestSeq seq)
     return message;
 }
 
-Outbox Send(RunningAverage *average, std::initializer_list<Message> messages)
+TestOutbox Send(RunningAverage *average, std::initializer_list<Message> messages)
 {
-    Outbox outbox;
+    TestOutbox outbox;
     for (const Message &message : messages) {
         outbox.count = 0U;
         RunningAverage_Handle(average, &message, &outbox);
@@ -60,7 +62,7 @@ Outbox Send(RunningAverage *average, std::initializer_list<Message> messages)
 TEST(RunningAverageTest, should_answer_the_average_of_the_frames_it_has_heard_complete)
 {
     RunningAverage average = MakeAverage();
-    const Outbox outbox = Send(&average, {FrameChanged(1, 7, true), FrameChanged(2, 12, true),
+    const TestOutbox outbox = Send(&average, {FrameChanged(1, 7, true), FrameChanged(2, 12, true),
                                           FrameChanged(3, 0, false), Query(5U)});
     ASSERT_EQ(1U, outbox.count);
     EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
@@ -72,7 +74,7 @@ TEST(RunningAverageTest, should_answer_the_average_of_the_frames_it_has_heard_co
 TEST(RunningAverageTest, should_answer_0_before_any_frame_is_complete)
 {
     RunningAverage average = MakeAverage();
-    const Outbox outbox = Send(&average, {FrameChanged(1, 0, false), Query(1U)});
+    const TestOutbox outbox = Send(&average, {FrameChanged(1, 0, false), Query(1U)});
     EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
 }
 
@@ -83,7 +85,7 @@ TEST(RunningAverageTest, should_not_understand_a_roll_and_count_it)
     roll.envelope.selector = MSG_ROLL;
     roll.envelope.from = kAsker;
     roll.envelope.to = kAverage;
-    const Outbox outbox = Send(&average, {roll});
+    const TestOutbox outbox = Send(&average, {roll});
     ASSERT_EQ(1U, outbox.count);
     EXPECT_EQ(MSG_NOT_UNDERSTOOD, outbox.items[0].envelope.selector);
     EXPECT_EQ(1U, average.not_understood);
@@ -96,7 +98,7 @@ TEST(RunningAverageTest, should_take_the_reply_to_its_subscription_in_silence)
     reply.envelope.selector = MSG_REPLY;
     reply.envelope.from = kGame;
     reply.envelope.to = kAverage;
-    const Outbox outbox = Send(&average, {reply});
+    const TestOutbox outbox = Send(&average, {reply});
     EXPECT_EQ(0U, outbox.count);
     EXPECT_EQ(0U, average.not_understood);
 }
@@ -106,7 +108,7 @@ TEST(RunningAverageTest, should_start_empty_whatever_memory_it_is_given)
     RunningAverage average;
     std::memset(&average, 0xFF, sizeof(average));
     RunningAverage_Init(&average, kAverage);
-    const Outbox outbox = Send(&average, {FrameChanged(1, 8, true), Query(1U)});
+    const TestOutbox outbox = Send(&average, {FrameChanged(1, 8, true), Query(1U)});
     EXPECT_EQ(8U, outbox.items[0].payload.reply.score); /* one frame: nothing left over */
     EXPECT_EQ(0U, average.not_understood);
 }
@@ -118,6 +120,6 @@ TEST(RunningAverageTest, should_say_not_understood_from_its_own_id)
     roll.envelope.selector = MSG_ROLL;
     roll.envelope.from = kAsker;
     roll.envelope.to = kAverage;
-    const Outbox outbox = Send(&average, {roll});
+    const TestOutbox outbox = Send(&average, {roll});
     EXPECT_EQ(kAverage, outbox.items[0].envelope.from);
 }

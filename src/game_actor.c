@@ -6,8 +6,6 @@
 
 #include "outbox.h"
 
-_Static_assert(GAME_OUTBOX_CAPACITY == OUTBOX_CAPACITY,
-               "the outbox holds exactly the most one message makes the game send");
 
 static void HeldRolls_Init(HeldRolls *held)
 {

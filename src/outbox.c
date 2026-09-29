@@ -2,9 +2,16 @@
 
 #include <assert.h>
 
+void Outbox_Init(Outbox *self, Message *storage, uint8_t capacity)
+{
+    self->items = storage;
+    self->capacity = capacity;
+    self->count = 0U;
+}
+
 Message *Outbox_Next(Outbox *self, Selector selector, ActorId from, ActorId to)
 {
-    assert(self->count < OUTBOX_CAPACITY);
+    assert(self->count < self->capacity);
     Message *out = &self->items[self->count];
     self->count++;
     out->envelope.selector = selector;

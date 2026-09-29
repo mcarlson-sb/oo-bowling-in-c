@@ -13,13 +13,15 @@
 extern "C" {
 #endif
 
-/* The most one message makes any actor send: the game's worst case (game_actor.c asserts it). */
-#define OUTBOX_CAPACITY 43U
-
+/* What one message sent, in storage its owner provides: the task that hosts the actor, sized for
+ * the largest burst of the kinds it hosts. */
 typedef struct {
-    Message items[OUTBOX_CAPACITY];
+    Message *items;
+    uint8_t capacity;
     uint8_t count;
 } Outbox;
+
+void Outbox_Init(Outbox *self, Message *storage, uint8_t capacity);
 
 /* The next message out, from `from` to `to`, with no seq. */
 Message *Outbox_Next(Outbox *self, Selector selector, ActorId from, ActorId to);

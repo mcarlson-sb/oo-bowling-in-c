@@ -46,6 +46,7 @@ typedef struct {
     uint8_t mailbox_storage[GAME_SHELL_MAILBOX * sizeof(Message)];
     Message message;
     Outbox outbox;
+    Message outbox_storage[GAME_OUTBOX_CAPACITY];
     PosixStack stack_paint;
     TaskHandle_t task;
     StaticTask_t task_buffer;
@@ -193,6 +194,7 @@ static void GameShell_HostInstance(ActorId id, ActorKind kind, uint8_t instance,
     GameShellHosted *hosted = &self->hosted[self->hosted_count];
     self->hosted_count++;
     hosted->id = id;
+    Outbox_Init(&hosted->outbox, hosted->outbox_storage, GAME_OUTBOX_CAPACITY);
     hosted->mailbox = xQueueCreateStatic(GAME_SHELL_MAILBOX, sizeof(Message),
                                          hosted->mailbox_storage, &hosted->mailbox_queue);
     /* FUNCTION POINTER EXEMPTION: FreeRTOS takes a task's entry function by address. */

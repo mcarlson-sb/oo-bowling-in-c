@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include "test_outbox.h"
+
 #include <algorithm>
 #include <initializer_list>
 #include <vector>
@@ -11,6 +13,9 @@
 #include "game_actor.h"
 #include "game_actor_state.h"
 #include "rules_presets.h"
+
+static_assert(TestOutbox::kMostAnyKindSends == GAME_OUTBOX_CAPACITY,
+              "a test outbox holds the most one message makes the game send");
 
 namespace {
 
@@ -32,7 +37,7 @@ GameActor MakeActor(const ScorerRules &rules)
 {
     GameActor actor;
     GameActor_Init(&actor, kGame);
-    Outbox outbox;
+    TestOutbox outbox;
     const Message new_game = NewGameRequest(0U, rules);
     GameActor_Handle(&actor, &new_game, &outbox);
     EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status) << "setup: the new game";
@@ -54,7 +59,7 @@ Message RollRequest(RequestSeq seq, Pins pins)
 TEST(GameActorTest, should_reply_to_a_roll_with_its_sequence_number_status_and_score)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     const Message first = RollRequest(7U, 3U);
     const Message second = RollRequest(8U, 4U);
     GameActor_Handle(&actor, &first, &outbox);
@@ -121,7 +126,7 @@ void Send(GameActor *actor, const Message &message, Outbox *outbox)
 TEST(GameActorTest, should_catch_a_new_subscriber_up_on_the_complete_frames_then_tell_it_changes)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, RollRequest(1U, 3U), &outbox);
     Send(&actor, RollRequest(2U, 4U), &outbox); /* frame 1: 7 */
 
@@ -142,7 +147,7 @@ TEST(GameActorTest, should_catch_a_new_subscriber_up_on_the_complete_frames_then
 TEST(GameActorTest, should_refuse_a_subscriber_past_the_room_for_two)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     const ActorId a = 10U;
     const ActorId b = 11U;
     const ActorId c = 12U;
@@ -186,7 +191,7 @@ Message EditRequest(RequestSeq seq, RollNumber first, uint8_t removed,
 TEST(GameActorTest, A23_should_tell_a_candlepin_subscriber_frame_1_changed_from_13_to_10)
 {
     GameActor actor = MakeActor(rules::kCandlepin);
-    Outbox outbox;
+    TestOutbox outbox;
     RequestSeq seq = 1U;
     for (const Pins pins : std::initializer_list<Pins>{5U, 5U, 3U, 4U, 2U}) {
         Send(&actor, RollRequest(seq++, pins), &outbox);
@@ -225,7 +230,7 @@ Message PinsetterRoll(Pins pins)
 TEST(GameActorPinsetterTest, should_roll_a_pinsetter_roll_into_the_game_and_tell_the_subscribers)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
     Send(&actor, PinsetterRoll(3U), &outbox);
     EXPECT_EQ(0U, outbox.count); /* frame 1 isn't complete yet, and there's no reply */
@@ -278,7 +283,7 @@ Message ScoreQuery(RequestSeq seq)
 
 Score ScoreOf(GameActor *actor)
 {
-    Outbox outbox;
+    TestOutbox outbox;
     Send(actor, ScoreQuery(99U), &outbox);
     EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
     return outbox.items[0].payload.reply.score;
@@ -290,7 +295,7 @@ TEST(GameActorPinsetterTest, should_hold_an_impossible_roll_and_those_after_it_u
 {
     /* The pinsetter counted 5 when 2 fell, so its true 8 looks impossible. */
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
     Send(&actor, PinsetterRoll(5U), &outbox); /* miscounted: 2 fell */
     Send(&actor, PinsetterRoll(8U), &outbox);
@@ -323,7 +328,7 @@ TEST(GameActorPinsetterTest, should_let_the_scorer_discard_a_held_roll_that_real
 {
     /* 11 pins can't fall: this time the machine is wrong, not an earlier roll. */
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, PinsetterRoll(11U), &outbox);
     Send(&actor, PinsetterRoll(3U), &outbox);
     Send(&actor, PinsetterRoll(4U), &outbox);
@@ -341,7 +346,7 @@ namespace {
 
 void BowlAGutterGame(GameActor *actor)
 {
-    Outbox outbox;
+    TestOutbox outbox;
     for (int i = 0; i < 20; i++) {
         Send(actor, RollRequest(static_cast<RequestSeq>(i + 1), 0U), &outbox);
     }
@@ -374,7 +379,7 @@ TEST(GameActorPinsetterTest, should_hold_pinsetter_rolls_made_after_the_game_is_
      * the scorer discards them: the brief's messages have no "new game". */
     GameActor actor = MakeActor(rules::kTenPin);
     BowlAGutterGame(&actor);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(21U, kSubscriber), &outbox);
     Send(&actor, PinsetterRoll(3U), &outbox);
     EXPECT_EQ((std::vector<Held>{{3, 21, 1, GAME_ERR_GAME_OVER}}), HeldEventsIn(outbox));
@@ -385,7 +390,7 @@ TEST(GameActorPinsetterTest, should_hold_a_whole_game_of_rolls_and_count_any_pas
 {
     GameActor actor = MakeActor(rules::kTenPin);
     BowlAGutterGame(&actor);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(21U, kSubscriber), &outbox);
     for (int i = 0; i < 30; i++) {
         Send(&actor, PinsetterRoll(1U), &outbox);
@@ -401,7 +406,7 @@ TEST(GameActorPinsetterTest, should_tell_the_subscribers_the_total_of_rolls_lost
     /* The pinsetter's queue reports its own count; the actor adds the rolls it had no room to
      * hold, and tells the total. */
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
     Send(&actor, RollsLostReport(2U), &outbox);
     EXPECT_EQ((std::vector<int>{2}), LostEventsIn(outbox));
@@ -425,7 +430,7 @@ Message UnsubscribeRequest(RequestSeq seq, ActorId subscriber)
 TEST(GameActorTest, should_stop_telling_a_subscriber_that_unsubscribes)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     const ActorId a = 10U;
     const ActorId b = 11U;
     Send(&actor, SubscribeRequest(1U, a), &outbox);
@@ -450,7 +455,7 @@ TEST(GameActorTest, should_stop_telling_a_subscriber_that_unsubscribes)
 TEST(GameActorTest, should_tell_a_subscriber_every_frame_one_roll_completes_in_order)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
     Send(&actor, RollRequest(2U, 10U), &outbox);
     Send(&actor, RollRequest(3U, 3U), &outbox);
@@ -463,7 +468,7 @@ TEST(GameActorTest, should_tell_a_subscriber_every_frame_one_roll_completes_in_o
 TEST(GameActorPinsetterTest, should_tell_every_subscriber_about_held_and_lost_rolls)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     const ActorId a = 10U;
     const ActorId b = 11U;
     Send(&actor, SubscribeRequest(1U, a), &outbox);
@@ -482,7 +487,7 @@ TEST(GameActorPinsetterTest, should_tell_every_subscriber_about_held_and_lost_ro
 TEST(GameActorTest, should_stop_telling_the_second_subscriber_when_it_unsubscribes)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     const ActorId a = 10U;
     const ActorId b = 11U;
     Send(&actor, SubscribeRequest(1U, a), &outbox);
@@ -497,7 +502,7 @@ TEST(GameActorTest, should_stop_telling_the_second_subscriber_when_it_unsubscrib
 TEST(GameActorPinsetterTest, should_tell_the_frames_the_held_rolls_complete_when_they_go_through)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
     Send(&actor, PinsetterRoll(5U), &outbox); /* miscounted: 2 fell */
     Send(&actor, PinsetterRoll(8U), &outbox);
@@ -512,7 +517,7 @@ TEST(GameActorPinsetterTest, should_hold_again_at_the_next_held_roll_the_game_re
     /* A correction lets the 8 through, but the 11 behind it can never fall: the held rolls stop
      * there again, and the subscribers are told what is held now, and why. */
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
     Send(&actor, PinsetterRoll(5U), &outbox); /* miscounted: 2 fell */
     Send(&actor, PinsetterRoll(8U), &outbox);
@@ -525,7 +530,7 @@ TEST(GameActorPinsetterTest, should_let_the_rest_through_after_discarding_from_a
 {
     GameActor actor = MakeActor(rules::kTenPin);
     BowlAGutterGame(&actor);
-    Outbox outbox;
+    TestOutbox outbox;
     for (int i = 0; i < 30; i++) {
         Send(&actor, PinsetterRoll(1U), &outbox); /* a full held list, all after the game */
     }
@@ -537,7 +542,7 @@ TEST(GameActorPinsetterTest, should_let_the_rest_through_after_discarding_from_a
 TEST(GameActorTest, should_refuse_unsubscribing_the_same_subscriber_twice)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     const ActorId a = 10U;
     const ActorId b = 11U;
     Send(&actor, SubscribeRequest(1U, a), &outbox);
@@ -554,7 +559,7 @@ TEST(GameActorTest, should_fill_the_outbox_exactly_with_the_most_one_message_can
     /* The worst case: an edit that reopens all ten frames, then lets through held rolls that
      * complete all ten again, then holds the next one again, told to two subscribers. */
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     for (int i = 0; i < 12; i++) {
         Send(&actor, RollRequest(static_cast<RequestSeq>(i + 1), 10U), &outbox);
     }
@@ -577,7 +582,7 @@ TEST(GameActorPinsetterTest, should_tell_the_new_reason_when_a_held_roll_is_refu
      * refuses the second 6 for too many pins: the subscribers hear the new reason. */
     GameActor actor = MakeActor(rules::kTenPin);
     BowlAGutterGame(&actor);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(21U, kSubscriber), &outbox);
     Send(&actor, PinsetterRoll(6U), &outbox);
     Send(&actor, PinsetterRoll(6U), &outbox);
@@ -589,7 +594,7 @@ TEST(GameActorTest, should_start_a_fresh_game_with_nothing_held_when_initialized
 {
     GameActor actor = MakeActor(rules::kTenPin);
     BowlAGutterGame(&actor);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, PinsetterRoll(3U), &outbox); /* held: the game is over */
     GameActor_Init(&actor, kGame);
     Send(&actor, NewGameRequest(0U, rules::kTenPin), &outbox);
@@ -600,7 +605,7 @@ TEST(GameActorTest, should_start_a_fresh_game_with_nothing_held_when_initialized
 TEST(GameActorTest, should_catch_a_subscriber_joining_mid_frame_up_on_the_complete_frames_only)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, RollRequest(1U, 3U), &outbox);
     Send(&actor, RollRequest(2U, 4U), &outbox);
     Send(&actor, RollRequest(3U, 5U), &outbox); /* frame 2 started, not complete */
@@ -614,7 +619,7 @@ TEST(GameActorTest, should_catch_a_subscriber_joining_mid_frame_up_on_the_comple
 TEST(GameActorTest, should_reply_not_understood_to_a_selector_it_does_not_answer_and_count_it)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Message frame_changed = {};
     frame_changed.envelope.selector = MSG_FRAME_CHANGED;
     frame_changed.envelope.from = kReplyTo;
@@ -636,7 +641,7 @@ TEST(GameActorTest, should_count_but_never_answer_a_not_understood_so_two_kinds_
     /* Two kinds that don't understand each other would otherwise trade NOT_UNDERSTOODs
      * forever. The same for a message from no one, such as the pinsetter's. */
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Message not_understood = {};
     not_understood.envelope.selector = MSG_NOT_UNDERSTOOD;
     not_understood.envelope.from = kReplyTo;
@@ -658,7 +663,7 @@ TEST(GameActorLifecycleTest, should_start_a_game_by_the_rules_a_new_game_carries
 {
     GameActor actor;
     GameActor_Init(&actor, kGame);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, NewGameRequest(9U, rules::kCandlepin), &outbox);
     ASSERT_EQ(1U, outbox.count);
     EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
@@ -674,7 +679,7 @@ TEST(GameActorLifecycleTest, should_reply_no_game_to_anything_but_a_new_game_bef
 {
     GameActor actor;
     GameActor_Init(&actor, kGame);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, RollRequest(1U, 3U), &outbox);
     ASSERT_EQ(1U, outbox.count);
     EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
@@ -689,7 +694,7 @@ TEST(GameActorLifecycleTest, should_refuse_a_new_game_by_rules_the_scorer_cannot
 {
     GameActor actor;
     GameActor_Init(&actor, kGame);
-    Outbox outbox;
+    TestOutbox outbox;
     const ScorerRules no_frames = {0U, 2U, 10U, {2U, 1U, 0U}, 0U};
     Send(&actor, NewGameRequest(1U, no_frames), &outbox);
     EXPECT_EQ(GAME_ERR_INVALID_RULES, outbox.items[0].payload.reply.status);
@@ -700,7 +705,7 @@ TEST(GameActorLifecycleTest, should_refuse_a_new_game_by_rules_the_scorer_cannot
 TEST(GameActorLifecycleTest, should_refuse_a_new_game_while_one_is_in_play_and_keep_it)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, RollRequest(1U, 3U), &outbox);
     Send(&actor, RollRequest(2U, 4U), &outbox);
     Send(&actor, NewGameRequest(3U, rules::kCandlepin), &outbox);
@@ -712,7 +717,7 @@ TEST(GameActorLifecycleTest, should_start_a_new_game_after_one_ends)
 {
     GameActor actor = MakeActor(rules::kTenPin);
     BowlAGutterGame(&actor);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, NewGameRequest(21U, rules::kCandlepin), &outbox);
     EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
     Send(&actor, RollRequest(22U, 3U), &outbox);
@@ -726,7 +731,7 @@ TEST(GameActorLifecycleTest, should_play_the_rolls_held_after_a_game_into_the_ne
     /* The pinsetter counted the next game's first frame before anyone started it. */
     GameActor actor = MakeActor(rules::kTenPin);
     BowlAGutterGame(&actor);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(21U, kSubscriber), &outbox);
     Send(&actor, PinsetterRoll(3U), &outbox);
     Send(&actor, PinsetterRoll(4U), &outbox); /* both held: the game is over */
@@ -742,7 +747,7 @@ TEST(GameActorLifecycleTest, should_hold_the_pinsetters_rolls_before_any_game_an
 {
     GameActor actor;
     GameActor_Init(&actor, kGame);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, PinsetterRoll(3U), &outbox);
     EXPECT_EQ(0U, outbox.count); /* from no one: no reply, and no one subscribed yet */
     Send(&actor, PinsetterRoll(4U), &outbox);
@@ -755,7 +760,7 @@ TEST(GameActorLifecycleTest, should_tell_subscribers_every_frame_of_the_old_game
 {
     /* A scoreboard kept up by the events would otherwise show the last game's frames. */
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
     BowlAGutterGame(&actor);
     Send(&actor, NewGameRequest(21U, rules::kTenPin), &outbox);
@@ -772,7 +777,7 @@ TEST(GameActorTest, should_not_understand_a_selector_past_the_protocols_end)
 {
     /* An id is a byte and so is nothing else, but a selector is an enum any sender can fill in. */
     GameActor actor = MakeActor(rules::kTenPin);
-    Outbox outbox;
+    TestOutbox outbox;
     for (const int past : {static_cast<int>(MSG_SELECTOR_COUNT), 200}) {
         Message nonsense = {};
         nonsense.envelope.selector = static_cast<Selector>(past);
@@ -788,7 +793,7 @@ TEST(GameActorLifecycleTest, should_keep_the_pinsetters_lost_count_from_before_a
     /* Reported as a running total: heard again once the game starts, it is no news. */
     GameActor actor;
     GameActor_Init(&actor, kGame);
-    Outbox outbox;
+    TestOutbox outbox;
     Send(&actor, RollsLostReport(2U), &outbox);
     Send(&actor, NewGameRequest(1U, rules::kTenPin), &outbox);
     Send(&actor, SubscribeRequest(2U, kSubscriber), &outbox);
