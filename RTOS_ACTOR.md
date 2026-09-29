@@ -772,3 +772,48 @@ project is the game task's entry function, which FreeRTOS requires. 114 legacy t
 ported, one of them a property over three variants. The interrupt side's stack tripwire was
 legacy-only, so before its file went, the shell's interrupt side moved to a file of its own, with
 its own limit.
+
+### Task stacks: the contract from the call graph, and the painted cross-check
+
+As decided (above, 2026-09-28): the contract is the static call graph, and a painted stack
+cross-checks it.
+
+**The contract.** `tools/stack_depth.py` reads every call graph GCC 13 writes with
+`-fcallgraph-info=su`, the FreeRTOS kernel's included. For each entry, it adds the entry's frame
+to the deepest of its callees', and fails on anything it can't bound: recursion, a dynamic frame
+with no bound, or an indirect call. The only indirect call in the build is FreeRTOS's task start
+(`prvWaitForStart`) calling the entry itself.
+
+Two things are outside the graph, and each gets an allowance:
+- **A call into the C library or pthreads,** which the POSIX port makes: 1024 bytes a call.
+- **One asynchronous frame, anywhere:** the port's tick and context switches are signals, whose
+  handlers run on the task's own stack. 2048 bytes. On a target, this is the interrupt frame.
+
+| Entry | Deepest path, release / debug | With the allowances | Budget |
+|---|---|---|---|
+| `GameShell_Task` | 880 / 1296 | 3952 / 4224 | 4608 |
+| `GameShell_PinsetterCountedFromIsr` | 160 / 272 | 3232 / 3344 | 3584 |
+| `GameShell_Send`, on its caller's stack | 224 / 400 | 3296 / 3472 | 3584 |
+
+The game task's deepest path, in debug, is `GameShell_Task` → `GameActor_Handle` →
+`GameActor_Edit` → `Scorer_Edit` → its replay's `Scorer_Roll` → `Scorer_Lane` → the lane's walk.
+The deepest work is the edit's replay, not the kernel. The budgets are `#define`s in
+`rtos/game_shell.h`, read by both checks. The task's stack is static-asserted to hold its budget,
+and on this host it is the port's minimum anyway: 16 KiB, a pthread's `PTHREAD_STACK_MIN`. CI's
+stack-usage jobs, debug and release, build with the call graph and run the check. It was proved to
+fail on a budget under the depth, on an indirect call and on recursion.
+
+**The cross-check.** On the POSIX port a task runs on a pthread stack of the port's own, so
+FreeRTOS's high-water mark measures nothing. `rtos/posix_stack.c` stands in for it:
+- the game task paints its own pthread stack first thing;
+- a test drives the outbox's worst case through the shell: an edit that reopens every frame and
+  lets 12 held strikes through before holding the 13th, told to two subscribers;
+- the test then checks the deepest byte touched against the budget.
+
+Measured: 1079 bytes in debug, 1583 in release, 711 under ThreadSanitizer. In release that is 703
+bytes over the static path's 880: the C library and the signal frames, which the allowances cover
+with room to spare. Debug stays under its static path.
+
+**On a target** the allowances change: there is no C library under the port, and the
+asynchronous frame is the interrupt's, plus nesting. The static path is what carries over. There,
+`uxTaskGetStackHighWaterMark` works, and would be the third check.
