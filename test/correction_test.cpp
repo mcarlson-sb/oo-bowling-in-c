@@ -574,3 +574,28 @@ TEST(CorrectionTest, should_refuse_a_roll_made_from_inside_an_edits_notification
     EXPECT_EQ(GAME_ERR_BUSY, listener.status);
     EXPECT_EQ(6U, Game_Score(game)); /* the refused roll changed nothing */
 }
+
+TEST(EditRollsTest, should_delete_rolls_given_no_new_pins_at_all)
+{
+    /* A deletion: none in, and no pins to give, so none are promised. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    RollAll(game, {3U, 4U, 5U, 2U});
+    const RollEdit deletion = {3U, 2U, nullptr, 0U};
+    EXPECT_EQ(GAME_OK, Game_EditRolls(game, &deletion));
+    EXPECT_EQ(7U, Game_Score(game));
+}
+
+TEST(EditRollsTest, should_report_a_frame_an_edit_removed_as_reopened)
+{
+    /* Deleting frame 2's rolls leaves one frame: the listener is told frame 2 is no longer
+     * complete, and nothing about frames that were never there. */
+    GameHandle owner = MakeGame();
+    Game *game = owner.get();
+    KeyedScoreboard scoreboard;
+    ASSERT_TRUE(Game_OnFrameChanged(game, &KeyedScoreboard_FrameChanged, &scoreboard));
+    RollAll(game, {3U, 4U, 5U, 2U}); /* frames 1 and 2, both 7 */
+    const RollEdit deletion = {3U, 2U, nullptr, 0U};
+    ASSERT_EQ(GAME_OK, Game_EditRolls(game, &deletion));
+    EXPECT_EQ((std::map<int, int>{{1, 7}}), scoreboard.scores);
+}
