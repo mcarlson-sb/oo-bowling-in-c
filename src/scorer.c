@@ -191,7 +191,7 @@ static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index
         break;
     case LANE_OVER:
     default:
-        assert(!"Lane_CheckBall refuses a ball once the lane is over");
+        assert(false && "Lane_CheckBall refuses a ball once the lane is over");
         break;
     }
 }
