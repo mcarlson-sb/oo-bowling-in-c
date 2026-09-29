@@ -294,3 +294,35 @@ recorded these proofs, through a normal gated run
 | Stack: a 400-byte frame | [36505554411](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505554411) | `stack-usage-debug`, `stack-usage-release`, and every other GCC build, which carries the same tripwire | skipped | did not move |
 | 2: a green tip on a red commit | [36505633406](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505633406) | `every-commit` only | skipped | did not move |
 | 4: a green commit on an older base, after `rtos-actor` moved to `c8abe6e` | [36505912098](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505912098) | none: every gate passed | failed: GitHub refused the non-fast-forward push, and the job said "rtos-actor moved: it is no longer an ancestor of this commit. Rebase integration/rtos-actor onto rtos-actor and push again, so the result is gated." | stayed at `c8abe6e` |
+
+### The ruleset on `rtos-actor`
+
+`tools/rtos-actor-ruleset.json`, imported in the repository's settings (ruleset 24150541):
+active, with an empty bypass list, blocking deletion and non-fast-forward pushes, and requiring
+all 11 gate checks from GitHub Actions (app 15368), without "must be up to date".
+`GET /repos/mcarlson-sb/oo-bowling-in-c/rules/branches/rtos-actor` shows all three rules in
+force.
+
+**Proof 3: a direct push is refused.** A commit with a failing test was put on top of
+`rtos-actor`, so pushing it would be a fast-forward, and pushed to the integration branch
+([36506959168](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36506959168), red).
+Then it was pushed to `rtos-actor` directly:
+
+```
+$ git push origin 654562d792861d3d1cca994ab97829ea53a1de94:rtos-actor
+remote: error: GH013: Repository rule violations found for refs/heads/rtos-actor.
+remote: - 6 of 11 required status checks are failing.
+ ! [remote rejected] 654562d792861d3d1cca994ab97829ea53a1de94 -> rtos-actor (push declined due to repository rule violations)
+```
+
+The ruleset's other two rules were tried too:
+
+```
+$ git push --force origin 8e19adf:rtos-actor
+remote: - Cannot force-push to this branch
+$ git push origin :rtos-actor
+remote: - Cannot delete this branch
+```
+
+`rtos-actor` stayed at `edfef2d` through all three. The commit that records this was then
+promoted by the gate as usual, with the ruleset in force: see its run below.
