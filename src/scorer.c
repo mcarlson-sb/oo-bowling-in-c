@@ -378,6 +378,12 @@ static bool RollEdit_RemovesOnlyBallsThere(const RollEdit *edit, uint8_t ball_co
     return ((unsigned)edit->first_roll + edit->rolls_removed) <= (ball_count + 1U);
 }
 
+static bool RollEdit_IsWithinBalls(const RollEdit *edit, uint8_t ball_count)
+{
+    return RollEdit_StartsAtABall(edit, ball_count) &&
+           RollEdit_RemovesOnlyBallsThere(edit, ball_count);
+}
+
 static bool RollEdit_PromisesBallsWithoutPins(const RollEdit *edit)
 {
     return (edit->new_pins == NULL) && (edit->new_count > 0U);
@@ -389,19 +395,23 @@ static unsigned RollEdit_BallsAfter(const RollEdit *edit, uint8_t ball_count)
     return ((unsigned)ball_count - edit->rolls_removed) + edit->new_count;
 }
 
+static bool Scorer_IsLongerThanAGame(const Scorer *self, unsigned ball_count)
+{
+    return ball_count > Scorer_Rules(self)->max_balls_per_game;
+}
+
 static GameStatus Scorer_CheckEdit(const Scorer *self, const RollEdit *edit)
 {
     if (edit == NULL) {
         return GAME_ERR_INVALID_EDIT;
     }
-    if (!RollEdit_StartsAtABall(edit, self->ball_count) ||
-        !RollEdit_RemovesOnlyBallsThere(edit, self->ball_count)) {
+    if (!RollEdit_IsWithinBalls(edit, self->ball_count)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
     if (RollEdit_PromisesBallsWithoutPins(edit)) {
         return GAME_ERR_INVALID_EDIT;
     }
-    if (RollEdit_BallsAfter(edit, self->ball_count) > Scorer_Rules(self)->max_balls_per_game) {
+    if (Scorer_IsLongerThanAGame(self, RollEdit_BallsAfter(edit, self->ball_count))) {
         return GAME_ERR_TOO_MANY_ROLLS;
     }
     return GAME_OK;
