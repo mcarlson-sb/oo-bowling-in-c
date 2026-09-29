@@ -468,3 +468,14 @@ TEST(CandlepinTest, A09_should_a_strike_in_the_tenth_then_6_4_scores_20)
     EXPECT_TRUE(Scorer_IsOver(&scorer));
     EXPECT_EQ(20U, Scorer_Score(&scorer));
 }
+
+TEST(CandlepinTest, A10_should_a_ten_box_in_the_tenth_scores_10_and_gets_no_fill_ball)
+{
+    Scorer scorer = MakeCandlepin();
+    RollMany(&scorer, 27, 0U);
+    RollAll(&scorer, {3U, 3U, 4U});
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+    EXPECT_EQ(10U, Scorer_Score(&scorer));
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_GAME_OVER, Scorer_Roll(&scorer, 0U, &events)); /* no fill ball */
+}
