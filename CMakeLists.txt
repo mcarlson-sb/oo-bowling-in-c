@@ -30,15 +30,8 @@ endif()
 # ---- Library under test ---------------------------------------------------
 add_library(bowling STATIC
     src/fault.c
-    src/frame_listeners.c
-    src/frame_reporter.c
-    src/game.c
-    src/roll_edit.c
-    src/roll_log.c
-    src/scorecard.c
     src/scorer.c
     src/game_actor.c
-    src/slot_pool.c
 )
 target_include_directories(bowling PUBLIC include PRIVATE src)
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
@@ -47,8 +40,7 @@ target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
 # whose frame is over the limit. Host numbers: a tripwire for regressions, not a target budget.
 # The limits have headroom over the largest frames today, on CI's GCC 13 (the gate) and on
 # GCC 16, which builds here too:
-#   - everything but the interrupt side: 320 bytes, over Game_CorrectRoll's and
-#     Game_EditRolls's 224.
+#   - everything but the interrupt side: 320 bytes, over the largest frame today, Scorer_Edit's.
 #   - the interrupt side's own file, rtos/game_shell_isr.c: its own limit, with the RTOS shell.
 set(OO_C_STACK_LIMIT 320)
 # GCC's option: clang has no -Wstack-usage. Every build that gates on it uses GCC; clang only
@@ -83,22 +75,11 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 add_executable(bowling_tests
-    test/roll_log_test.cpp
-    test/slot_pool_test.cpp
-    test/frame_listeners_test.cpp
-    test/game_test.cpp
-    test/nine_pin_no_tap_test.cpp
-    test/scoreboard_test.cpp
-    test/correction_test.cpp
-    test/reference_scorer_test.cpp
     test/scorer_test.cpp
     test/fault_test.cpp
     test/game_actor_test.cpp
 )
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
-# roll_log_test.cpp, slot_pool_test.cpp and frame_listeners_test.cpp test private types
-# directly, so they need the private headers.
-target_include_directories(bowling_tests PRIVATE src)
 target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 
 include(GoogleTest)

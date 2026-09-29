@@ -5,10 +5,11 @@
 The gate's status on `integration/rtos-actor`, where every push is gated. `rtos-actor` itself
 has no runs of its own: it only ever holds commits that passed this gate.
 
-> **On the `rtos-actor` branch:** the frame classes this describes (the State pattern, its
-> vtables and state families) have been replaced by one data-driven scorer with no function
-> pointers; see `RTOS_ACTOR.md`. They are intact on `kay-oo` and `main`. This document is
-> rewritten at the end of the experiment.
+> **On the `rtos-actor` branch:** what this describes is gone. The frame classes (the State
+> pattern, its vtables and state families), the `Game` callback facade and the pinsetter's
+> mailbox have been replaced by one data-driven scorer, a game actor that takes messages, and a
+> FreeRTOS shell, with no function pointers; see `RTOS_ACTOR.md`. They are intact on `kay-oo`
+> and `main`. This document is rewritten at the end of the experiment.
 
 A ten-pin bowling scorer in C11, written in an object-oriented, pattern-based style. The
 problem is small on purpose, so the design is the thing to read. "Object-oriented" is a way
