@@ -282,7 +282,9 @@ the jobs run in parallel, the slowest (`tsan`, `coverage`) at about 40 seconds.
 
 Scratch commits were pushed to the integration branch only, and reset away after their run;
 none reached `rtos-actor`, which stayed at `8e19adf` through proofs 1 and 2 and the gate
-proofs.
+proofs. Proof 4 needed `rtos-actor` to move first: it moved to `c8abe6e`, the commit that first
+recorded these proofs, through a normal gated run
+([36505773045](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505773045)).
 
 | Proof | Run | Red | `promote` | `rtos-actor` |
 |---|---|---|---|---|
@@ -291,3 +293,4 @@ proofs.
 | Static gates: a function pointer, and a long, tangled, uncalled function | [36505443556](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505443556) | `function-pointers`, `lizard`, `cognitive-complexity`, `coverage` (at its 95% check), each at its own step; every build and test green | skipped | did not move |
 | Stack: a 400-byte frame | [36505554411](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505554411) | `stack-usage-debug`, `stack-usage-release`, and every other GCC build, which carries the same tripwire | skipped | did not move |
 | 2: a green tip on a red commit | [36505633406](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505633406) | `every-commit` only | skipped | did not move |
+| 4: a green commit on an older base, after `rtos-actor` moved to `c8abe6e` | [36505912098](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505912098) | none: every gate passed | failed: GitHub refused the non-fast-forward push, and the job said "rtos-actor moved: it is no longer an ancestor of this commit. Rebase integration/rtos-actor onto rtos-actor and push again, so the result is gated." | stayed at `c8abe6e` |
