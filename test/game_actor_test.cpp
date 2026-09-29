@@ -667,3 +667,18 @@ TEST(GameActorLifecycleTest, should_start_a_game_by_the_rules_a_new_game_carries
     Send(&actor, RollRequest(12U, 3U), &outbox); /* candlepin: a frame takes three balls */
     EXPECT_EQ(9U, outbox.items[0].payload.reply.score);
 }
+
+TEST(GameActorLifecycleTest, should_reply_no_game_to_anything_but_a_new_game_before_one_starts)
+{
+    GameActor actor;
+    GameActor_Init(&actor, kGame);
+    GameOutbox outbox;
+    Send(&actor, RollRequest(1U, 3U), &outbox);
+    ASSERT_EQ(1U, outbox.count);
+    EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
+    EXPECT_EQ(GAME_ERR_NO_GAME, outbox.items[0].payload.reply.status);
+    Send(&actor, SubscribeRequest(2U, kSubscriber), &outbox);
+    EXPECT_EQ(GAME_ERR_NO_GAME, outbox.items[0].payload.reply.status);
+    Send(&actor, ScoreQuery(3U), &outbox);
+    EXPECT_EQ(GAME_ERR_NO_GAME, outbox.items[0].payload.reply.status);
+}

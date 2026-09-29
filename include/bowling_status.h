@@ -12,7 +12,8 @@ typedef enum {
     GAME_ERR_INVALID_EDIT,      /* a NULL edit, or one that promises rolls but gives no pins */
     GAME_ERR_TOO_MANY_SUBSCRIBERS,
     GAME_ERR_NOT_SUBSCRIBED,
-    GAME_ERR_INVALID_RULES      /* rules the scorer can't play */
+    GAME_ERR_INVALID_RULES,     /* rules the scorer can't play */
+    GAME_ERR_NO_GAME            /* a request before any NEW_GAME has started a game */
 } GameStatus;
 
 #endif /* BOWLING_STATUS_H */

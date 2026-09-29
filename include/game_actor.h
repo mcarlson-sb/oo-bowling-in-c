@@ -38,8 +38,16 @@ typedef struct {
     uint8_t count;
 } Subscribers;
 
+/* Where the game's lifecycle is: which messages mean something now. Whether a game in play is
+ * over is the scorer's to say. */
+typedef enum {
+    GAME_AWAITING_RULES,
+    GAME_IN_PLAY
+} GameLifecycle;
+
 typedef struct {
     ActorId id;
+    GameLifecycle lifecycle;
     Scorer scorer;
     Subscribers subscribers;
     HeldRolls held;

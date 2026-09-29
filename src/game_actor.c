@@ -74,6 +74,7 @@ static bool Subscribers_Remove(Subscribers *subscribers, ActorId id)
 void GameActor_Init(GameActor *self, ActorId id)
 {
     self->id = id;
+    self->lifecycle = GAME_AWAITING_RULES;
     Subscribers_Init(&self->subscribers);
     HeldRolls_Init(&self->held);
     self->lost_to_full_queue = 0U;
@@ -358,6 +359,9 @@ static GameRequest GameActor_RequestOf(const Message *message)
 static void GameActor_NewGame(GameActor *self, const Message *message, GameOutbox *outbox)
 {
     const GameStatus status = Scorer_Start(&self->scorer, &message->payload.new_game.rules);
+    if (status == GAME_OK) {
+        self->lifecycle = GAME_IN_PLAY;
+    }
     GameOutbox_Reply(outbox, message, status, 0U);
 }
 
@@ -394,7 +398,7 @@ static void GameActor_Receive(GameActor *self, const Message *message, GameOutbo
     }
 }
 
-/* The lifecycle's own message first, then the request. */
+/* The lifecycle's own message first, then what the lifecycle makes of the rest. */
 void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbox)
 {
     outbox->count = 0U;
@@ -402,5 +406,12 @@ void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbo
         GameActor_NewGame(self, message, outbox);
         return;
     }
-    GameActor_Receive(self, message, outbox);
+    switch (self->lifecycle) {
+    case GAME_AWAITING_RULES:
+        GameOutbox_Reply(outbox, message, GAME_ERR_NO_GAME, 0U);
+        break;
+    case GAME_IN_PLAY:
+        GameActor_Receive(self, message, outbox);
+        break;
+    }
 }
