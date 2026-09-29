@@ -936,3 +936,11 @@ TEST(ScorerRulesTest, should_refuse_a_bonus_for_a_ball_past_the_frames_own)
     /* Two balls a frame, and a bonus for clearing the rack with a third it never throws. */
     ExpectRefused({10U, 2U, 10U, {2U, 1U, 1U}, 0U});
 }
+
+TEST(ScorerRulesTest, should_refuse_no_pins_more_than_it_scores_or_a_clear_every_ball_makes)
+{
+    ExpectRefused({10U, 2U, 0U, {2U, 1U, 0U}, 0U});
+    ExpectRefused({10U, 2U, 21U, {2U, 1U, 0U}, 0U});
+    /* Ten pins, and a ball that leaves ten standing counts as a clear: every ball does. */
+    ExpectRefused({10U, 2U, 10U, {2U, 1U, 0U}, 10U});
+}

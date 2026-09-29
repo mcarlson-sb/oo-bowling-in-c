@@ -5,6 +5,10 @@
 #include <assert.h>
 #include <stddef.h>
 
+/* A frame scores at most every ball of the game, so no total can outgrow a Score. */
+_Static_assert((SCORER_MAX_FRAMES * SCORER_MAX_BALLS * SCORER_MAX_PINS_PER_RACK) <= UINT16_MAX,
+               "the highest possible total fits a Score");
+
 typedef struct {
     uint8_t first_ball;
     uint8_t own_balls;
@@ -253,12 +257,19 @@ static bool ScorerRules_BonusesStopAtTheFramesBalls(const ScorerRules *rules)
     return true;
 }
 
+/* Some pins, few enough to score, and a clear that a ball must earn. */
+static bool ScorerRules_HasARackItScores(const ScorerRules *rules)
+{
+    return (rules->pins_per_rack != 0U) && (rules->pins_per_rack <= SCORER_MAX_PINS_PER_RACK) &&
+           (rules->pins_standing_that_count_as_a_clear < rules->pins_per_rack);
+}
+
 /* Rules the scorer can hold and play. Only once their frames and balls fit: the longest game
  * counts both, and reads a bonus for each ball of the frame. */
 static bool ScorerRules_AreValid(const ScorerRules *rules)
 {
     return ScorerRules_HasFramesItHolds(rules) && ScorerRules_HasBallsItHolds(rules) &&
-           ScorerRules_BonusesStopAtTheFramesBalls(rules) &&
+           ScorerRules_BonusesStopAtTheFramesBalls(rules) && ScorerRules_HasARackItScores(rules) &&
            (ScorerRules_LongestGame(rules) <= SCORER_MAX_BALLS);
 }
 
