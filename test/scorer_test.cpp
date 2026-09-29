@@ -479,3 +479,12 @@ TEST(CandlepinTest, A10_should_a_ten_box_in_the_tenth_scores_10_and_gets_no_fill
     FrameEvents events;
     EXPECT_EQ(GAME_ERR_GAME_OVER, Scorer_Roll(&scorer, 0U, &events)); /* no fill ball */
 }
+
+TEST(CandlepinTest, A11_should_an_open_tenth_3_3_3_scores_9)
+{
+    Scorer scorer = MakeCandlepin();
+    RollMany(&scorer, 27, 0U);
+    RollAll(&scorer, {3U, 3U, 3U});
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+    EXPECT_EQ(9U, Scorer_Score(&scorer));
+}
