@@ -1,5 +1,7 @@
 #include "game_actor.h"
 
+#include <stddef.h>
+
 void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule)
 {
     Scorer_InitWithRule(&self->scorer, variant, rule);
@@ -48,6 +50,17 @@ static void GameActor_Roll(GameActor *self, const GameMessage *message, GameOutb
     GameActor_Publish(self, &events, outbox);
 }
 
+static void GameActor_Edit(GameActor *self, const GameMessage *message, GameOutbox *outbox)
+{
+    const RollEdit edit = { message->first_roll, message->rolls_removed,
+                            (message->new_count > 0U) ? message->new_pins : NULL,
+                            message->new_count };
+    FrameEvents events;
+    const GameStatus status = Scorer_Edit(&self->scorer, &edit, &events);
+    GameOutbox_Reply(outbox, message, status, Scorer_Score(&self->scorer));
+    GameActor_Publish(self, &events, outbox);
+}
+
 /* The frames complete so far, for a subscriber that has just joined. */
 static void GameActor_CatchUp(const GameActor *self, void *subscriber, GameOutbox *outbox)
 {
@@ -79,6 +92,9 @@ void GameActor_Handle(GameActor *self, const GameMessage *message, GameOutbox *o
     switch (message->kind) {
     case GAME_MSG_SUBSCRIBE:
         GameActor_Subscribe(self, message, outbox);
+        break;
+    case GAME_MSG_EDIT:
+        GameActor_Edit(self, message, outbox);
         break;
     case GAME_MSG_ROLL:
     default:

@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <initializer_list>
 #include <vector>
 
 #include "game_actor.h"
@@ -139,4 +140,50 @@ TEST(GameActorTest, should_refuse_a_subscriber_past_the_room_for_two)
         heard_by.push_back(sent.to);
     }
     EXPECT_EQ((std::vector<void *>{&a, &b}), heard_by);
+}
+
+/* ---- Edits ---------------------------------------------------------------------------- */
+
+namespace {
+
+GameMessage EditRequest(RequestSeq seq, RollNumber first, uint8_t removed,
+                        std::initializer_list<Pins> new_pins)
+{
+    GameMessage message = {};
+    message.kind = GAME_MSG_EDIT;
+    message.seq = seq;
+    message.reply_to = &s_reply_queue;
+    message.first_roll = first;
+    message.rolls_removed = removed;
+    for (const Pins pins : new_pins) {
+        message.new_pins[message.new_count++] = pins;
+    }
+    return message;
+}
+
+} // namespace
+
+TEST(GameActorTest, A23_should_tell_a_candlepin_subscriber_frame_1_changed_from_13_to_10)
+{
+    GameActor actor = MakeActor(SCORER_CANDLEPIN);
+    GameOutbox outbox;
+    RequestSeq seq = 1U;
+    for (const Pins pins : std::initializer_list<Pins>{5U, 5U, 3U, 4U, 2U}) {
+        Send(&actor, RollRequest(seq++, pins), &outbox);
+    }
+    for (int i = 0; i < 24; i++) {
+        Send(&actor, RollRequest(seq++, 0U), &outbox);
+    }
+    Send(&actor, SubscribeRequest(seq++, &s_subscriber_queue), &outbox);
+    ASSERT_LE(2U, FrameEventsIn(outbox).size());
+    EXPECT_EQ((Sent{GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 1, 13, true}),
+              FrameEventsIn(outbox)[0]); /* caught up: frame 1 was 13 */
+
+    Send(&actor, EditRequest(seq++, 2U, 1U, {2U}), &outbox); /* ball 2: 5 to 2 */
+    ASSERT_EQ(GAME_OUT_REPLY, outbox.items[0].kind);
+    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+    EXPECT_EQ(16U, outbox.items[0].score);
+    ASSERT_LE(1U, FrameEventsIn(outbox).size());
+    EXPECT_EQ((Sent{GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 1, 10, true}),
+              FrameEventsIn(outbox)[0]); /* now: frame 1 is 10 */
 }

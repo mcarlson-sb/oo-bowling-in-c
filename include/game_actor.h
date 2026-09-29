@@ -27,14 +27,22 @@ typedef enum {
     GAME_MSG_ROLL,
     /* reply_to is the subscriber: it gets the reply, a catch-up of the complete frames, then
      * every frame change. */
-    GAME_MSG_SUBSCRIBE
+    GAME_MSG_SUBSCRIBE,
+    /* An edit (see RollEdit), with its new balls carried in the message: a queue copies the
+     * message, so nothing in it may point back into the sender's memory. A correction is an
+     * edit of one ball out and one in. */
+    GAME_MSG_EDIT
 } GameMessageKind;
 
 typedef struct {
     GameMessageKind kind;
     RequestSeq seq;
     void *reply_to;
-    Pins pins;
+    Pins pins;                         /* GAME_MSG_ROLL */
+    RollNumber first_roll;             /* GAME_MSG_EDIT */
+    uint8_t rolls_removed;
+    uint8_t new_count;
+    Pins new_pins[SCORER_MAX_BALLS];
 } GameMessage;
 
 typedef enum {
