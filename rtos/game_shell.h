@@ -2,7 +2,7 @@
 #define GAME_SHELL_H
 
 /* The RTOS shell: the one game actor, in a task of its own, fed by queues. Actors address each
- * other by id; the shell's routing table binds each id to the FreeRTOS queue of GameOutput its
+ * other by id; the shell's routing table binds each id to the FreeRTOS queue of Message its
  * actor reads, so a reply or an event goes to whoever is bound at its "to" when it is sent. */
 
 #include <stddef.h>
@@ -34,7 +34,7 @@ void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority
 /* After GameShell_Start, before the scheduler starts: outputs to `id` go to `queue`. */
 void GameShell_Bind(ActorId id, QueueHandle_t queue);
 
-BaseType_t GameShell_Send(const GameMessage *message, TickType_t wait);
+BaseType_t GameShell_Send(const Message *message, TickType_t wait);
 
 /* From the pinsetter's interrupt: a roll it counted. */
 void GameShell_PinsetterCountedFromIsr(Pins pins);

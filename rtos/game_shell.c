@@ -22,12 +22,12 @@ _Static_assert(GAME_SHELL_TASK_STACK_WORDS * sizeof(StackType_t) >= GAME_SHELL_T
 typedef struct {
     GameActor actor;
     GameOutbox outbox;
-    GameMessage message;
+    Message message;
     QueueHandle_t routes[GAME_SHELL_ACTORS];
     atomic_uint_least16_t outputs_dropped; /* written by the game task, read by any */
     QueueHandle_t commands;
     StaticQueue_t commands_queue;
-    uint8_t commands_storage[GAME_SHELL_COMMANDS * sizeof(GameMessage)];
+    uint8_t commands_storage[GAME_SHELL_COMMANDS * sizeof(Message)];
     QueueHandle_t pinsetter;
     StaticQueue_t pinsetter_queue;
     uint8_t pinsetter_storage[GAME_SHELL_PINSETTER_ROLLS * sizeof(Pins)];
@@ -47,9 +47,9 @@ static QueueHandle_t GameShell_Route(const GameShell *self, ActorId id)
     return (id < GAME_SHELL_ACTORS) ? self->routes[id] : NULL;
 }
 
-static bool GameShell_SendTo(const GameShell *self, const GameOutput *out)
+static bool GameShell_SendTo(const GameShell *self, const Message *out)
 {
-    const QueueHandle_t queue = GameShell_Route(self, out->to);
+    const QueueHandle_t queue = GameShell_Route(self, out->envelope.to);
     return (queue != NULL) && (xQueueSend(queue, out, 0U) == pdPASS);
 }
 
@@ -63,7 +63,7 @@ static void GameShell_Deliver(GameShell *self)
 }
 
 /* From the pinsetter, which has no id: it hears no reply. */
-static void GameEnvelope_FromThePinsetter(GameEnvelope *envelope, GameSelector selector)
+static void Envelope_FromThePinsetter(Envelope *envelope, Selector selector)
 {
     envelope->selector = selector;
     envelope->from = ACTOR_ID_NONE;
@@ -71,30 +71,30 @@ static void GameEnvelope_FromThePinsetter(GameEnvelope *envelope, GameSelector s
     envelope->seq = 0U;
 }
 
-static bool GameShell_TakePinsetterRoll(GameShell *self, GameMessage *message)
+static bool GameShell_TakePinsetterRoll(GameShell *self, Message *message)
 {
     Pins pins;
     if (xQueueReceive(self->pinsetter, &pins, 0U) != pdPASS) {
         return false;
     }
-    GameEnvelope_FromThePinsetter(&message->envelope, GAME_MSG_PINSETTER_ROLL);
+    Envelope_FromThePinsetter(&message->envelope, MSG_PINSETTER_ROLL);
     message->payload.roll.pins = pins;
     return true;
 }
 
-static bool GameShell_TakeLostReport(GameShell *self, GameMessage *message)
+static bool GameShell_TakeLostReport(GameShell *self, Message *message)
 {
     uint16_t lost;
     if (xQueueReceive(self->lost_report, &lost, 0U) != pdPASS) {
         return false;
     }
-    GameEnvelope_FromThePinsetter(&message->envelope, GAME_MSG_ROLLS_LOST);
+    Envelope_FromThePinsetter(&message->envelope, MSG_ROLLS_LOST);
     message->payload.rolls_lost.lost = lost;
     return true;
 }
 
 /* The pinsetter's rolls, then its count of those it lost, before a command waiting with them. */
-static bool GameShell_TakeMessage(GameShell *self, GameMessage *message)
+static bool GameShell_TakeMessage(GameShell *self, Message *message)
 {
     return GameShell_TakePinsetterRoll(self, message) ||
            GameShell_TakeLostReport(self, message) ||
@@ -122,12 +122,12 @@ static void GameShell_Task(void *parameter)
 void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority)
 {
     GameShell *self = &s_shell;
-    GameActor_Init(&self->actor, variant, rule);
+    GameActor_Init(&self->actor, GAME_SHELL_GAME_ID, variant, rule);
     for (uint8_t id = 0U; id < GAME_SHELL_ACTORS; id++) {
         self->routes[id] = NULL;
     }
     atomic_init(&self->outputs_dropped, 0U);
-    self->commands = xQueueCreateStatic(GAME_SHELL_COMMANDS, sizeof(GameMessage),
+    self->commands = xQueueCreateStatic(GAME_SHELL_COMMANDS, sizeof(Message),
                                         self->commands_storage, &self->commands_queue);
     self->pinsetter = xQueueCreateStatic(GAME_SHELL_PINSETTER_ROLLS, sizeof(Pins),
                                          self->pinsetter_storage, &self->pinsetter_queue);
@@ -163,7 +163,7 @@ size_t GameShell_TaskStackUsed(void)
     return PosixStack_DeepestUse();
 }
 
-BaseType_t GameShell_Send(const GameMessage *message, TickType_t wait)
+BaseType_t GameShell_Send(const Message *message, TickType_t wait)
 {
     const BaseType_t sent = xQueueSend(s_shell.commands, message, wait);
     if (sent == pdPASS) {

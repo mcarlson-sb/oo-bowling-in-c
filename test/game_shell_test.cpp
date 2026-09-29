@@ -29,12 +29,12 @@ constexpr TickType_t kPatience = pdMS_TO_TICKS(1000);
 struct OutputQueue {
     static constexpr UBaseType_t kMaxLength = 64U;
     StaticQueue_t queue;
-    uint8_t storage[kMaxLength * sizeof(GameOutput)];
+    uint8_t storage[kMaxLength * sizeof(Message)];
     QueueHandle_t handle;
 
     void Create(UBaseType_t length = kMaxLength)
     {
-        handle = xQueueCreateStatic(length, sizeof(GameOutput), storage, &queue);
+        handle = xQueueCreateStatic(length, sizeof(Message), storage, &queue);
     }
 };
 
@@ -119,10 +119,10 @@ void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
     ASSERT_TRUE(s_client_done.load(std::memory_order_acquire));
 }
 
-GameMessage RollRequest(RequestSeq seq, Pins pins)
+Message RollRequest(RequestSeq seq, Pins pins)
 {
-    GameMessage message = {};
-    message.envelope.selector = GAME_MSG_ROLL;
+    Message message = {};
+    message.envelope.selector = MSG_ROLL;
     message.envelope.seq = seq;
     message.envelope.from = kClient;
     message.envelope.to = GAME_SHELL_GAME_ID;
@@ -130,31 +130,31 @@ GameMessage RollRequest(RequestSeq seq, Pins pins)
     return message;
 }
 
-GameMessage SubscribeRequest(RequestSeq seq)
+Message SubscribeRequest(RequestSeq seq)
 {
-    GameMessage message = {};
-    message.envelope.selector = GAME_MSG_SUBSCRIBE;
+    Message message = {};
+    message.envelope.selector = MSG_SUBSCRIBE;
     message.envelope.seq = seq;
     message.envelope.from = kSubscriber;
     message.envelope.to = GAME_SHELL_GAME_ID;
     return message;
 }
 
-GameMessage ScoreQuery(RequestSeq seq)
+Message ScoreQuery(RequestSeq seq)
 {
-    GameMessage message = {};
-    message.envelope.selector = GAME_MSG_QUERY_SCORE;
+    Message message = {};
+    message.envelope.selector = MSG_QUERY_SCORE;
     message.envelope.seq = seq;
     message.envelope.from = kClient;
     message.envelope.to = GAME_SHELL_GAME_ID;
     return message;
 }
 
-GameMessage EditRequest(RequestSeq seq, RollNumber first, uint8_t removed,
+Message EditRequest(RequestSeq seq, RollNumber first, uint8_t removed,
                         std::initializer_list<Pins> new_pins)
 {
-    GameMessage message = {};
-    message.envelope.selector = GAME_MSG_EDIT;
+    Message message = {};
+    message.envelope.selector = MSG_EDIT;
     message.envelope.seq = seq;
     message.envelope.from = kClient;
     message.envelope.to = GAME_SHELL_GAME_ID;
@@ -168,43 +168,43 @@ GameMessage EditRequest(RequestSeq seq, RollNumber first, uint8_t removed,
 
 BaseType_t s_sent;
 BaseType_t s_received;
-GameOutput s_reply;
+Message s_reply;
 
 } // namespace
 
 TEST(GameShellTest, should_reply_on_the_callers_queue_to_a_roll_sent_to_the_game_task)
 {
     RunClient([] {
-        const GameMessage roll = RollRequest(7U, 3U);
+        const Message roll = RollRequest(7U, 3U);
         s_sent = GameShell_Send(&roll, 0U);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
     });
     ASSERT_EQ(pdPASS, s_sent);
     ASSERT_EQ(pdPASS, s_received);
-    EXPECT_EQ(GAME_OUT_REPLY, s_reply.kind);
-    EXPECT_EQ(7U, s_reply.payload.reply.seq);
+    EXPECT_EQ(MSG_REPLY, s_reply.envelope.selector);
+    EXPECT_EQ(7U, s_reply.envelope.seq);
     EXPECT_EQ(GAME_OK, s_reply.payload.reply.status);
 }
 
 namespace {
 
-GameOutput s_event;
+Message s_event;
 
 } // namespace
 
 TEST(GameShellTest, should_tell_a_subscriber_the_frame_the_pinsetters_rolls_complete)
 {
     RunClient([] {
-        const GameMessage subscribe = SubscribeRequest(1U);
+        const Message subscribe = SubscribeRequest(1U);
         s_sent = GameShell_Send(&subscribe, 0U);
-        GameOutput reply;
+        Message reply;
         (void)xQueueReceive(s_subscriber.handle, &reply, kPatience);
         FirePinsetter({3U, 4U});
         s_received = xQueueReceive(s_subscriber.handle, &s_event, kPatience);
     });
     ASSERT_EQ(pdPASS, s_sent);
     ASSERT_EQ(pdPASS, s_received);
-    EXPECT_EQ(GAME_OUT_FRAME_CHANGED, s_event.kind);
+    EXPECT_EQ(MSG_FRAME_CHANGED, s_event.envelope.selector);
     EXPECT_EQ(1U, s_event.payload.frame.frame_number);
     EXPECT_EQ(7U, s_event.payload.frame.frame_score);
     EXPECT_TRUE(s_event.payload.frame.frame_complete);
@@ -213,20 +213,20 @@ TEST(GameShellTest, should_tell_a_subscriber_the_frame_the_pinsetters_rolls_comp
 namespace {
 
 /* Every output the subscriber hears, until it has heard `kind` or gone quiet for kPatience. */
-std::vector<GameOutput> HearUntil(GameOutputKind kind)
+std::vector<Message> HearUntil(Selector kind)
 {
-    std::vector<GameOutput> heard;
-    GameOutput out;
+    std::vector<Message> heard;
+    Message out;
     while (xQueueReceive(s_subscriber.handle, &out, kPatience) == pdPASS) {
         heard.push_back(out);
-        if (out.kind == kind) {
+        if (out.envelope.selector == kind) {
             break;
         }
     }
     return heard;
 }
 
-std::vector<GameOutput> s_heard;
+std::vector<Message> s_heard;
 
 } // namespace
 
@@ -234,15 +234,15 @@ TEST(GameShellTest, should_count_a_roll_lost_to_the_pinsetters_full_queue_and_te
 {
     /* The interrupt outruns the game task: 33 rolls into a queue of 32. */
     RunClient([] {
-        const GameMessage subscribe = SubscribeRequest(1U);
+        const Message subscribe = SubscribeRequest(1U);
         s_sent = GameShell_Send(&subscribe, 0U);
-        GameOutput reply;
+        Message reply;
         (void)xQueueReceive(s_subscriber.handle, &reply, kPatience);
         FirePinsetter(33, 0U);
-        s_heard = HearUntil(GAME_OUT_ROLLS_LOST);
+        s_heard = HearUntil(MSG_ROLLS_LOST);
     });
     ASSERT_FALSE(s_heard.empty());
-    EXPECT_EQ(GAME_OUT_ROLLS_LOST, s_heard.back().kind);
+    EXPECT_EQ(MSG_ROLLS_LOST, s_heard.back().envelope.selector);
     EXPECT_EQ(1U, s_heard.back().payload.rolls_lost.lost);
 }
 
@@ -257,10 +257,10 @@ TEST(GameShellTest, should_drop_and_count_an_event_for_a_subscriber_whose_queue_
     /* The subscriber's queue has room for one, which its subscribe reply takes. */
     s_subscriber_queue_length = 1U;
     RunClient([] {
-        const GameMessage subscribe = SubscribeRequest(1U);
+        const Message subscribe = SubscribeRequest(1U);
         s_sent = GameShell_Send(&subscribe, 0U);
         FirePinsetter({3U, 4U}); /* completes frame 1: an event it has no room for */
-        const GameMessage query = ScoreQuery(2U);
+        const Message query = ScoreQuery(2U);
         (void)GameShell_Send(&query, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience); /* after the rolls */
         s_dropped = GameShell_OutputsDropped();
@@ -277,7 +277,7 @@ TEST(GameShellTest, should_play_the_pinsetters_waiting_rolls_before_an_edit_wait
      * ball 1 there, and 5 then 4 scores 9. Command first, it would find no ball 1. */
     RunClient(
         [] {
-            const GameMessage correction = EditRequest(1U, 1U, 1U, {5U});
+            const Message correction = EditRequest(1U, 1U, 1U, {5U});
             s_sent = GameShell_Send(&correction, 0U);
             FirePinsetter({3U, 4U});
             s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
@@ -291,7 +291,7 @@ TEST(GameShellTest, should_play_the_pinsetters_waiting_rolls_before_an_edit_wait
 
 namespace {
 
-std::vector<GameOutput> s_heard_held;
+std::vector<Message> s_heard_held;
 
 } // namespace
 
@@ -300,26 +300,26 @@ TEST(GameShellTest, should_hold_a_miscounted_roll_until_a_correction_lets_it_thr
     /* The pinsetter counted 5 when 2 fell, so its true 8 looks impossible: held, with the 3
      * after it. Correcting ball 1 to 2 lets both through: 2, 8, a spare, then 3, is 13. */
     RunClient([] {
-        const GameMessage subscribe = SubscribeRequest(1U);
+        const Message subscribe = SubscribeRequest(1U);
         s_sent = GameShell_Send(&subscribe, 0U);
-        GameOutput reply;
+        Message reply;
         (void)xQueueReceive(s_subscriber.handle, &reply, kPatience);
         FirePinsetter({5U, 8U, 3U});
-        s_heard_held = HearUntil(GAME_OUT_ROLL_HELD);
-        const GameMessage correction = EditRequest(2U, 1U, 1U, {2U});
+        s_heard_held = HearUntil(MSG_ROLL_HELD);
+        const Message correction = EditRequest(2U, 1U, 1U, {2U});
         (void)GameShell_Send(&correction, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
-        s_heard = HearUntil(GAME_OUT_FRAME_CHANGED);
+        s_heard = HearUntil(MSG_FRAME_CHANGED);
     });
     ASSERT_FALSE(s_heard_held.empty());
-    EXPECT_EQ(GAME_OUT_ROLL_HELD, s_heard_held.back().kind);
+    EXPECT_EQ(MSG_ROLL_HELD, s_heard_held.back().envelope.selector);
     EXPECT_EQ(8U, s_heard_held.back().payload.roll_held.pins);
     EXPECT_EQ(2U, s_heard_held.back().payload.roll_held.position);
     ASSERT_EQ(pdPASS, s_received);
     EXPECT_EQ(GAME_OK, s_reply.payload.reply.status);
     EXPECT_EQ(13U, s_reply.payload.reply.score);
     ASSERT_FALSE(s_heard.empty());
-    EXPECT_EQ(GAME_OUT_FRAME_CHANGED, s_heard.back().kind);
+    EXPECT_EQ(MSG_FRAME_CHANGED, s_heard.back().envelope.selector);
     EXPECT_EQ(1U, s_heard.back().payload.frame.frame_number);
     EXPECT_EQ(13U, s_heard.back().payload.frame.frame_score);
 }
@@ -337,16 +337,16 @@ TEST(GameShellStackTest, should_keep_the_game_task_within_its_stack_budget_throu
      * told to two subscribers. */
     RunClient([] {
         for (int i = 0; i < 12; i++) {
-            const GameMessage strike = RollRequest(static_cast<RequestSeq>(i + 1), 10U);
+            const Message strike = RollRequest(static_cast<RequestSeq>(i + 1), 10U);
             (void)GameShell_Send(&strike, kPatience);
             (void)xQueueReceive(s_replies.handle, &s_reply, kPatience);
         }
-        GameMessage subscribe = SubscribeRequest(20U);
+        Message subscribe = SubscribeRequest(20U);
         (void)GameShell_Send(&subscribe, kPatience);
         subscribe.envelope.from = kSecondSubscriber;
         (void)GameShell_Send(&subscribe, kPatience);
         FirePinsetter(13, 10U); /* held: the game is over */
-        const GameMessage every_ball_out = EditRequest(21U, 1U, 12U, {});
+        const Message every_ball_out = EditRequest(21U, 1U, 12U, {});
         (void)GameShell_Send(&every_ball_out, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
         s_stack_used = GameShell_TaskStackUsed();
@@ -361,26 +361,26 @@ TEST(GameShellTest, should_drop_and_count_an_output_to_an_id_nothing_is_bound_to
     /* A subscriber at id 5, which no queue is bound to: its subscribe reply has nowhere to go.
      * The game carries on, and the client's own reply still arrives. */
     RunClient([] {
-        GameMessage subscribe = SubscribeRequest(1U);
+        Message subscribe = SubscribeRequest(1U);
         subscribe.envelope.from = 5U;
         (void)GameShell_Send(&subscribe, kPatience);
-        const GameMessage query = ScoreQuery(2U);
+        const Message query = ScoreQuery(2U);
         (void)GameShell_Send(&query, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
         s_dropped = GameShell_OutputsDropped();
     });
     ASSERT_EQ(pdPASS, s_received);
-    EXPECT_EQ(2U, s_reply.payload.reply.seq);
+    EXPECT_EQ(2U, s_reply.envelope.seq);
     EXPECT_EQ(1U, s_dropped);
 }
 
 TEST(GameShellTest, should_drop_and_count_an_output_to_an_id_past_the_routing_table)
 {
     RunClient([] {
-        GameMessage subscribe = SubscribeRequest(1U);
+        Message subscribe = SubscribeRequest(1U);
         subscribe.envelope.from = 200U;
         (void)GameShell_Send(&subscribe, kPatience);
-        const GameMessage query = ScoreQuery(2U);
+        const Message query = ScoreQuery(2U);
         (void)GameShell_Send(&query, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
         s_dropped = GameShell_OutputsDropped();
