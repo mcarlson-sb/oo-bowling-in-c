@@ -105,3 +105,13 @@ TEST(ScoreboardTest, should_ignore_a_frame_number_outside_the_frames_it_keeps)
         Send(&board, {FrameChanged(0, 5, true), FrameChanged(11, 5, true), Query(1U)});
     EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
 }
+
+TEST(ScoreboardTest, should_take_a_frames_new_score_and_its_reopening_as_the_game_tells_them)
+{
+    /* An edit's events: every frame again, with complete = false for one it reopened. */
+    Scoreboard board = MakeBoard();
+    Outbox outbox = Send(&board, {FrameChanged(1, 7, true), FrameChanged(1, 9, true), Query(1U)});
+    EXPECT_EQ(9U, outbox.items[0].payload.reply.score);
+    outbox = Send(&board, {FrameChanged(1, 0, false), Query(2U)});
+    EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
+}
