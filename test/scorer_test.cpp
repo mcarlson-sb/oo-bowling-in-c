@@ -589,3 +589,16 @@ TEST(CandlepinTest, A21_should_a_correction_that_makes_frame_1_twelve_pins_is_re
     EXPECT_EQ(0U, events.count);
     EXPECT_EQ(22U, Scorer_Score(&scorer));
 }
+
+TEST(CandlepinTest, A22_should_inserting_a_31st_ball_is_rejected_and_changes_nothing)
+{
+    Scorer scorer = MakeCandlepin();
+    for (int frame = 0; frame < 10; frame++) {
+        RollAll(&scorer, {3U, 3U, 4U});
+    }
+    const std::vector<Pins> one_more = {0U};
+    const RollEdit edit = Replace(1U, 0U, one_more);
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_TOO_MANY_ROLLS, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ(100U, Scorer_Score(&scorer));
+}
