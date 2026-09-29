@@ -607,3 +607,26 @@ The phase 2 brief describes today's policy as discarding the oldest roll. The co
 newest: `Pinsetter_Post` posts nothing, and counts the roll lost, when the mailbox is full
 (`include/pinsetter.h`, `src/pinsetter_ring.h`). `Pinsetter_DiscardOldest` is a scorer's command,
 to throw away a waiting roll that turned out to be a glitch; it isn't the full policy.
+
+### A correction to the mutation figures: too many workers hid survivors
+
+Every mutation run until now used one Mull worker per core, 24. With that many test binaries
+running at once, they slow each other past Mull's 10-second timeout, and Mull reports a mutant
+it couldn't finish as timed out, which it scores as killed. The same binary, with the new game
+actor's 115 mutants, gave 16 killed, 96 timed out and 3 survived at 24 workers, and 94 killed, 3
+timed out and 18 survived at 4. So the scores above, from 24-worker runs, may count some
+survivors as caught. `tools/mutation.sh` now uses 4 workers (`MULL_WORKERS` overrides it).
+
+Measured again at 4 workers, at `f4e69fd` (phase 1's code and the game actor):
+
+| Mode | Mutants | Killed | Timed out | Survived | Score | Time |
+|---|---|---|---|---|---|---|
+| debug | 518 | 472 | 15 | 31 | 94.0% | 7 m 20 s |
+| release | 512 | 469 | 16 | 27 | 94.7% | 8 m 16 s |
+
+The survivors are the classes above, and 5 in the game actor: 4 equivalent (a dead initial
+value, `NULL` or a pointer when there are no new balls, and two in the catch-up's bound, which
+`Scorer_Frame` now answers past the frames started), and one read past a full held list, which
+the UBSan build traps on but Mull's build doesn't. Also found: Mull's `diff` mode skips files
+new since the ref altogether, so it reported no mutants for the whole new actor; a new module
+is checked with `tools/mutation.sh only <regex>`.
