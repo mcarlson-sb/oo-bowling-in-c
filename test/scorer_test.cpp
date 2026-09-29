@@ -527,3 +527,12 @@ TEST(CandlepinTest, A15_should_a_spare_ends_frame_1_after_two_balls_with_a_strik
     EXPECT_TRUE(first.complete);
     EXPECT_EQ(20U, first.score);
 }
+
+TEST(CandlepinTest, A16_should_a_ball_after_thirty_zeros_is_rejected_the_game_is_over)
+{
+    Scorer scorer = MakeCandlepin();
+    RollMany(&scorer, 30, 0U);
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_GAME_OVER, Scorer_Roll(&scorer, 0U, &events));
+    EXPECT_EQ(0U, events.count);
+}
