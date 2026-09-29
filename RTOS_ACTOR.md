@@ -914,3 +914,144 @@ instrumentation they take the test binary past its timeout.
 - The target stage (the QEMU plan above) is still deferred.
 
 **Stop.** Phase 2 ends here, as the brief asks.
+
+## Phase 3: polymorphism by id, and late binding through messages
+
+### Interim report, after step 4: the rules arrive in a message
+
+**What changed**, in the brief's order:
+
+1. **An envelope and a tagged payload.** Every message is an `Envelope` (selector, from, to, seq)
+   and a payload union holding only its selector's fields.
+2. **Actor ids and the routing table.** Senders and the game address `ActorId`s, one byte each.
+   The shell's routing table binds each id to a kind and a mailbox, and no queue handle crosses
+   into `src/`. The game actor holds no pointers at all. An output to an unbound id, or to one
+   past the table, is dropped and counted. Before, the first stopped the program in FreeRTOS's
+   `configASSERT`, and the second read past the table.
+3. **Delivery by kind.** Requests, replies and events share one protocol, `include/message.h`:
+   - Sending posts to the mailbox at the message's `to`, a table lookup with no switch.
+   - The shell's task then dispatches on the `ActorKind` bound there, in
+     `GameShell_Dispatch`'s switch. That's the single late-binding point, and every target is a
+     direct call the call graph sees.
+   - A selector a kind doesn't answer gets `MSG_NOT_UNDERSTOOD` back, with its seq, and is
+     counted. A NOT_UNDERSTOOD itself, or a message from no one, is counted but never
+     answered, or two kinds that don't understand each other would echo forever.
+   - What the game understands is data too: a designated-initializer table maps each selector to
+     the game's own request enum, and a selector it doesn't list reads as "doesn't understand".
+4. **The rules as data, in `NEW_GAME`:**
+   - The scorer plays whatever `ScorerRules` it is started with: frames, balls per frame, pins
+     per rack, bonus balls by clearing ball, and, as you decided, the count rule as one field
+     (pins still standing, off a full rack, that count as a clear). `ScorerVariant`, `CountRule`
+     and the scorer's compiled-in table are gone.
+   - The ten-pin, no-tap and candlepin presets live with the senders, in `test/rules_presets.h`.
+   - The game starts with no game. Before one, anything but a NEW_GAME is answered "no game",
+     except the pinsetter's rolls, which are held for the first game. A NEW_GAME mid-game is
+     refused.
+   - After a game, a NEW_GAME starts the next. The rolls held in the meantime are played into
+     it, as you decided, and subscribers hear the old game's frames reopened.
+
+**The hypothesis so far.**
+
+| Claim | Evidence | So far |
+|---|---|---|
+| Once the rules arrive in a message, a variant needs no code | A 5-frame game, and a 3-ball game at a rack of 5, were never compiled in. Both pass 5000 random games each, checked after every ball against a new reference sharing no code with the scorer, with the scorer untouched. The reference agrees with the scorer on ten-pin and candlepin, which two other references check. | **Held** |
+| The lifecycle becomes an explicit state machine because the feature forces it | Before NEW_GAME, the actor played on a scorer that was never started. `GameLifecycle` (`GAME_AWAITING_RULES`, `GAME_IN_PLAY`) is what NEW_GAME forced. "Over" stayed the scorer's to say: an edit after the last ball can reopen a game, and a copy in the state would go stale. | **Held**, with two states, not three |
+| The actor core holds no pointers, and no queue handle crosses into `src/` | `GameActor` is ids, counts and a `Scorer` value. The shell owns every `QueueHandle_t`. | **Held** |
+| The tagged layout shrinks what each queue copies | It did, until the protocol was unified (below). | **Partly failed**; see the table |
+
+**What each queue copies**, in bytes, on both toolchains:
+
+| | Phase 2 | Tagged (step 1) | Ids (step 2) | One protocol (step 3) |
+|---|---|---|---|---|
+| A request (`GameMessage`, then `Message`) | 56 | 56 | 44 | 44 |
+| A reply or event (`GameOutput`, then `Message`) | 40 | 32 | 20 | **44** |
+| The game's outbox | 1728 | 1384 | 864 | **1896** |
+
+- **Tagging didn't shrink the request.** The edit's payload is its 30 new balls inline, so a
+  queue can copy it, and a union is as big as its largest member.
+- **Dropping the pointer did most of the shrinking.** It took 12 bytes off a request and 12 off
+  an output.
+- **One message type for every kind then cost the outputs.** A reply or an event is a
+  `Message`, sized by the edit it will never carry: 24 bytes more per copy than step 2. That's
+  the price of any kind being sendable any selector. The rules in NEW_GAME cost nothing: their
+  payload is 7 bytes. So the hypothesis is refuted for outputs.
+- **To win the outputs back,** an edit's inline balls would have to shrink, for example a cap
+  on how many balls one edit replaces. That would be a behavior change, and it's yours to
+  decide.
+
+**What this lost so far.**
+- **The rules' `_Static_assert`s are now runtime validation.** `Scorer_Start` refuses rules
+  with:
+  - more balls than it holds, no frames or more than ten, or no balls a frame or more than
+    three;
+  - a bonus for a ball past the frame's own;
+  - a rack of no pins or more than 20, or a clear that every ball makes.
+
+  Two of those were real hazards found by the tests: 11 frames within the ball limit walked
+  past the lane's frames, and 0 frames wrapped the longest-game sum round to 1. The one static
+  assert left bounds the scorer's own limits: 10 frames × 30 balls × 20 pins fits a `Score`.
+- **The variants were a closed set checked at compile time. The rules are now open,** so they
+  have a hazard surface: rules the scorer can't play (refused), messages before a game
+  (answered), NEW_GAMEs mid-game (refused), and selectors a kind doesn't understand
+  (NOT_UNDERSTOOD).
+- **A caller-supplied counting rule is still lost,** as phase 1 recorded. The count rule is one
+  field, and doesn't cover kay-oo's one-pin-left rule.
+
+**Recorded disagreements with the constitution.**
+- **Duplicate Switch Case.** Each kind switches on the protocol's selector, and the
+  constitution's smell catalog calls the same discriminant switched in several places Duplicate
+  Switch Case. Its remedy is a function-pointer table. Here Power of Ten wins: the selector
+  switch is per kind by design, and the one switch on the kind is the shell's.
+- **ENG-3.1's complexity limit shaped the code.** The game's request switch is at cyclomatic
+  complexity 10, the limit. NEW_GAME, the lifecycle's own message, is taken before the switch,
+  where one more `case` would have gone to 11. What the game understands became a table for
+  the same reason.
+
+**Metrics** (phase 2 → now):
+
+| | Phase 2 | Now |
+|---|---|---|
+| Tests, host / with the POSIX port | 82 / 90 | 101 / 111 |
+| Largest cyclomatic complexity | 9, `GameActor_Handle` | 10, `GameActor_Receive` (limit 10); `GameActor_Handle` 4 |
+| Stack contract, game task, release / debug | 3952 / 4224 | 3936 / 4320 (budget 4608) |
+| Release line coverage | 99.6% | 99.0% |
+
+The misses:
+- **The shell's dispatch of a message to a kind it doesn't run.** It's unreachable, because a
+  message is only posted to the mailbox at its own `to`.
+- **The scorer's unreachable lane phase.**
+- **Two game paths:** a selector past the protocol's end, and a lost-roll report before any
+  game. Both are now tested (below), which brings line coverage back up.
+
+**Mutation feedback at this stop:** debug had 402 mutants, of which 384 were killed and 18 survived, a score of 95.5%; release had
+399, of which 386 were killed and 13 survived, 96.7%. The runs took 11 m 13 s and 10 m 34 s. The
+debug run was taken before the fixes below, and the release run after them. Of the debug
+survivors:
+- **Nine are phase 2's known classes:** equivalent mutants, and undefined behavior only a
+  sanitizer catches.
+- **Two new ones are equivalent:** the reopening loop's bound, which `Scorer_Frame` answers
+  past the frames started, and a `>` for a `>=` when taking a maximum.
+- **Two were dead code, now deleted:** the "no game" reason recorded for the first roll held
+  before a game. Nobody can subscribe before a game to hear it, and the NEW_GAME's replay
+  records a fresh reason if it refuses one.
+- **Four were real gaps, now pinned by tests** that fail against their mutants:
+  - a selector exactly at the protocol's end. Its read one past the game's table only traps
+    under UBSan; elsewhere the table's neighbour happens to agree, so this mutant still
+    survives the plain builds;
+  - the pinsetter's lost count from before any game;
+  - the last ball's own fill balls in the longest-game sum;
+  - a rack of exactly the limit, 20 pins, being accepted.
+- **One is left unpinned on purpose:** an event's `seq`, set to 0 so an event carries no stale
+  bytes. The protocol gives events no seq to check.
+
+The 5000-game reference runs are left out of mutation runs, like the edit properties, because
+they take the binary past Mull's timeout.
+
+**Decisions still to bring you**, from the brief, at steps 5 and after:
+- one actor per task versus several sharing a task, once the cost of a task per actor is
+  measured;
+- the full-queue policy for the new kinds.
+
+Also, the output size above: whether to cap an edit's inline balls.
+
+**Stop.** Step 4 ends here, for your review.
