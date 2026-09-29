@@ -50,6 +50,14 @@ static void GameActor_Roll(GameActor *self, const GameMessage *message, GameOutb
     GameActor_Publish(self, &events, outbox);
 }
 
+static void GameActor_PinsetterRoll(GameActor *self, const GameMessage *message,
+                                    GameOutbox *outbox)
+{
+    FrameEvents events;
+    (void)Scorer_Roll(&self->scorer, message->pins, &events);
+    GameActor_Publish(self, &events, outbox);
+}
+
 static void GameActor_Edit(GameActor *self, const GameMessage *message, GameOutbox *outbox)
 {
     const RollEdit edit = { message->first_roll, message->rolls_removed,
@@ -95,6 +103,9 @@ void GameActor_Handle(GameActor *self, const GameMessage *message, GameOutbox *o
         break;
     case GAME_MSG_EDIT:
         GameActor_Edit(self, message, outbox);
+        break;
+    case GAME_MSG_PINSETTER_ROLL:
+        GameActor_PinsetterRoll(self, message, outbox);
         break;
     case GAME_MSG_ROLL:
     default:

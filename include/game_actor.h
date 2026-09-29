@@ -31,14 +31,16 @@ typedef enum {
     /* An edit (see RollEdit), with its new balls carried in the message: a queue copies the
      * message, so nothing in it may point back into the sender's memory. A correction is an
      * edit of one ball out and one in. */
-    GAME_MSG_EDIT
+    GAME_MSG_EDIT,
+    /* A roll the pinsetter counted, from its interrupt: no reply_to, and no reply. */
+    GAME_MSG_PINSETTER_ROLL
 } GameMessageKind;
 
 typedef struct {
     GameMessageKind kind;
     RequestSeq seq;
     void *reply_to;
-    Pins pins;                         /* GAME_MSG_ROLL */
+    Pins pins;                         /* GAME_MSG_ROLL, GAME_MSG_PINSETTER_ROLL */
     RollNumber first_roll;             /* GAME_MSG_EDIT */
     uint8_t rolls_removed;
     uint8_t new_count;

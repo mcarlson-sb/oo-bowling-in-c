@@ -187,3 +187,30 @@ TEST(GameActorTest, A23_should_tell_a_candlepin_subscriber_frame_1_changed_from_
     EXPECT_EQ((Sent{GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 1, 10, true}),
               FrameEventsIn(outbox)[0]); /* now: frame 1 is 10 */
 }
+
+/* ---- The pinsetter's rolls: no reply, since an interrupt has nowhere to hear one -------- */
+
+namespace {
+
+GameMessage PinsetterRoll(Pins pins)
+{
+    GameMessage message = {};
+    message.kind = GAME_MSG_PINSETTER_ROLL;
+    message.pins = pins;
+    return message;
+}
+
+} // namespace
+
+TEST(GameActorPinsetterTest, should_roll_a_pinsetter_roll_into_the_game_and_tell_the_subscribers)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(1U, &s_subscriber_queue), &outbox);
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    EXPECT_EQ(0U, outbox.count); /* frame 1 isn't complete yet, and there's no reply */
+    Send(&actor, PinsetterRoll(4U), &outbox);
+    EXPECT_EQ((std::vector<Sent>{{GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 1, 7, true}}),
+              FrameEventsIn(outbox));
+    EXPECT_EQ(1U, outbox.count);
+}
