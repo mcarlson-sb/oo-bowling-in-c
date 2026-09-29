@@ -34,8 +34,16 @@ static ScoreboardRequest Scoreboard_RequestOf(const Message *message)
     return k_scoreboard_protocol[selector];
 }
 
+static bool FrameEvent_IsOfAFrameKept(const FrameEvent *frame)
+{
+    return (frame->frame_number >= 1U) && (frame->frame_number <= SCORER_MAX_FRAMES);
+}
+
 static void Scoreboard_Hear(Scoreboard *self, const FrameEvent *frame)
 {
+    if (!FrameEvent_IsOfAFrameKept(frame)) {
+        return;
+    }
     const uint8_t index = (uint8_t)(frame->frame_number - 1U);
     self->scores[index] = frame->frame_score;
     self->complete[index] = frame->frame_complete;

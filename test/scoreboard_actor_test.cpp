@@ -96,3 +96,12 @@ TEST(ScoreboardTest, should_take_the_reply_to_its_subscription_in_silence)
     EXPECT_EQ(0U, outbox.count);
     EXPECT_EQ(0U, board.not_understood);
 }
+
+TEST(ScoreboardTest, should_ignore_a_frame_number_outside_the_frames_it_keeps)
+{
+    /* The frame number is a byte any sender fills in. */
+    Scoreboard board = MakeBoard();
+    const Outbox outbox =
+        Send(&board, {FrameChanged(0, 5, true), FrameChanged(11, 5, true), Query(1U)});
+    EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
+}
