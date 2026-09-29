@@ -398,7 +398,8 @@ static GameStatus Scorer_ReplayEdited(const Scorer *self, const RollEdit *edit, 
     Scorer_InitWithRule(edited, self->variant, self->rule);
     const uint8_t count = (uint8_t)RollEdit_BallsAfter(edit, self->ball_count);
     for (uint8_t i = 0U; i < count; i++) {
-        const GameStatus status = Scorer_Roll(edited, RollEdit_Ball(edit, self->balls, i), &ignored);
+        const Pins pins = RollEdit_Ball(edit, self->balls, i);
+        const GameStatus status = Scorer_Roll(edited, pins, &ignored);
         if (status != GAME_OK) {
             return status;
         }
