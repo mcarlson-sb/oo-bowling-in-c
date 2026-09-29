@@ -404,3 +404,13 @@ TEST(CandlepinTest, A02_should_twelve_strikes_score_300_with_the_game_over_after
     EXPECT_TRUE(Scorer_IsOver(&scorer));
     EXPECT_EQ(300U, Scorer_Score(&scorer));
 }
+
+TEST(CandlepinTest, A03_should_every_frame_3_3_4_scores_100_ten_ten_boxes)
+{
+    Scorer scorer = MakeCandlepin();
+    for (int frame = 0; frame < 10; frame++) {
+        RollAll(&scorer, {3U, 3U, 4U});
+    }
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+    EXPECT_EQ(100U, Scorer_Score(&scorer));
+}
