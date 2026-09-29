@@ -110,3 +110,14 @@ TEST(RunningAverageTest, should_start_empty_whatever_memory_it_is_given)
     EXPECT_EQ(8U, outbox.items[0].payload.reply.score); /* one frame: nothing left over */
     EXPECT_EQ(0U, average.not_understood);
 }
+
+TEST(RunningAverageTest, should_say_not_understood_from_its_own_id)
+{
+    RunningAverage average = MakeAverage();
+    Message roll = {};
+    roll.envelope.selector = MSG_ROLL;
+    roll.envelope.from = kAsker;
+    roll.envelope.to = kAverage;
+    const Outbox outbox = Send(&average, {roll});
+    EXPECT_EQ(kAverage, outbox.items[0].envelope.from);
+}

@@ -138,3 +138,14 @@ TEST(ScoreboardTest, should_keep_the_last_frame_the_game_has)
     const Outbox outbox = Send(&board, {FrameChanged(10, 30, true), Query(1U)});
     EXPECT_EQ(30U, outbox.items[0].payload.reply.score);
 }
+
+TEST(ScoreboardTest, should_say_not_understood_from_its_own_id)
+{
+    Scoreboard board = MakeBoard();
+    Message roll = {};
+    roll.envelope.selector = MSG_ROLL;
+    roll.envelope.from = kAsker;
+    roll.envelope.to = kBoard;
+    const Outbox outbox = Send(&board, {roll});
+    EXPECT_EQ(kBoard, outbox.items[0].envelope.from);
+}
