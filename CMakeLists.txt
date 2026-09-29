@@ -130,6 +130,7 @@ if(OO_C_RTOS)
     add_library(rtos_shell STATIC
         rtos/game_shell.c
         rtos/game_shell_isr.c
+        rtos/posix_stack.c
     )
     target_include_directories(rtos_shell PUBLIC rtos)
     target_compile_options(rtos_shell PRIVATE ${OO_C_WARNINGS})

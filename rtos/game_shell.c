@@ -5,12 +5,19 @@
 #include "task.h"
 
 #include "game_shell_ports.h"
+#include "posix_stack.h"
 
 #define GAME_SHELL_COMMANDS 4U
 #define GAME_SHELL_PINSETTER_ROLLS 32U
 
+/* The POSIX port sizes the task's pthread stack from this, and a pthread stack is at least
+ * PTHREAD_STACK_MIN, so the port's minimum. */
+#define GAME_SHELL_TASK_STACK_WORDS configMINIMAL_STACK_SIZE
+
 _Static_assert(GAME_SHELL_PINSETTER_ROLLS >= SCORER_MAX_BALLS,
                "the pinsetter's queue holds a whole game of rolls");
+_Static_assert(GAME_SHELL_TASK_STACK_WORDS * sizeof(StackType_t) >= GAME_SHELL_TASK_STACK_BUDGET,
+               "the game task's stack holds its budget");
 
 typedef struct {
     GameActor actor;
@@ -29,7 +36,7 @@ typedef struct {
     GameShellPorts ports;
     TaskHandle_t task;
     StaticTask_t task_buffer;
-    StackType_t stack[configMINIMAL_STACK_SIZE];
+    StackType_t stack[GAME_SHELL_TASK_STACK_WORDS];
 } GameShell;
 
 static GameShell s_shell;
@@ -85,6 +92,7 @@ static void GameShell_HandleEverythingWaiting(GameShell *self)
 static void GameShell_Task(void *parameter)
 {
     GameShell *self = (GameShell *)parameter;
+    PosixStack_Paint();
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         GameShell_HandleEverythingWaiting(self);
@@ -103,7 +111,7 @@ void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority
     self->lost_report = xQueueCreateStatic(1U, sizeof(uint16_t), self->lost_report_storage,
                                            &self->lost_report_queue);
     /* FUNCTION POINTER EXEMPTION: FreeRTOS takes a task's entry function by address. */
-    self->task = xTaskCreateStatic(&GameShell_Task, "game", configMINIMAL_STACK_SIZE, self,
+    self->task = xTaskCreateStatic(&GameShell_Task, "game", GAME_SHELL_TASK_STACK_WORDS, self,
                                    priority, self->stack, &self->task_buffer);
     self->ports.pinsetter = self->pinsetter;
     self->ports.lost_report = self->lost_report;
@@ -119,6 +127,11 @@ const GameShellPorts *GameShell_Ports(void)
 uint16_t GameShell_OutputsDropped(void)
 {
     return (uint16_t)atomic_load_explicit(&s_shell.outputs_dropped, memory_order_relaxed);
+}
+
+size_t GameShell_TaskStackUsed(void)
+{
+    return PosixStack_DeepestUse();
 }
 
 BaseType_t GameShell_Send(const GameMessage *message, TickType_t wait)

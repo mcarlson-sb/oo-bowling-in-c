@@ -40,6 +40,7 @@ struct OutputQueue {
 
 OutputQueue s_replies;
 OutputQueue s_subscriber;
+OutputQueue s_second_subscriber;
 UBaseType_t s_subscriber_queue_length = OutputQueue::kMaxLength;
 
 /* The pinsetter's interrupt, simulated by the highest-priority task: when fired, it counts its
@@ -97,6 +98,7 @@ void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
     GameShell_Start(SCORER_TEN_PIN, SCORER_COUNT_PINS_DOWN, kGamePriority);
     s_replies.Create();
     s_subscriber.Create(s_subscriber_queue_length);
+    s_second_subscriber.Create();
     s_interrupt = xTaskCreateStatic(&InterruptTask, "interrupt", configMINIMAL_STACK_SIZE,
                                     nullptr, kInterruptPriority, s_interrupt_stack,
                                     &s_interrupt_task);
@@ -308,4 +310,36 @@ TEST(GameShellTest, should_hold_a_miscounted_roll_until_a_correction_lets_it_thr
     EXPECT_EQ(GAME_OUT_FRAME_CHANGED, s_heard.back().kind);
     EXPECT_EQ(1U, s_heard.back().frame.frame_number);
     EXPECT_EQ(13U, s_heard.back().frame.frame_score);
+}
+
+namespace {
+
+size_t s_stack_used;
+
+} // namespace
+
+TEST(GameShellStackTest, should_keep_the_game_task_within_its_stack_budget_through_the_worst_case)
+{
+    /* The painted stack, the cross-check on the static call graph: the outbox's worst case, an
+     * edit that reopens every frame and lets through held rolls that complete them all again,
+     * told to two subscribers. */
+    RunClient([] {
+        for (int i = 0; i < 12; i++) {
+            const GameMessage strike = RollRequest(static_cast<RequestSeq>(i + 1), 10U);
+            (void)GameShell_Send(&strike, kPatience);
+            (void)xQueueReceive(s_replies.handle, &s_reply, kPatience);
+        }
+        GameMessage subscribe = SubscribeRequest(20U);
+        (void)GameShell_Send(&subscribe, kPatience);
+        subscribe.reply_to = s_second_subscriber.handle;
+        (void)GameShell_Send(&subscribe, kPatience);
+        FirePinsetter(13, 10U); /* held: the game is over */
+        const GameMessage every_ball_out = EditRequest(21U, 1U, 12U, {});
+        (void)GameShell_Send(&every_ball_out, kPatience);
+        s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
+        s_stack_used = GameShell_TaskStackUsed();
+    });
+    ASSERT_EQ(pdPASS, s_received);
+    EXPECT_EQ(GAME_OK, s_reply.status);
+    EXPECT_LE(s_stack_used, static_cast<size_t>(GAME_SHELL_TASK_STACK_BUDGET));
 }
