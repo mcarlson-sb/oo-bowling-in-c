@@ -24,7 +24,10 @@ extern "C" {
 typedef uint16_t RequestSeq;
 
 typedef enum {
-    GAME_MSG_ROLL
+    GAME_MSG_ROLL,
+    /* reply_to is the subscriber: it gets the reply, a catch-up of the complete frames, then
+     * every frame change. */
+    GAME_MSG_SUBSCRIBE
 } GameMessageKind;
 
 typedef struct {
@@ -35,7 +38,8 @@ typedef struct {
 } GameMessage;
 
 typedef enum {
-    GAME_OUT_REPLY
+    GAME_OUT_REPLY,        /* seq, status, score */
+    GAME_OUT_FRAME_CHANGED /* frame */
 } GameOutputKind;
 
 typedef struct {
@@ -44,9 +48,17 @@ typedef struct {
     RequestSeq seq;
     GameStatus status;
     Score score;
+    FrameEvent frame;
 } GameOutput;
 
-#define GAME_OUTBOX_CAPACITY 1U
+#define GAME_MAX_SUBSCRIBERS 2U
+
+/* The most events one message can cause, for each subscriber: an edit's frames, and the frames
+ * the rolls it lets through complete, and a notice or two. */
+#define GAME_EVENTS_PER_MESSAGE ((2U * SCORER_MAX_EVENTS) + 2U)
+
+/* A reply, and each subscriber's events. */
+#define GAME_OUTBOX_CAPACITY (1U + (GAME_MAX_SUBSCRIBERS * GAME_EVENTS_PER_MESSAGE))
 
 /* What one message sent: replies and events, in the order they were sent. */
 typedef struct {
@@ -56,6 +68,8 @@ typedef struct {
 
 typedef struct {
     Scorer scorer;
+    void *subscribers[GAME_MAX_SUBSCRIBERS];
+    uint8_t subscriber_count;
 } GameActor;
 
 void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule);

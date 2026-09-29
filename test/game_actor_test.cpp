@@ -47,3 +47,73 @@ TEST(GameActorTest, should_reply_to_a_roll_with_its_sequence_number_status_and_s
     EXPECT_EQ(GAME_OK, reply.status);
     EXPECT_EQ(7U, reply.score);
 }
+
+/* ---- Subscribers: a catch-up of the frames so far, then every change -------------------- */
+
+namespace {
+
+int s_subscriber_queue;
+
+GameMessage SubscribeRequest(RequestSeq seq, void *subscriber)
+{
+    GameMessage message = {};
+    message.kind = GAME_MSG_SUBSCRIBE;
+    message.seq = seq;
+    message.reply_to = subscriber;
+    return message;
+}
+
+struct Sent {
+    GameOutputKind kind;
+    void *to;
+    int frame;
+    int score;
+    bool complete;
+    bool operator==(const Sent &other) const
+    {
+        return (kind == other.kind) && (to == other.to) && (frame == other.frame) &&
+               (score == other.score) && (complete == other.complete);
+    }
+};
+
+/* Frame events only; replies are checked on their own. */
+std::vector<Sent> FrameEventsIn(const GameOutbox &outbox)
+{
+    std::vector<Sent> sent;
+    for (uint8_t i = 0U; i < outbox.count; i++) {
+        const GameOutput &out = outbox.items[i];
+        if (out.kind == GAME_OUT_FRAME_CHANGED) {
+            sent.push_back({out.kind, out.to, out.frame.frame_number, out.frame.frame_score,
+                            out.frame.frame_complete});
+        }
+    }
+    return sent;
+}
+
+void Send(GameActor *actor, const GameMessage &message, GameOutbox *outbox)
+{
+    GameActor_Handle(actor, &message, outbox);
+}
+
+} // namespace
+
+TEST(GameActorTest, should_catch_a_new_subscriber_up_on_the_complete_frames_then_tell_it_changes)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Send(&actor, RollRequest(1U, 3U), &outbox);
+    Send(&actor, RollRequest(2U, 4U), &outbox); /* frame 1: 7 */
+
+    Send(&actor, SubscribeRequest(3U, &s_subscriber_queue), &outbox);
+    ASSERT_LE(1U, outbox.count);
+    EXPECT_EQ(GAME_OUT_REPLY, outbox.items[0].kind); /* the reply comes first */
+    EXPECT_EQ(3U, outbox.items[0].seq);
+    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+    const Sent caught_up = {GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 1, 7, true};
+    EXPECT_EQ((std::vector<Sent>{caught_up}), FrameEventsIn(outbox));
+
+    Send(&actor, RollRequest(4U, 5U), &outbox);
+    Send(&actor, RollRequest(5U, 2U), &outbox); /* frame 2: 7 */
+    const Sent live = {GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 2, 7, true};
+    EXPECT_EQ((std::vector<Sent>{live}), FrameEventsIn(outbox));
+}
