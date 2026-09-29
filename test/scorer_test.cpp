@@ -3,7 +3,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <initializer_list>
+#include <map>
 #include <random>
 #include <vector>
 
@@ -766,4 +769,122 @@ TEST(NoTapScorerTest, should_recount_every_replayed_ball_from_the_pins_that_fell
     FrameEvents events;
     EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
     EXPECT_EQ(13U, Scorer_Score(&scorer)); /* spare 1 + 9, plus its bonus 3 */
+}
+
+/* ---- Edits against fresh games (ported from the facade's property tests) ----------------- */
+
+namespace {
+
+/* Frame number to score, for the complete frames only. */
+std::map<int, int> CompleteFrames(const Scorer &scorer)
+{
+    std::map<int, int> frames;
+    for (uint8_t index = 0U; index < SCORER_MAX_FRAMES; index++) {
+        const ScorerFrame frame = Scorer_Frame(&scorer, index);
+        if (frame.complete) {
+            frames[index + 1] = frame.score;
+        }
+    }
+    return frames;
+}
+
+/* What a listener that heard every event knows: the frames before, updated by each event. */
+std::map<int, int> AfterEvents(std::map<int, int> frames, const FrameEvents &events)
+{
+    for (const Event &event : EventsOf(events)) {
+        if (event.complete) {
+            frames[event.frame] = event.score;
+        } else {
+            frames.erase(event.frame);
+        }
+    }
+    return frames;
+}
+
+/* Random replacements, insertions and deletions in random games. Accepted, the game and what its
+ * events tell are those of a fresh game of the edited balls; rejected, nothing changes and
+ * nothing is told. An edit that starts past the last ball is refused, even where a fresh game
+ * would take the balls: adding balls is a roll. */
+void CheckEditsAgainstFreshGames(ScorerVariant variant, CountRule rule, unsigned seed)
+{
+    std::mt19937 random(seed);
+    int accepted_count = 0;
+    int rejected_count = 0;
+    for (int trial = 0; trial < 3000; trial++) {
+        Scorer scorer;
+        Scorer_InitWithRule(&scorer, variant, rule);
+        std::vector<Pins> balls;
+        const int length = 1 + static_cast<int>(random() % SCORER_MAX_BALLS);
+        for (int tries = 0; (static_cast<int>(balls.size()) < length) && (tries < 200); tries++) {
+            FrameEvents ignored;
+            const Pins pins = static_cast<Pins>(random() % 11U);
+            if (Scorer_Roll(&scorer, pins, &ignored) == GAME_OK) {
+                balls.push_back(pins);
+            }
+        }
+
+        const auto first = static_cast<size_t>(random() % (balls.size() + 1U)); /* an index */
+        const size_t removable = std::min<size_t>(2U, balls.size() - first);
+        const auto removed = static_cast<size_t>(random() % (removable + 1U));
+        std::vector<Pins> new_pins(random() % 3U);
+        for (Pins &pins : new_pins) {
+            pins = static_cast<Pins>(random() % 11U);
+        }
+        std::vector<Pins> edited_balls = balls;
+        edited_balls.erase(edited_balls.begin() + static_cast<std::ptrdiff_t>(first),
+                           edited_balls.begin() + static_cast<std::ptrdiff_t>(first + removed));
+        edited_balls.insert(edited_balls.begin() + static_cast<std::ptrdiff_t>(first),
+                            new_pins.begin(), new_pins.end());
+
+        Scorer fresh;
+        Scorer_InitWithRule(&fresh, variant, rule);
+        bool fresh_accepts_all = true;
+        for (const Pins pins : edited_balls) {
+            FrameEvents ignored;
+            fresh_accepts_all =
+                fresh_accepts_all && (Scorer_Roll(&fresh, pins, &ignored) == GAME_OK);
+        }
+
+        const std::map<int, int> frames_before = CompleteFrames(scorer);
+        const Score score_before = Scorer_Score(&scorer);
+        const RollEdit edit = Replace(static_cast<RollNumber>(first + 1U),
+                                      static_cast<uint8_t>(removed), new_pins);
+        FrameEvents events;
+        const bool accepted = Scorer_Edit(&scorer, &edit, &events) == GAME_OK;
+        ASSERT_EQ((first < balls.size()) && fresh_accepts_all, accepted) << "trial " << trial;
+
+        if (accepted) {
+            accepted_count++;
+            ASSERT_EQ(CompleteFrames(fresh), CompleteFrames(scorer)) << "trial " << trial;
+            ASSERT_EQ(CompleteFrames(fresh), AfterEvents(frames_before, events))
+                << "trial " << trial;
+            ASSERT_EQ(Scorer_Score(&fresh), Scorer_Score(&scorer)) << "trial " << trial;
+            ASSERT_EQ(Scorer_IsOver(&fresh), Scorer_IsOver(&scorer)) << "trial " << trial;
+        } else {
+            rejected_count++;
+            ASSERT_EQ(0U, events.count) << "trial " << trial;
+            ASSERT_EQ(frames_before, CompleteFrames(scorer)) << "trial " << trial;
+            ASSERT_EQ(score_before, Scorer_Score(&scorer)) << "trial " << trial;
+            ASSERT_EQ(balls.size(), Scorer_BallCount(&scorer)) << "trial " << trial;
+        }
+    }
+    EXPECT_GT(accepted_count, 500);
+    EXPECT_GT(rejected_count, 500);
+}
+
+} // namespace
+
+TEST(TenPinScorerEditTest, should_leave_the_game_as_a_fresh_game_of_the_edited_balls_would)
+{
+    CheckEditsAgainstFreshGames(SCORER_TEN_PIN, SCORER_COUNT_PINS_DOWN, 20260928U);
+}
+
+TEST(NoTapScorerTest, should_leave_the_game_as_a_fresh_game_of_the_edited_balls_would)
+{
+    CheckEditsAgainstFreshGames(SCORER_TEN_PIN, SCORER_COUNT_NO_TAP, 20260929U);
+}
+
+TEST(CandlepinTest, should_leave_the_game_as_a_fresh_game_of_the_edited_balls_would)
+{
+    CheckEditsAgainstFreshGames(SCORER_CANDLEPIN, SCORER_COUNT_PINS_DOWN, 20260930U);
 }
