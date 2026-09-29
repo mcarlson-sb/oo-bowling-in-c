@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "scorer.h"
+#include "candlepin_reference.h"
 #include "ten_pin_reference.h"
 
 namespace {
@@ -615,4 +616,36 @@ TEST(CandlepinTest, should_accept_an_edit_that_leaves_exactly_thirty_balls)
     FrameEvents events;
     EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
     EXPECT_EQ(99U, Scorer_Score(&scorer));
+}
+
+/* ---- Candlepin against its independent reference ------------------------------------- */
+
+TEST(CandlepinTest, should_score_ten_thousand_random_games_as_the_reference_does)
+{
+    /* Random legal games of random length, a quarter of the balls clearing the rack, checked
+     * after every ball: the score, whether the game is over, and the ball after it refused. */
+    std::mt19937 random(20260929U);
+    for (int game_number = 0; game_number < 10000; ++game_number) {
+        Scorer scorer = MakeCandlepin();
+        candlepin_reference::Lane lane;
+        std::vector<int> balls;
+        const int stop_after = std::uniform_int_distribution<int>(1, 30)(random);
+        for (int ball = 0; (ball < stop_after) && !lane.over; ++ball) {
+            const bool clear_the_rack = std::uniform_int_distribution<int>(0, 3)(random) == 0;
+            const int down =
+                clear_the_rack ? lane.standing
+                               : std::uniform_int_distribution<int>(0, lane.standing)(random);
+            RollAll(&scorer, {static_cast<Pins>(down)});
+            balls.push_back(down);
+            lane.Roll(down);
+            ASSERT_EQ(candlepin_reference::Score(balls), static_cast<int>(Scorer_Score(&scorer)))
+                << "game " << game_number << ", after ball " << (ball + 1);
+            ASSERT_EQ(lane.over, Scorer_IsOver(&scorer)) << "game " << game_number;
+        }
+        FrameEvents events;
+        if (lane.over) {
+            ASSERT_EQ(GAME_ERR_GAME_OVER, Scorer_Roll(&scorer, 0U, &events))
+                << "game " << game_number;
+        }
+    }
 }
