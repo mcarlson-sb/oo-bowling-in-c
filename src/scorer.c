@@ -226,17 +226,22 @@ static uint8_t ScorerRules_LastFrameBalls(const ScorerRules *rules)
     return most;
 }
 
-static uint8_t ScorerRules_LongestGame(const ScorerRules *rules)
+static unsigned ScorerRules_LongestGame(const ScorerRules *rules)
 {
-    return (uint8_t)(((rules->frames - 1U) * rules->balls_per_frame) +
-                     ScorerRules_LastFrameBalls(rules));
+    return (((unsigned)rules->frames - 1U) * rules->balls_per_frame) +
+           ScorerRules_LastFrameBalls(rules);
 }
 
-void Scorer_Start(Scorer *self, const ScorerRules *rules)
+GameStatus Scorer_Start(Scorer *self, const ScorerRules *rules)
 {
+    const unsigned longest = ScorerRules_LongestGame(rules);
+    if (longest > SCORER_MAX_BALLS) {
+        return GAME_ERR_INVALID_RULES;
+    }
     self->rules = *rules;
-    self->max_balls = ScorerRules_LongestGame(rules);
+    self->max_balls = (uint8_t)longest;
     self->ball_count = 0U;
+    return GAME_OK;
 }
 
 static uint8_t Lane_CountCompleteFrames(const Lane *lane, uint8_t ball_count)

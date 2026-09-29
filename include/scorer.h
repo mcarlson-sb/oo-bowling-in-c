@@ -64,7 +64,8 @@ typedef struct {
     uint8_t ball_count;
 } Scorer;
 
-void Scorer_Start(Scorer *self, const ScorerRules *rules);
+/* A new game by these rules. Rejected, changing nothing, with GAME_ERR_INVALID_RULES. */
+GameStatus Scorer_Start(Scorer *self, const ScorerRules *rules);
 
 GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events);
 

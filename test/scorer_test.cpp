@@ -889,3 +889,32 @@ TEST(CandlepinTest, should_leave_the_game_as_a_fresh_game_of_the_edited_balls_wo
 {
     CheckEditsAgainstFreshGames(rules::kCandlepin, 20260930U);
 }
+
+/* ---- Rules the scorer can't play ------------------------------------------------------- */
+
+namespace {
+
+/* A game of ten-pin in progress, to show a refused start changes nothing. */
+Scorer ATenPinGameInProgress()
+{
+    Scorer scorer = MakeScorer(rules::kTenPin);
+    RollAll(&scorer, {3U, 4U, 10U});
+    return scorer;
+}
+
+void ExpectRefused(const ScorerRules &refused)
+{
+    Scorer scorer = ATenPinGameInProgress();
+    EXPECT_EQ(GAME_ERR_INVALID_RULES, Scorer_Start(&scorer, &refused));
+    EXPECT_EQ(3U, Scorer_BallCount(&scorer));
+    EXPECT_EQ(7U, Scorer_Score(&scorer));
+    EXPECT_EQ(10U, Scorer_PinsStanding(&scorer)); /* still ten-pin: a strike's fresh rack */
+}
+
+} // namespace
+
+TEST(ScorerRulesTest, should_refuse_rules_whose_longest_game_is_more_balls_than_it_holds)
+{
+    /* Ten frames of three, and a strike owed three bonus balls: the tenth takes 4, 31 in all. */
+    ExpectRefused({10U, 3U, 10U, {3U, 1U, 0U}, 0U});
+}

@@ -74,7 +74,7 @@ static bool Subscribers_Remove(Subscribers *subscribers, ActorId id)
 void GameActor_Init(GameActor *self, ActorId id, const ScorerRules *rules)
 {
     self->id = id;
-    Scorer_Start(&self->scorer, rules);
+    (void)Scorer_Start(&self->scorer, rules);
     Subscribers_Init(&self->subscribers);
     HeldRolls_Init(&self->held);
     self->lost_to_full_queue = 0U;
