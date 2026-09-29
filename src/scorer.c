@@ -294,6 +294,26 @@ static void FrameEvents_Add(FrameEvents *events, uint8_t index, Score score, boo
     events->count++;
 }
 
+static void FrameEvents_Clear(FrameEvents *events)
+{
+    events->count = 0U;
+}
+
+static void Lane_ReportComplete(const Lane *lane, uint8_t from, uint8_t until,
+                                FrameEvents *events)
+{
+    for (uint8_t i = from; i < until; i++) {
+        FrameEvents_Add(events, i, Lane_FrameScore(lane, &lane->frames[i]), true);
+    }
+}
+
+static void FrameEvents_AddReopened(FrameEvents *events, uint8_t from, uint8_t until)
+{
+    for (uint8_t i = from; i < until; i++) {
+        FrameEvents_Add(events, i, 0U, false);
+    }
+}
+
 static GameStatus Lane_CheckBall(const Lane *lane, Pins pins)
 {
     if (lane->phase == LANE_OVER) {
@@ -316,14 +336,12 @@ static void Scorer_ReportNewlyComplete(const Scorer *self, uint8_t were_complete
 {
     const Lane lane = Scorer_Lane(self);
     const uint8_t now_complete = Lane_CountCompleteFrames(&lane, self->ball_count);
-    for (uint8_t i = were_complete; i < now_complete; i++) {
-        FrameEvents_Add(events, i, Lane_FrameScore(&lane, &lane.frames[i]), true);
-    }
+    Lane_ReportComplete(&lane, were_complete, now_complete, events);
 }
 
 GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events)
 {
-    events->count = 0U;
+    FrameEvents_Clear(events);
     const Lane before = Scorer_Lane(self);
     const GameStatus checked = Lane_CheckBall(&before, pins);
     if (checked != GAME_OK) {
@@ -419,19 +437,13 @@ static void Scorer_ReportEveryFrameAgain(const Scorer *self, uint8_t were_comple
 {
     const Lane lane = Scorer_Lane(self);
     const uint8_t now_complete = Lane_CountCompleteFrames(&lane, self->ball_count);
-    const uint8_t frames_to_report = (were_complete > now_complete) ? were_complete : now_complete;
-    for (uint8_t i = 0U; i < frames_to_report; i++) {
-        if (i < now_complete) {
-            FrameEvents_Add(events, i, Lane_FrameScore(&lane, &lane.frames[i]), true);
-        } else {
-            FrameEvents_Add(events, i, 0U, false);
-        }
-    }
+    Lane_ReportComplete(&lane, 0U, now_complete, events);
+    FrameEvents_AddReopened(events, now_complete, were_complete);
 }
 
 GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events)
 {
-    events->count = 0U;
+    FrameEvents_Clear(events);
     const GameStatus checked = Scorer_CheckEdit(self, edit);
     if (checked != GAME_OK) {
         return checked;
