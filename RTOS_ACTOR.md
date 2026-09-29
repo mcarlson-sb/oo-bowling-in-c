@@ -817,3 +817,100 @@ with room to spare. Debug stays under its static path.
 **On a target** the allowances change: there is no C library under the port, and the
 asynchronous frame is the interrupt's, plus nesting. The static path is what carries over. There,
 `uxTaskGetStackHighWaterMark` works, and would be the third check.
+
+## Phase 2 report: the FreeRTOS shell, and the switch-over
+
+**What changed.** The game runs as an actor, and the callback facade is gone:
+- **`GameActor`** is pure: messages in, replies and events out to an outbox. It holds a
+  pinsetter roll the game rejects, with every roll after it, until a correction or a discard lets
+  them through, and counts what it loses.
+- **The shell** (`rtos/`) gives it one static FreeRTOS task. The task is fed by:
+  - a command queue;
+  - the pinsetter's queue, filled from the interrupt side;
+  - a one-slot report of rolls the interrupt lost to a full queue.
+
+  It wakes on its task notification, because V11.1.0 has no static queue set. Every output
+  goes, with no wait, to the queue the message named. An output its queue can't take is dropped
+  and counted.
+- **The legacy code is deleted:** kay-oo's `Game` facade, its listeners, `Scorecard` adapter,
+  `RollLog` and slot pool, and the pinsetter's mailbox. Only tests called them. Their tests went
+  with them, after every behavior was mapped to a test of the new code, or to the hazard that can
+  no longer happen (above). 5 tests with no equivalent were ported first.
+
+The phase 2 decisions are all in:
+- **(a):** the newest roll is dropped on a full queue, counted, and reported as an event.
+- **(b):** replies carry a sequence number and go to the caller's own queue, with no wait.
+- **(c):** the actor keeps a held list, reports a "roll held" event, and replays the held rolls
+  after a correction or discard.
+
+**Metrics against the baseline** (kay-oo at ad857ff; now `7580df7`):
+
+| | Baseline | Now |
+|---|---|---|
+| Tests | 114 (host) | 82 on the host, plus 8 on the POSIX port (Linux) |
+| Functions (lizard) | 143 | 111, `rtos/` included |
+| Average / maximum cyclomatic complexity | 1.6 / 5 | 1.7 / 9, `GameActor_Handle`'s dispatch (limit 10) |
+| Maximum NLOC per function | 16 | 30, the same dispatch (limit 50) |
+| Maximum parameters | 4 | 4 |
+| Maximum cognitive complexity | 4 | 5, `GameShell_PinsetterCountedFromIsr` (limit 7) |
+| Largest frame, release | 224, `Game_CorrectRoll` (GCC 16) | 256, `Scorer_Edit` (GCC 13) |
+| Stack depth from each task entry | not measured | 3952 / 4224 bytes with host allowances, budget 4608 (the call graph) |
+| Release line coverage | 99.8% of 583 | 99.6% of 545, `rtos/` included |
+| Release branch coverage | 98.9% of 174 | 96.3% of 164 |
+| Function pointers | 6 | 1, the game task's entry, which FreeRTOS requires |
+| NLOC, `src/`, `include/` (and `rtos/`) | 1,283 | 1,079 |
+
+The two lines uncovered in release are the scorer's unreachable `LANE_OVER` case, whose `assert`
+compiles away under `NDEBUG`. The branches not taken are mostly the shell's: a queue that is
+never full when a test sends to it, and the interrupt's yield when it wakes no one.
+
+**Mutation feedback at the phase stop** (`tools/mutation.sh`, 4 workers): debug and release each
+had 313 mutants, of which 302 were killed and 11 survived, a score of 96.5%. The runs took 6 m 57 s
+and 7 m 44 s. Two survivors were real gaps, and coverage found a third. Each is pinned now, and
+fails against its mutant:
+- a held roll refused again, for another reason, reports the new one;
+- `GameActor_Init` starts with nothing held;
+- a subscriber joining mid-frame is caught up on the complete frames only.
+
+The other nine can't be caught by a test:
+- **Equivalent:** `fault.c`'s discarded `fputs` result and its trailing newline, two initial
+  values always written before they're read, `NULL` versus the message's own array for no new
+  balls, and two in the catch-up's loop bound.
+- **Undefined behavior that only a sanitizer would catch:** a frame's `closed = false` on the
+  uninitialized stack lane (MemorySanitizer, which isn't available here), and the held list's
+  shift reading one past a full list (UBSan traps on it).
+
+The edit property tests are left out of mutation runs, as the facade's were: under Mull's
+instrumentation they take the test binary past its timeout.
+
+**Surprises.**
+1. **FreeRTOS V11.1.0 has no static queue set.** `xQueueCreateSet` needs the heap. The task
+   notification does the same job, and is simpler: one wake-up for any number of queues.
+2. **The painted stack was deeper than the call graph, in release:** 1583 bytes against the
+   static path's 880. The difference is the C library under the POSIX port, and the port's
+   signals, whose handlers run on the task's stack. The call graph alone would have undersized
+   the host's stack, so the allowances are measured, and named in the contract.
+3. **The only interrupt-side stack tripwire was legacy.** It was on `pinsetter_isr.c`, and
+   would have gone with the pinsetter. So the shell's interrupt side moved to a file of its own,
+   under its own limit, first.
+4. **A comment had gone false.** `GAME_ERR_TOO_MANY_ROLLS` still said "more than 21 rolls" after
+   candlepin made it 30. When the comments were sorted before the shell, about half turned out to
+   be a name's job, and a fifth were claims a test or an assert now checks. One such claim, the
+   outbox's capacity, was 2 too big.
+5. **The facade's deletion was mostly deleting hazards.** About a third of its tests pinned what
+   only callbacks and handles can get wrong: re-entry, destroying twice, a caller's impure
+   counting rule. With no callbacks, those tests have nothing left to test.
+6. **Process:** stopping a background gate run stopped its shell but not the scripts it had
+   started. For a few minutes two runs built and ran the same test binary. Windows showed
+   "application was unable to start" when one launched a half-written executable. No result was
+   affected, but the stray processes were killed by hand, and are now checked for before every
+   gate run.
+
+**Open for phase 3:**
+- The README, `ARCHITECTURE.md` and `STATE_PATTERN.md` still describe kay-oo, and are to be
+  rewritten.
+- `GameMessage` and `GameOutput` carry every kind's fields, with comments saying which kind uses
+  which. A tagged layout would say it in the type, and would shrink what each queue copies.
+- The target stage (the QEMU plan above) is still deferred.
+
+**Stop.** Phase 2 ends here, as the brief asks.
