@@ -394,3 +394,13 @@ TEST(CandlepinTest, A1_should_score_thirty_zeros_as_0_with_the_game_over_after_b
     EXPECT_TRUE(Scorer_IsOver(&scorer));
     EXPECT_EQ(0U, Scorer_Score(&scorer));
 }
+
+TEST(CandlepinTest, A02_should_twelve_strikes_score_300_with_the_game_over_after_ball_12)
+{
+    Scorer scorer = MakeCandlepin();
+    RollMany(&scorer, 11, 10U);
+    EXPECT_FALSE(Scorer_IsOver(&scorer));
+    RollAll(&scorer, {10U});
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+    EXPECT_EQ(300U, Scorer_Score(&scorer));
+}
