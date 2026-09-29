@@ -17,9 +17,11 @@
 #               'src/game_actor\.c'): a new module, all of it.
 #
 # Every mutant runs the whole test binary, so the slowest tests decide how long a run takes.
-# By default the three edit property tests are left out: 3000 random edits each take the binary
-# past Mull's timeout under its instrumentation, and the edit examples kill the edit code's
-# mutants too. MULL_TEST_FILTER, if set, replaces that filter; set it empty to run every test.
+# By default the long random runs are left out, which take the binary past Mull's timeout under
+# its instrumentation: the three edit property tests (3000 random edits each) and the
+# rules-as-data runs against the general reference (5000 random games each). The examples beside
+# them kill the same code's mutants. MULL_TEST_FILTER, if set, replaces that filter; set it empty
+# to run every test.
 #
 # It exits non-zero when any mutant survives: feedback to look at, not a failed run. Progress
 # shows live on the terminal; redirect it to a file and `tail -f` that to watch from elsewhere.
@@ -73,7 +75,7 @@ ctest --test-dir "$build" --output-on-failure
 # where an alarm isn't, so it stops that child too. A whole run takes seconds; the runner itself
 # mostly waits.
 ulimit -t 30
-filter=${MULL_TEST_FILTER--*.should_leave_the_game_as_a_fresh_game_of_the_edited_balls_would}
+filter=${MULL_TEST_FILTER--*.should_leave_the_game_as_a_fresh_game_of_the_edited_balls_would:RulesAsDataTest.*reference*}
 test_args=()
 if [ -n "$filter" ]; then
     test_args=(--gtest_filter="$filter")
