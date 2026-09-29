@@ -35,6 +35,7 @@ add_library(bowling STATIC
     src/game_actor.c
     src/outbox.c
     src/scoreboard.c
+    src/frame_board.c
 )
 target_include_directories(bowling PUBLIC include PRIVATE src)
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})

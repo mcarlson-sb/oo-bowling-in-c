@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "actor_id.h"
+#include "frame_board.h"
 #include "message.h"
 #include "outbox.h"
 
@@ -18,8 +19,7 @@ extern "C" {
 
 typedef struct {
     ActorId id;
-    Score scores[SCORER_MAX_FRAMES];
-    bool complete[SCORER_MAX_FRAMES];
+    FrameBoard board;
     uint16_t not_understood;
 } Scoreboard;
 
