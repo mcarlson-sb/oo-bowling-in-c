@@ -49,7 +49,7 @@ typedef struct {
 } GameActor;
 
 /* The game at `id`, which its events come from. */
-void GameActor_Init(GameActor *self, ActorId id, const ScorerRules *rules);
+void GameActor_Init(GameActor *self, ActorId id);
 
 /* Handles one message. The outbox is emptied first, then filled. */
 void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbox);

@@ -21,6 +21,9 @@ extern "C" {
 typedef uint16_t RequestSeq;
 
 typedef enum {
+    /* A new game, by the rules it carries. Refused with GAME_ERR_INVALID_RULES, changing
+     * nothing, if the scorer can't play them. */
+    MSG_NEW_GAME,
     MSG_ROLL,
     /* from is the subscriber: it gets the reply, a catch-up of the complete frames, then every
      * frame change. */
@@ -63,6 +66,10 @@ typedef struct {
 } Envelope;
 
 typedef struct {
+    ScorerRules rules;
+} NewGamePayload;
+
+typedef struct {
     Pins pins;
 } RollPayload;
 
@@ -97,6 +104,7 @@ typedef struct {
 typedef struct {
     Envelope envelope;
     union {
+        NewGamePayload new_game;      /* MSG_NEW_GAME */
         RollPayload roll;             /* MSG_ROLL, MSG_PINSETTER_ROLL */
         EditPayload edit;             /* MSG_EDIT */
         RollsLostPayload rolls_lost;  /* MSG_ROLLS_LOST */

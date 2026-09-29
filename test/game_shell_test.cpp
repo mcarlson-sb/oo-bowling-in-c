@@ -86,10 +86,28 @@ StaticTask_t s_client_task;
 StackType_t s_client_stack[configMINIMAL_STACK_SIZE];
 void (*s_client_body)();
 std::atomic<bool> s_client_done{false};
+std::atomic<bool> s_new_game_failed{false};
+
+/* Every test's game: ten-pin, started by the client before its body runs. */
+void StartATenPinGame()
+{
+    Message new_game = {};
+    new_game.envelope.selector = MSG_NEW_GAME;
+    new_game.envelope.from = kClient;
+    new_game.envelope.to = GAME_SHELL_GAME_ID;
+    new_game.payload.new_game.rules = rules::kTenPin;
+    Message reply;
+    if ((GameShell_Send(&new_game, kPatience) != pdPASS) ||
+        (xQueueReceive(s_replies.handle, &reply, kPatience) != pdPASS) ||
+        (reply.payload.reply.status != GAME_OK)) {
+        s_new_game_failed.store(true, std::memory_order_release);
+    }
+}
 
 void ClientTask(void *parameter)
 {
     (void)parameter;
+    StartATenPinGame();
     s_client_body();
     s_client_done.store(true, std::memory_order_release);
     vTaskEndScheduler();
@@ -102,7 +120,7 @@ void ClientTask(void *parameter)
  * messages before the game task runs. */
 void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
 {
-    GameShell_Start(&rules::kTenPin, kGamePriority);
+    GameShell_Start(kGamePriority);
     s_replies.Create();
     s_subscriber.Create(s_subscriber_queue_length);
     s_second_subscriber.Create();
@@ -119,6 +137,7 @@ void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
                                          &s_client_task));
     vTaskStartScheduler();
     ASSERT_TRUE(s_client_done.load(std::memory_order_acquire));
+    ASSERT_FALSE(s_new_game_failed.load(std::memory_order_acquire)) << "setup: the new game";
 }
 
 Message RollRequest(RequestSeq seq, Pins pins)

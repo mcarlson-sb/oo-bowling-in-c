@@ -71,10 +71,9 @@ static bool Subscribers_Remove(Subscribers *subscribers, ActorId id)
     return false;
 }
 
-void GameActor_Init(GameActor *self, ActorId id, const ScorerRules *rules)
+void GameActor_Init(GameActor *self, ActorId id)
 {
     self->id = id;
-    (void)Scorer_Start(&self->scorer, rules);
     Subscribers_Init(&self->subscribers);
     HeldRolls_Init(&self->held);
     self->lost_to_full_queue = 0U;
@@ -356,9 +355,14 @@ static GameRequest GameActor_RequestOf(const Message *message)
     return k_game_requests[selector];
 }
 
-void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbox)
+static void GameActor_NewGame(GameActor *self, const Message *message, GameOutbox *outbox)
 {
-    outbox->count = 0U;
+    const GameStatus status = Scorer_Start(&self->scorer, &message->payload.new_game.rules);
+    GameOutbox_Reply(outbox, message, status, 0U);
+}
+
+static void GameActor_Receive(GameActor *self, const Message *message, GameOutbox *outbox)
+{
     switch (GameActor_RequestOf(message)) {
     case GAME_SUBSCRIBE:
         GameActor_Subscribe(self, message, outbox);
@@ -388,4 +392,15 @@ void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbo
         GameActor_DoesNotUnderstand(self, message, outbox);
         break;
     }
+}
+
+/* The lifecycle's own message first, then the request. */
+void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbox)
+{
+    outbox->count = 0U;
+    if (message->envelope.selector == MSG_NEW_GAME) {
+        GameActor_NewGame(self, message, outbox);
+        return;
+    }
+    GameActor_Receive(self, message, outbox);
 }

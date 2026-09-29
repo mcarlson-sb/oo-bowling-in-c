@@ -37,7 +37,8 @@ typedef enum {
     ACTOR_KIND_GAME
 } ActorKind;
 
-void GameShell_Start(const ScorerRules *rules, UBaseType_t priority);
+/* With no game: the first NEW_GAME sent to GAME_SHELL_GAME_ID starts one. */
+void GameShell_Start(UBaseType_t priority);
 
 /* After GameShell_Start, before the scheduler starts: an external actor at `id`, which reads
  * `queue`. */

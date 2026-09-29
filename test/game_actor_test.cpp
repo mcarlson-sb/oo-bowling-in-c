@@ -15,10 +15,25 @@ namespace {
 constexpr ActorId kGame = 1U;
 constexpr ActorId kReplyTo = 2U; /* a caller: only its id matters here */
 
+Message NewGameRequest(RequestSeq seq, const ScorerRules &rules)
+{
+    Message message = {};
+    message.envelope.selector = MSG_NEW_GAME;
+    message.envelope.seq = seq;
+    message.envelope.from = kReplyTo;
+    message.payload.new_game.rules = rules;
+    return message;
+}
+
+/* A game actor, with a game by these rules started. */
 GameActor MakeActor(const ScorerRules &rules)
 {
     GameActor actor;
-    GameActor_Init(&actor, kGame, &rules);
+    GameActor_Init(&actor, kGame);
+    GameOutbox outbox;
+    const Message new_game = NewGameRequest(0U, rules);
+    GameActor_Handle(&actor, &new_game, &outbox);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status) << "setup: the new game";
     return actor;
 }
 
@@ -574,7 +589,8 @@ TEST(GameActorTest, should_start_a_fresh_game_with_nothing_held_when_initialized
     BowlAGutterGame(&actor);
     GameOutbox outbox;
     Send(&actor, PinsetterRoll(3U), &outbox); /* held: the game is over */
-    GameActor_Init(&actor, kGame, &rules::kTenPin);
+    GameActor_Init(&actor, kGame);
+    Send(&actor, NewGameRequest(0U, rules::kTenPin), &outbox);
     Send(&actor, DiscardHeldRequest(1U), &outbox);
     EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, outbox.items[0].payload.reply.status);
 }
@@ -632,4 +648,22 @@ TEST(GameActorTest, should_count_but_never_answer_a_not_understood_so_two_kinds_
     Send(&actor, from_no_one, &outbox);
     EXPECT_EQ(0U, outbox.count);
     EXPECT_EQ(2U, actor.not_understood);
+}
+
+/* ---- A game whose rules arrive in a message ------------------------------------------ */
+
+TEST(GameActorLifecycleTest, should_start_a_game_by_the_rules_a_new_game_carries)
+{
+    GameActor actor;
+    GameActor_Init(&actor, kGame);
+    GameOutbox outbox;
+    Send(&actor, NewGameRequest(9U, rules::kCandlepin), &outbox);
+    ASSERT_EQ(1U, outbox.count);
+    EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
+    EXPECT_EQ(9U, outbox.items[0].envelope.seq);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
+    Send(&actor, RollRequest(10U, 3U), &outbox);
+    Send(&actor, RollRequest(11U, 3U), &outbox);
+    Send(&actor, RollRequest(12U, 3U), &outbox); /* candlepin: a frame takes three balls */
+    EXPECT_EQ(9U, outbox.items[0].payload.reply.score);
 }
