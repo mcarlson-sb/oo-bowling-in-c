@@ -736,3 +736,16 @@ TEST(GameActorLifecycleTest, should_play_the_rolls_held_after_a_game_into_the_ne
     const std::vector<Sent> heard = FrameEventsIn(outbox);
     EXPECT_NE(heard.end(), std::find(heard.begin(), heard.end(), frame_1));
 }
+
+TEST(GameActorLifecycleTest, should_hold_the_pinsetters_rolls_before_any_game_and_play_them_into_it)
+{
+    GameActor actor;
+    GameActor_Init(&actor, kGame);
+    GameOutbox outbox;
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    EXPECT_EQ(0U, outbox.count); /* from no one: no reply, and no one subscribed yet */
+    Send(&actor, PinsetterRoll(4U), &outbox);
+    Send(&actor, NewGameRequest(1U, rules::kTenPin), &outbox);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
+    EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
+}

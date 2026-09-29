@@ -411,6 +411,28 @@ static void GameActor_Receive(GameActor *self, const Message *message, GameOutbo
     }
 }
 
+static void GameActor_HoldForTheFirstGame(GameActor *self, Pins pins, GameOutbox *outbox)
+{
+    if (HeldRolls_IsEmpty(&self->held)) {
+        HeldRolls_RefuseFirst(&self->held, GAME_ERR_NO_GAME);
+    }
+    GameActor_HoldOrLose(self, pins, outbox);
+}
+
+/* Before any game: the pinsetter's rolls wait for the first, and its losses are counted. Any
+ * other request is answered "no game". */
+static void GameActor_BeforeAGame(GameActor *self, const Message *message, GameOutbox *outbox)
+{
+    const GameRequest request = GameActor_RequestOf(message);
+    if (request == GAME_PINSETTER_ROLL) {
+        GameActor_HoldForTheFirstGame(self, message->payload.roll.pins, outbox);
+    } else if (request == GAME_ROLLS_LOST) {
+        GameActor_RollsLost(self, message, outbox);
+    } else {
+        GameOutbox_Reply(outbox, message, GAME_ERR_NO_GAME, 0U);
+    }
+}
+
 /* The lifecycle's own message first, then what the lifecycle makes of the rest. */
 void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbox)
 {
@@ -421,7 +443,7 @@ void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbo
     }
     switch (self->lifecycle) {
     case GAME_AWAITING_RULES:
-        GameOutbox_Reply(outbox, message, GAME_ERR_NO_GAME, 0U);
+        GameActor_BeforeAGame(self, message, outbox);
         break;
     case GAME_IN_PLAY:
         GameActor_Receive(self, message, outbox);
