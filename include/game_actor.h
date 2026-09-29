@@ -78,10 +78,10 @@ typedef struct {
 } GameMessage;
 
 typedef enum {
-    /* seq and status; and score, after everything the message caused, for a Roll, an Edit, an
-     * accepted DiscardHeld and a QueryScore (0 in every other reply) */
+    /* The score is after everything the message caused, for a Roll, an Edit, an accepted
+     * DiscardHeld and a QueryScore; 0 in every other reply. */
     GAME_OUT_REPLY,
-    GAME_OUT_FRAME_CHANGED, /* frame */
+    GAME_OUT_FRAME_CHANGED,
     /* A pinsetter roll was held: its pins, the ball it would be (position), how many are held
      * now, and why the first of them was rejected (status). */
     GAME_OUT_ROLL_HELD,
@@ -91,16 +91,28 @@ typedef enum {
 } GameOutputKind;
 
 typedef struct {
-    GameOutputKind kind;
-    void *to;
     RequestSeq seq;
     GameStatus status;
     Score score;
-    FrameEvent frame;
+} GameReplyPayload;
+
+typedef struct {
     Pins pins;
     RollNumber position;
     uint8_t held;
-    uint16_t lost;
+    GameStatus status;
+} GameRollHeldPayload;
+
+/* Where it goes, and the fields of its kind only. */
+typedef struct {
+    GameOutputKind kind;
+    void *to;
+    union {
+        GameReplyPayload reply;           /* GAME_OUT_REPLY */
+        FrameEvent frame;                 /* GAME_OUT_FRAME_CHANGED */
+        GameRollHeldPayload roll_held;    /* GAME_OUT_ROLL_HELD */
+        GameRollsLostPayload rolls_lost;  /* GAME_OUT_ROLLS_LOST */
+    } payload;
 } GameOutput;
 
 #define GAME_MAX_SUBSCRIBERS 2U

@@ -170,8 +170,8 @@ TEST(GameShellTest, should_reply_on_the_callers_queue_to_a_roll_sent_to_the_game
     ASSERT_EQ(pdPASS, s_sent);
     ASSERT_EQ(pdPASS, s_received);
     EXPECT_EQ(GAME_OUT_REPLY, s_reply.kind);
-    EXPECT_EQ(7U, s_reply.seq);
-    EXPECT_EQ(GAME_OK, s_reply.status);
+    EXPECT_EQ(7U, s_reply.payload.reply.seq);
+    EXPECT_EQ(GAME_OK, s_reply.payload.reply.status);
 }
 
 namespace {
@@ -193,9 +193,9 @@ TEST(GameShellTest, should_tell_a_subscriber_the_frame_the_pinsetters_rolls_comp
     ASSERT_EQ(pdPASS, s_sent);
     ASSERT_EQ(pdPASS, s_received);
     EXPECT_EQ(GAME_OUT_FRAME_CHANGED, s_event.kind);
-    EXPECT_EQ(1U, s_event.frame.frame_number);
-    EXPECT_EQ(7U, s_event.frame.frame_score);
-    EXPECT_TRUE(s_event.frame.frame_complete);
+    EXPECT_EQ(1U, s_event.payload.frame.frame_number);
+    EXPECT_EQ(7U, s_event.payload.frame.frame_score);
+    EXPECT_TRUE(s_event.payload.frame.frame_complete);
 }
 
 namespace {
@@ -231,7 +231,7 @@ TEST(GameShellTest, should_count_a_roll_lost_to_the_pinsetters_full_queue_and_te
     });
     ASSERT_FALSE(s_heard.empty());
     EXPECT_EQ(GAME_OUT_ROLLS_LOST, s_heard.back().kind);
-    EXPECT_EQ(1U, s_heard.back().lost);
+    EXPECT_EQ(1U, s_heard.back().payload.rolls_lost.lost);
 }
 
 namespace {
@@ -254,7 +254,7 @@ TEST(GameShellTest, should_drop_and_count_an_event_for_a_subscriber_whose_queue_
         s_dropped = GameShell_OutputsDropped();
     });
     ASSERT_EQ(pdPASS, s_received);
-    EXPECT_EQ(7U, s_reply.score);
+    EXPECT_EQ(7U, s_reply.payload.reply.score);
     EXPECT_EQ(1U, s_dropped);
 }
 
@@ -273,8 +273,8 @@ TEST(GameShellTest, should_play_the_pinsetters_waiting_rolls_before_an_edit_wait
         kGamePriority + 1U);
     ASSERT_EQ(pdPASS, s_sent);
     ASSERT_EQ(pdPASS, s_received);
-    EXPECT_EQ(GAME_OK, s_reply.status);
-    EXPECT_EQ(9U, s_reply.score);
+    EXPECT_EQ(GAME_OK, s_reply.payload.reply.status);
+    EXPECT_EQ(9U, s_reply.payload.reply.score);
 }
 
 namespace {
@@ -301,15 +301,15 @@ TEST(GameShellTest, should_hold_a_miscounted_roll_until_a_correction_lets_it_thr
     });
     ASSERT_FALSE(s_heard_held.empty());
     EXPECT_EQ(GAME_OUT_ROLL_HELD, s_heard_held.back().kind);
-    EXPECT_EQ(8U, s_heard_held.back().pins);
-    EXPECT_EQ(2U, s_heard_held.back().position);
+    EXPECT_EQ(8U, s_heard_held.back().payload.roll_held.pins);
+    EXPECT_EQ(2U, s_heard_held.back().payload.roll_held.position);
     ASSERT_EQ(pdPASS, s_received);
-    EXPECT_EQ(GAME_OK, s_reply.status);
-    EXPECT_EQ(13U, s_reply.score);
+    EXPECT_EQ(GAME_OK, s_reply.payload.reply.status);
+    EXPECT_EQ(13U, s_reply.payload.reply.score);
     ASSERT_FALSE(s_heard.empty());
     EXPECT_EQ(GAME_OUT_FRAME_CHANGED, s_heard.back().kind);
-    EXPECT_EQ(1U, s_heard.back().frame.frame_number);
-    EXPECT_EQ(13U, s_heard.back().frame.frame_score);
+    EXPECT_EQ(1U, s_heard.back().payload.frame.frame_number);
+    EXPECT_EQ(13U, s_heard.back().payload.frame.frame_score);
 }
 
 namespace {
@@ -340,6 +340,6 @@ TEST(GameShellStackTest, should_keep_the_game_task_within_its_stack_budget_throu
         s_stack_used = GameShell_TaskStackUsed();
     });
     ASSERT_EQ(pdPASS, s_received);
-    EXPECT_EQ(GAME_OK, s_reply.status);
+    EXPECT_EQ(GAME_OK, s_reply.payload.reply.status);
     EXPECT_LE(s_stack_used, static_cast<size_t>(GAME_SHELL_TASK_STACK_BUDGET));
 }

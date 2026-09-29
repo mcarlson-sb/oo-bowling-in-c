@@ -44,9 +44,9 @@ TEST(GameActorTest, should_reply_to_a_roll_with_its_sequence_number_status_and_s
     const GameOutput &reply = outbox.items[0];
     EXPECT_EQ(GAME_OUT_REPLY, reply.kind);
     EXPECT_EQ(&s_reply_queue, reply.to);
-    EXPECT_EQ(8U, reply.seq);
-    EXPECT_EQ(GAME_OK, reply.status);
-    EXPECT_EQ(7U, reply.score);
+    EXPECT_EQ(8U, reply.payload.reply.seq);
+    EXPECT_EQ(GAME_OK, reply.payload.reply.status);
+    EXPECT_EQ(7U, reply.payload.reply.score);
 }
 
 /* ---- Subscribers: a catch-up of the frames so far, then every change -------------------- */
@@ -84,8 +84,9 @@ std::vector<Sent> FrameEventsIn(const GameOutbox &outbox)
     for (uint8_t i = 0U; i < outbox.count; i++) {
         const GameOutput &out = outbox.items[i];
         if (out.kind == GAME_OUT_FRAME_CHANGED) {
-            sent.push_back({out.kind, out.to, out.frame.frame_number, out.frame.frame_score,
-                            out.frame.frame_complete});
+            const FrameEvent &frame = out.payload.frame;
+            sent.push_back(
+                {out.kind, out.to, frame.frame_number, frame.frame_score, frame.frame_complete});
         }
     }
     return sent;
@@ -108,8 +109,8 @@ TEST(GameActorTest, should_catch_a_new_subscriber_up_on_the_complete_frames_then
     Send(&actor, SubscribeRequest(3U, &s_subscriber_queue), &outbox);
     ASSERT_LE(1U, outbox.count);
     EXPECT_EQ(GAME_OUT_REPLY, outbox.items[0].kind); /* the reply comes first */
-    EXPECT_EQ(3U, outbox.items[0].seq);
-    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+    EXPECT_EQ(3U, outbox.items[0].payload.reply.seq);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
     const Sent caught_up = {GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 1, 7, true};
     EXPECT_EQ((std::vector<Sent>{caught_up}), FrameEventsIn(outbox));
 
@@ -130,7 +131,7 @@ TEST(GameActorTest, should_refuse_a_subscriber_past_the_room_for_two)
     Send(&actor, SubscribeRequest(2U, &b), &outbox);
     Send(&actor, SubscribeRequest(3U, &c), &outbox);
     ASSERT_EQ(1U, outbox.count);
-    EXPECT_EQ(GAME_ERR_TOO_MANY_SUBSCRIBERS, outbox.items[0].status);
+    EXPECT_EQ(GAME_ERR_TOO_MANY_SUBSCRIBERS, outbox.items[0].payload.reply.status);
     EXPECT_EQ(&c, outbox.items[0].to); /* told, and nothing more */
 
     Send(&actor, RollRequest(4U, 3U), &outbox);
@@ -181,8 +182,8 @@ TEST(GameActorTest, A23_should_tell_a_candlepin_subscriber_frame_1_changed_from_
 
     Send(&actor, EditRequest(seq++, 2U, 1U, {2U}), &outbox); /* ball 2: 5 to 2 */
     ASSERT_EQ(GAME_OUT_REPLY, outbox.items[0].kind);
-    EXPECT_EQ(GAME_OK, outbox.items[0].status);
-    EXPECT_EQ(16U, outbox.items[0].score);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
+    EXPECT_EQ(16U, outbox.items[0].payload.reply.score);
     ASSERT_LE(1U, FrameEventsIn(outbox).size());
     EXPECT_EQ((Sent{GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 1, 10, true}),
               FrameEventsIn(outbox)[0]); /* now: frame 1 is 10 */
@@ -240,7 +241,8 @@ std::vector<Held> HeldEventsIn(const GameOutbox &outbox)
     for (uint8_t i = 0U; i < outbox.count; i++) {
         const GameOutput &out = outbox.items[i];
         if (out.kind == GAME_OUT_ROLL_HELD) {
-            held.push_back({out.pins, out.position, out.held, out.status});
+            held.push_back({out.payload.roll_held.pins, out.payload.roll_held.position,
+                            out.payload.roll_held.held, out.payload.roll_held.status});
         }
     }
     return held;
@@ -260,7 +262,7 @@ Score ScoreOf(GameActor *actor)
     GameOutbox outbox;
     Send(actor, ScoreQuery(99U), &outbox);
     EXPECT_EQ(GAME_OUT_REPLY, outbox.items[0].kind);
-    return outbox.items[0].score;
+    return outbox.items[0].payload.reply.score;
 }
 
 } // namespace
@@ -279,8 +281,9 @@ TEST(GameActorPinsetterTest, should_hold_an_impossible_roll_and_those_after_it_u
     EXPECT_EQ(0U, ScoreOf(&actor)); /* frame 1 is still open: the 8 and the 3 are held */
 
     Send(&actor, EditRequest(2U, 1U, 1U, {2U}), &outbox); /* ball 1: 5 to 2 */
-    EXPECT_EQ(GAME_OK, outbox.items[0].status);
-    EXPECT_EQ(13U, outbox.items[0].score); /* 2 then 8, a spare, with the 3 as its bonus */
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
+    /* 2 then 8, a spare, with the 3 as its bonus */
+    EXPECT_EQ(13U, outbox.items[0].payload.reply.score);
     EXPECT_EQ((std::vector<Held>{}), HeldEventsIn(outbox));
 }
 
@@ -308,11 +311,11 @@ TEST(GameActorPinsetterTest, should_let_the_scorer_discard_a_held_roll_that_real
     EXPECT_EQ(0U, ScoreOf(&actor));
 
     Send(&actor, DiscardHeldRequest(1U), &outbox);
-    EXPECT_EQ(GAME_OK, outbox.items[0].status);
-    EXPECT_EQ(7U, outbox.items[0].score); /* the 3 and the 4 went through */
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
+    EXPECT_EQ(7U, outbox.items[0].payload.reply.score); /* the 3 and the 4 went through */
 
     Send(&actor, DiscardHeldRequest(2U), &outbox);
-    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, outbox.items[0].status); /* nothing is held */
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, outbox.items[0].payload.reply.status); /* nothing is held */
 }
 
 namespace {
@@ -330,7 +333,7 @@ std::vector<int> LostEventsIn(const GameOutbox &outbox)
     std::vector<int> lost;
     for (uint8_t i = 0U; i < outbox.count; i++) {
         if (outbox.items[i].kind == GAME_OUT_ROLLS_LOST) {
-            lost.push_back(outbox.items[i].lost);
+            lost.push_back(outbox.items[i].payload.rolls_lost.lost);
         }
     }
     return lost;
@@ -411,16 +414,16 @@ TEST(GameActorTest, should_stop_telling_a_subscriber_that_unsubscribes)
     Send(&actor, UnsubscribeRequest(3U, &a), &outbox);
     ASSERT_EQ(1U, outbox.count);
     EXPECT_EQ(&a, outbox.items[0].to);
-    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
 
     Send(&actor, RollRequest(4U, 3U), &outbox);
     Send(&actor, RollRequest(5U, 4U), &outbox);
     EXPECT_EQ((std::vector<Sent>{{GAME_OUT_FRAME_CHANGED, &b, 1, 7, true}}), FrameEventsIn(outbox));
 
     Send(&actor, UnsubscribeRequest(6U, &a), &outbox);
-    EXPECT_EQ(GAME_ERR_NOT_SUBSCRIBED, outbox.items[0].status);
+    EXPECT_EQ(GAME_ERR_NOT_SUBSCRIBED, outbox.items[0].payload.reply.status);
     Send(&actor, SubscribeRequest(7U, &a), &outbox); /* its room is free again */
-    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
 }
 
 /* ---- Pinned by mutation testing: each kills an actor mutant that survived ------------------ */
@@ -466,7 +469,7 @@ TEST(GameActorTest, should_stop_telling_the_second_subscriber_when_it_unsubscrib
     Send(&actor, SubscribeRequest(1U, &a), &outbox);
     Send(&actor, SubscribeRequest(2U, &b), &outbox);
     Send(&actor, UnsubscribeRequest(3U, &b), &outbox);
-    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
     Send(&actor, RollRequest(4U, 3U), &outbox);
     Send(&actor, RollRequest(5U, 4U), &outbox);
     EXPECT_EQ((std::vector<Sent>{{GAME_OUT_FRAME_CHANGED, &a, 1, 7, true}}), FrameEventsIn(outbox));
@@ -508,7 +511,8 @@ TEST(GameActorPinsetterTest, should_let_the_rest_through_after_discarding_from_a
         Send(&actor, PinsetterRoll(1U), &outbox); /* a full held list, all after the game */
     }
     Send(&actor, DiscardHeldRequest(21U), &outbox);
-    EXPECT_EQ(GAME_OK, outbox.items[0].status); /* the game is still over: 29 remain held */
+    /* the game is still over: 29 remain held */
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
 }
 
 TEST(GameActorTest, should_refuse_unsubscribing_the_same_subscriber_twice)
@@ -521,7 +525,7 @@ TEST(GameActorTest, should_refuse_unsubscribing_the_same_subscriber_twice)
     Send(&actor, SubscribeRequest(2U, &b), &outbox);
     Send(&actor, UnsubscribeRequest(3U, &b), &outbox);
     Send(&actor, UnsubscribeRequest(4U, &b), &outbox);
-    EXPECT_EQ(GAME_ERR_NOT_SUBSCRIBED, outbox.items[0].status);
+    EXPECT_EQ(GAME_ERR_NOT_SUBSCRIBED, outbox.items[0].payload.reply.status);
 }
 
 /* ---- The outbox holds the most one message can send ------------------------------------ */
@@ -570,7 +574,7 @@ TEST(GameActorTest, should_start_a_fresh_game_with_nothing_held_when_initialized
     Send(&actor, PinsetterRoll(3U), &outbox); /* held: the game is over */
     GameActor_Init(&actor, SCORER_TEN_PIN, SCORER_COUNT_PINS_DOWN);
     Send(&actor, DiscardHeldRequest(1U), &outbox);
-    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, outbox.items[0].status);
+    EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, outbox.items[0].payload.reply.status);
 }
 
 TEST(GameActorTest, should_catch_a_subscriber_joining_mid_frame_up_on_the_complete_frames_only)

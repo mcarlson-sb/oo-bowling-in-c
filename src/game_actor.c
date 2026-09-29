@@ -93,14 +93,14 @@ static GameOutput *GameOutbox_Next(GameOutbox *outbox, GameOutputKind kind, void
 static GameOutput *GameOutbox_BeginReply(GameOutbox *outbox, const GameMessage *message)
 {
     GameOutput *reply = GameOutbox_Next(outbox, GAME_OUT_REPLY, message->envelope.reply_to);
-    reply->seq = message->envelope.seq;
+    reply->payload.reply.seq = message->envelope.seq;
     return reply;
 }
 
 static void GameReply_Finish(GameOutput *reply, GameStatus status, Score score)
 {
-    reply->status = status;
-    reply->score = score;
+    reply->payload.reply.status = status;
+    reply->payload.reply.score = score;
 }
 
 static void GameOutbox_Reply(GameOutbox *outbox, const GameMessage *message, GameStatus status,
@@ -111,7 +111,7 @@ static void GameOutbox_Reply(GameOutbox *outbox, const GameMessage *message, Gam
 
 static void GameOutbox_FrameChanged(GameOutbox *outbox, void *to, const FrameEvent *frame)
 {
-    GameOutbox_Next(outbox, GAME_OUT_FRAME_CHANGED, to)->frame = *frame;
+    GameOutbox_Next(outbox, GAME_OUT_FRAME_CHANGED, to)->payload.frame = *frame;
 }
 
 static void GameActor_Publish(const GameActor *self, const FrameEvents *events,
@@ -133,17 +133,18 @@ static void GameActor_PublishHeld(const GameActor *self, uint8_t index, GameOutb
 {
     for (uint8_t s = 0U; s < self->subscribers.count; s++) {
         GameOutput *out = GameOutbox_Next(outbox, GAME_OUT_ROLL_HELD, self->subscribers.queues[s]);
-        out->pins = self->held.pins[index];
-        out->position = GameActor_HeldBallNumber(self, index);
-        out->held = self->held.count;
-        out->status = self->held.first_refused_for;
+        out->payload.roll_held.pins = self->held.pins[index];
+        out->payload.roll_held.position = GameActor_HeldBallNumber(self, index);
+        out->payload.roll_held.held = self->held.count;
+        out->payload.roll_held.status = self->held.first_refused_for;
     }
 }
 
 static void GameActor_PublishLost(const GameActor *self, GameOutbox *outbox)
 {
     for (uint8_t s = 0U; s < self->subscribers.count; s++) {
-        GameOutbox_Next(outbox, GAME_OUT_ROLLS_LOST, self->subscribers.queues[s])->lost =
+        GameOutput *out = GameOutbox_Next(outbox, GAME_OUT_ROLLS_LOST, self->subscribers.queues[s]);
+        out->payload.rolls_lost.lost =
             (uint16_t)(self->lost_to_full_queue + self->lost_to_full_held_list);
     }
 }
@@ -218,9 +219,10 @@ static void GameActor_PinsetterRoll(GameActor *self, const GameMessage *message,
 
 static RollEdit GameMessage_Edit(const GameMessage *message)
 {
-    const RollEdit edit = { message->payload.edit.first_roll, message->payload.edit.rolls_removed,
-                            (message->payload.edit.new_count > 0U) ? message->payload.edit.new_pins : NULL,
-                            message->payload.edit.new_count };
+    const GameEditPayload *payload = &message->payload.edit;
+    const RollEdit edit = { payload->first_roll, payload->rolls_removed,
+                            (payload->new_count > 0U) ? payload->new_pins : NULL,
+                            payload->new_count };
     return edit;
 }
 
