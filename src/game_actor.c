@@ -431,21 +431,13 @@ static void GameActor_Receive(GameActor *self, const Message *message, GameOutbo
     }
 }
 
-static void GameActor_HoldForTheFirstGame(GameActor *self, Pins pins, GameOutbox *outbox)
-{
-    if (HeldRolls_IsEmpty(&self->held)) {
-        HeldRolls_RefuseFirst(&self->held, GAME_ERR_NO_GAME);
-    }
-    GameActor_HoldOrLose(self, pins, outbox);
-}
-
 /* Before any game: the pinsetter's rolls wait for the first, and its losses are counted. Any
  * other request is answered "no game". */
 static void GameActor_BeforeAGame(GameActor *self, const Message *message, GameOutbox *outbox)
 {
     const GameRequest request = GameActor_RequestOf(message);
     if (request == GAME_PINSETTER_ROLL) {
-        GameActor_HoldForTheFirstGame(self, message->payload.roll.pins, outbox);
+        GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
     } else if (request == GAME_ROLLS_LOST) {
         GameActor_RollsLost(self, message, outbox);
     } else {
