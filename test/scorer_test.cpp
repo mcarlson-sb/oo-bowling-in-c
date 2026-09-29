@@ -517,3 +517,13 @@ TEST(CandlepinTest, A14_should_after_an_open_3_3_3_a_10_is_frame_2s_strike)
     EXPECT_EQ(9U, Scorer_Frame(&scorer, 0U).score);
     EXPECT_FALSE(Scorer_Frame(&scorer, 1U).complete); /* the strike waits for its bonus */
 }
+
+TEST(CandlepinTest, A15_should_a_spare_ends_frame_1_after_two_balls_with_a_strike_next_frame_1_is_20)
+{
+    Scorer scorer = MakeCandlepin();
+    RollAll(&scorer, {5U, 5U, 10U});
+    EXPECT_EQ(2U, Scorer_FrameCount(&scorer)); /* the 10 is frame 2s first ball */
+    const ScorerFrame first = Scorer_Frame(&scorer, 0U);
+    EXPECT_TRUE(first.complete);
+    EXPECT_EQ(20U, first.score);
+}
