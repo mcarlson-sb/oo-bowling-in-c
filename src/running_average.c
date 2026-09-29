@@ -49,6 +49,8 @@ void RunningAverage_Handle(RunningAverage *self, const Message *message, Outbox 
         Outbox_Reply(outbox, message, GAME_OK, RunningAverage_Average(self));
         break;
     case AVERAGE_DOES_NOT_UNDERSTAND:
+        self->not_understood++;
+        Outbox_NotUnderstood(outbox, self->id, message);
         break;
     }
 }

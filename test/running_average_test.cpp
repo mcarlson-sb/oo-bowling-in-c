@@ -72,3 +72,16 @@ TEST(RunningAverageTest, should_answer_0_before_any_frame_is_complete)
     const Outbox outbox = Send(&average, {FrameChanged(1, 0, false), Query(1U)});
     EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
 }
+
+TEST(RunningAverageTest, should_not_understand_a_roll_and_count_it)
+{
+    RunningAverage average = MakeAverage();
+    Message roll = {};
+    roll.envelope.selector = MSG_ROLL;
+    roll.envelope.from = kAsker;
+    roll.envelope.to = kAverage;
+    const Outbox outbox = Send(&average, {roll});
+    ASSERT_EQ(1U, outbox.count);
+    EXPECT_EQ(MSG_NOT_UNDERSTOOD, outbox.items[0].envelope.selector);
+    EXPECT_EQ(1U, average.not_understood);
+}
