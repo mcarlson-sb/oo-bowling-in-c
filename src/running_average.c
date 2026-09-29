@@ -1,4 +1,5 @@
 #include "running_average.h"
+#include "running_average_state.h"
 
 /* The running average's protocol, Smalltalk's respondsTo:: the selectors it answers. Any other
  * reads as AVERAGE_DOES_NOT_UNDERSTAND. */

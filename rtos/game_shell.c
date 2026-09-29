@@ -6,8 +6,9 @@
 
 #include "game_shell_ports.h"
 #include "posix_stack.h"
-#include "running_average.h"
-#include "scoreboard.h"
+#include "game_actor_state.h"
+#include "running_average_state.h"
+#include "scoreboard_state.h"
 
 /* How many messages a hosted actor's mailbox holds. */
 #define GAME_SHELL_MAILBOX 4U

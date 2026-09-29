@@ -7,6 +7,7 @@
 
 extern "C" {
 #include "running_average.h"
+#include "running_average_state.h"
 }
 
 namespace {

@@ -87,10 +87,21 @@ add_executable(bowling_tests
     test/running_average_test.cpp
 )
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
+# The actors' state headers, in src/: the tests see inside, as the shell does.
+target_include_directories(bowling_tests PRIVATE src)
 target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 
 include(GoogleTest)
 gtest_discover_tests(bowling_tests)
+
+# Each actor's state is its own: with include/ alone on the path, the compiler must refuse to
+# allocate one, for want of its definition. Fails if a state struct moves back into include/.
+add_test(NAME actor_state_is_hidden
+         COMMAND ${CMAKE_C_COMPILER} -std=c11 -fsyntax-only -I ${CMAKE_CURRENT_SOURCE_DIR}/include
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test/hidden_state_probe.c)
+# In the C locale, so GCC quotes with ASCII quotes; matched loosely all the same.
+set_tests_properties(actor_state_is_hidden PROPERTIES ENVIRONMENT "LC_ALL=C"
+    PASS_REGULAR_EXPRESSION "size of [^ ]*game[^ ]* isn.t known.*size of [^ ]*board[^ ]* isn.t known.*size of [^ ]*average[^ ]* isn.t known")
 
 # ---- The RTOS shell (FreeRTOS on its POSIX port) ----------------------------
 # The POSIX port runs on Linux only, so this is on there (WSL, CI) and off elsewhere; the Windows
@@ -138,7 +149,8 @@ if(OO_C_RTOS)
         rtos/game_shell_isr.c
         rtos/posix_stack.c
     )
-    target_include_directories(rtos_shell PUBLIC rtos)
+    # src/ for the actors' state headers: the shell hosts the instances, so it sees inside.
+    target_include_directories(rtos_shell PUBLIC rtos PRIVATE src)
     target_compile_options(rtos_shell PRIVATE ${OO_C_WARNINGS})
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
         target_compile_options(rtos_shell PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})

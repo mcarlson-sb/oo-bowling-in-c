@@ -24,34 +24,9 @@ extern "C" {
 #define GAME_OUTBOX_CAPACITY (1U + (GAME_MAX_SUBSCRIBERS * GAME_EVENTS_PER_MESSAGE))
 
 
-typedef struct {
-    Pins pins[SCORER_MAX_BALLS];
-    uint8_t count;
-    GameStatus first_refused_for;
-} HeldRolls;
-
-typedef struct {
-    ActorId ids[GAME_MAX_SUBSCRIBERS];
-    uint8_t count;
-} Subscribers;
-
-/* Where the game's lifecycle is: which messages mean something now. Whether a game in play is
- * over is the scorer's to say. */
-typedef enum {
-    GAME_AWAITING_RULES,
-    GAME_IN_PLAY
-} GameLifecycle;
-
-typedef struct {
-    ActorId id;
-    GameLifecycle lifecycle;
-    Scorer scorer;
-    Subscribers subscribers;
-    HeldRolls held;
-    uint16_t lost_to_full_queue;
-    uint16_t lost_to_full_held_list;
-    uint16_t not_understood;
-} GameActor;
+/* The game's state is its own: only the shell, which hosts it, and the tests see inside, through
+ * src/game_actor_state.h. */
+typedef struct GameActor GameActor;
 
 /* The game at `id`, which its events come from. */
 void GameActor_Init(GameActor *self, ActorId id);

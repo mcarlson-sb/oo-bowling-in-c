@@ -1,4 +1,5 @@
 #include "scoreboard.h"
+#include "scoreboard_state.h"
 
 /* The scoreboard's protocol, Smalltalk's respondsTo:: the selectors it answers. Any other reads as
  * SCOREBOARD_DOES_NOT_UNDERSTAND. */

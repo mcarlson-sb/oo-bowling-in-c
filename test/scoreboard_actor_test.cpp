@@ -5,6 +5,7 @@
 
 extern "C" {
 #include "scoreboard.h"
+#include "scoreboard_state.h"
 }
 
 namespace {

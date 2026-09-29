@@ -10,7 +10,6 @@
 #include <stdint.h>
 
 #include "actor_id.h"
-#include "frame_board.h"
 #include "message.h"
 #include "outbox.h"
 
@@ -18,11 +17,8 @@
 extern "C" {
 #endif
 
-typedef struct {
-    ActorId id;
-    FrameBoard board;
-    uint16_t not_understood;
-} RunningAverage;
+/* Its state is its own: only the shell, which hosts it, and the tests see inside. */
+typedef struct RunningAverage RunningAverage;
 
 void RunningAverage_Init(RunningAverage *self, ActorId id);
 

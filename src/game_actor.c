@@ -1,4 +1,5 @@
 #include "game_actor.h"
+#include "game_actor_state.h"
 
 #include <assert.h>
 #include <stddef.h>

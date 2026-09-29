@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "game_actor.h"
+#include "game_actor_state.h"
 #include "rules_presets.h"
 
 namespace {

@@ -9,7 +9,6 @@
 #include <stdint.h>
 
 #include "actor_id.h"
-#include "frame_board.h"
 #include "message.h"
 #include "outbox.h"
 
@@ -17,11 +16,8 @@
 extern "C" {
 #endif
 
-typedef struct {
-    ActorId id;
-    FrameBoard board;
-    uint16_t not_understood;
-} Scoreboard;
+/* Its state is its own: only the shell, which hosts it, and the tests see inside. */
+typedef struct Scoreboard Scoreboard;
 
 void Scoreboard_Init(Scoreboard *self, ActorId id);
 
