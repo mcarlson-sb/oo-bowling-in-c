@@ -488,3 +488,13 @@ TEST(CandlepinTest, A11_should_an_open_tenth_3_3_3_scores_9)
     EXPECT_TRUE(Scorer_IsOver(&scorer));
     EXPECT_EQ(9U, Scorer_Score(&scorer));
 }
+
+TEST(CandlepinTest, A12_should_6_then_5_is_rejected_too_many_pins_and_changes_nothing)
+{
+    Scorer scorer = MakeCandlepin();
+    RollAll(&scorer, {6U});
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Roll(&scorer, 5U, &events));
+    EXPECT_EQ(4U, Scorer_PinsStanding(&scorer));
+    EXPECT_EQ(1U, Scorer_FrameCount(&scorer));
+}
