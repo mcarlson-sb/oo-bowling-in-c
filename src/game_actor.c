@@ -79,6 +79,7 @@ void GameActor_Init(GameActor *self, ActorId id, ScorerVariant variant, CountRul
     HeldRolls_Init(&self->held);
     self->lost_to_full_queue = 0U;
     self->lost_to_full_held_list = 0U;
+    self->not_understood = 0U;
 }
 
 static Message *GameOutbox_Next(GameOutbox *outbox, Selector selector, ActorId from, ActorId to)
@@ -303,10 +304,19 @@ static void GameActor_Unsubscribe(GameActor *self, const Message *message,
     GameOutbox_Reply(outbox, message, removed ? GAME_OK : GAME_ERR_NOT_SUBSCRIBED, 0U);
 }
 
+static void GameActor_DoesNotUnderstand(GameActor *self, const Message *message,
+                                        GameOutbox *outbox)
+{
+    self->not_understood++;
+    Message *reply = GameOutbox_Next(outbox, MSG_NOT_UNDERSTOOD, self->id, message->envelope.from);
+    reply->envelope.seq = message->envelope.seq;
+    reply->payload.not_understood.selector = message->envelope.selector;
+}
+
 /* What the game makes of each selector of the protocol. The ones it doesn't answer are the ones
- * not listed, which read as GAME_IGNORES. */
+ * not listed, which read as GAME_DOES_NOT_UNDERSTAND. */
 typedef enum {
-    GAME_IGNORES = 0,
+    GAME_DOES_NOT_UNDERSTAND = 0,
     GAME_ROLL,
     GAME_SUBSCRIBE,
     GAME_UNSUBSCRIBE,
@@ -331,7 +341,7 @@ static const GameRequest k_game_requests[MSG_SELECTOR_COUNT] = {
 static GameRequest GameActor_RequestOf(const Message *message)
 {
     const Selector selector = message->envelope.selector;
-    return ((unsigned)selector < MSG_SELECTOR_COUNT) ? k_game_requests[selector] : GAME_IGNORES;
+    return ((unsigned)selector < MSG_SELECTOR_COUNT) ? k_game_requests[selector] : GAME_DOES_NOT_UNDERSTAND;
 }
 
 void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbox)
@@ -362,7 +372,8 @@ void GameActor_Handle(GameActor *self, const Message *message, GameOutbox *outbo
     case GAME_ROLL:
         GameActor_Roll(self, message, outbox);
         break;
-    case GAME_IGNORES:
+    case GAME_DOES_NOT_UNDERSTAND:
+        GameActor_DoesNotUnderstand(self, message, outbox);
         break;
     }
 }

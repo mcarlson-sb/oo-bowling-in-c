@@ -48,6 +48,9 @@ typedef enum {
     /* A pinsetter roll was held: its pins, the ball it would be (position), how many are held
      * now, and why the first of them was rejected (status). */
     MSG_ROLL_HELD,
+    /* To from, with its seq: the selector sent was one the kind at "to" doesn't answer. Never
+     * answered itself. */
+    MSG_NOT_UNDERSTOOD,
     MSG_SELECTOR_COUNT
 } Selector;
 
@@ -86,6 +89,10 @@ typedef struct {
     GameStatus status;
 } RollHeldPayload;
 
+typedef struct {
+    Selector selector;
+} NotUnderstoodPayload;
+
 /* An envelope, and the fields of its selector only. */
 typedef struct {
     Envelope envelope;
@@ -96,6 +103,7 @@ typedef struct {
         ReplyPayload reply;           /* MSG_REPLY */
         FrameEvent frame;             /* MSG_FRAME_CHANGED */
         RollHeldPayload roll_held;    /* MSG_ROLL_HELD */
+        NotUnderstoodPayload not_understood; /* MSG_NOT_UNDERSTOOD */
     } payload;
 } Message;
 

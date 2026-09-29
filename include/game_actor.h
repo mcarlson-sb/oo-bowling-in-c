@@ -45,6 +45,7 @@ typedef struct {
     HeldRolls held;
     uint16_t lost_to_full_queue;
     uint16_t lost_to_full_held_list;
+    uint16_t not_understood;
 } GameActor;
 
 /* The game at `id`, which its events come from. */

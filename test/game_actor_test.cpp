@@ -589,3 +589,25 @@ TEST(GameActorTest, should_catch_a_subscriber_joining_mid_frame_up_on_the_comple
     EXPECT_EQ((std::vector<Sent>{{MSG_FRAME_CHANGED, kSubscriber, 1, 7, true}}),
               FrameEventsIn(outbox));
 }
+
+/* ---- A selector the game doesn't answer ------------------------------------------------ */
+
+TEST(GameActorTest, should_reply_not_understood_to_a_selector_it_does_not_answer_and_count_it)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Message frame_changed = {};
+    frame_changed.envelope.selector = MSG_FRAME_CHANGED;
+    frame_changed.envelope.from = kReplyTo;
+    frame_changed.envelope.to = kGame;
+    frame_changed.envelope.seq = 5U;
+    Send(&actor, frame_changed, &outbox);
+    ASSERT_EQ(1U, outbox.count);
+    const Message &reply = outbox.items[0];
+    EXPECT_EQ(MSG_NOT_UNDERSTOOD, reply.envelope.selector);
+    EXPECT_EQ(kReplyTo, reply.envelope.to);
+    EXPECT_EQ(kGame, reply.envelope.from);
+    EXPECT_EQ(5U, reply.envelope.seq);
+    EXPECT_EQ(MSG_FRAME_CHANGED, reply.payload.not_understood.selector);
+    EXPECT_EQ(1U, actor.not_understood);
+}
