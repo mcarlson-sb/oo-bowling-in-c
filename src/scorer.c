@@ -155,11 +155,18 @@ static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index
     }
 }
 
-static Pins Scorer_Count(const Scorer *self, Pins standing, Pins pins)
+/* Nine-pin no-tap: a ball off a full rack that leaves only one pin standing. */
+static bool NoTap_LeavesOnePinOfAFullRack(Pins standing, Pins pins, Pins full_rack)
+{
+    return (standing == full_rack) && ((Pins)(pins + 1U) == standing);
+}
+
+/* How many pins a ball counts as, by the game's rule. */
+static Pins Scorer_CountPins(const Scorer *self, Pins standing, Pins pins)
 {
     switch (self->rule) {
     case SCORER_COUNT_NO_TAP:
-        return ((standing == Scorer_Rules(self)->pins_per_rack) && ((pins + 1U) == standing))
+        return NoTap_LeavesOnePinOfAFullRack(standing, pins, Scorer_Rules(self)->pins_per_rack)
                    ? standing
                    : pins;
     case SCORER_COUNT_PINS_DOWN:
@@ -179,7 +186,7 @@ static Lane Scorer_Lane(const Scorer *self)
     lane.phase = LANE_TAKING_FRAMES;
     lane.fill_balls_left = 0U;
     for (uint8_t i = 0U; i < self->ball_count; i++) {
-        lane.counted[i] = Scorer_Count(self, lane.standing, self->balls[i]);
+        lane.counted[i] = Scorer_CountPins(self, lane.standing, self->balls[i]);
         Lane_Throw(&lane, rules, i, lane.counted[i]);
     }
     return lane;
@@ -305,15 +312,15 @@ Score Scorer_Score(const Scorer *self)
 
 /* ---- Edits ------------------------------------------------------------------------------ */
 
-static bool Scorer_EditStartsAtABall(const Scorer *self, const RollEdit *edit)
+static bool RollEdit_StartsAtABall(const RollEdit *edit, uint8_t ball_count)
 {
-    return (edit->first_roll != 0U) && (edit->first_roll <= self->ball_count);
+    return (edit->first_roll != 0U) && (edit->first_roll <= ball_count);
 }
 
 /* Only once it starts at a ball: ball 0 has no index. */
-static bool Scorer_EditRemovesOnlyExistingBalls(const Scorer *self, const RollEdit *edit)
+static bool RollEdit_RemovesOnlyBallsThere(const RollEdit *edit, uint8_t ball_count)
 {
-    return ((unsigned)(edit->first_roll - 1U) + edit->rolls_removed) <= self->ball_count;
+    return ((unsigned)(edit->first_roll - 1U) + edit->rolls_removed) <= ball_count;
 }
 
 static bool RollEdit_PromisesBallsWithoutPins(const RollEdit *edit)
@@ -322,9 +329,9 @@ static bool RollEdit_PromisesBallsWithoutPins(const RollEdit *edit)
 }
 
 /* Only once the edit is within the balls: more removed than there are would wrap. */
-static unsigned Scorer_BallsAfterEdit(const Scorer *self, const RollEdit *edit)
+static unsigned RollEdit_BallsAfter(const RollEdit *edit, uint8_t ball_count)
 {
-    return ((unsigned)self->ball_count - edit->rolls_removed) + edit->new_count;
+    return ((unsigned)ball_count - edit->rolls_removed) + edit->new_count;
 }
 
 /* The same rules, in the same order, as the Game facade's edits. */
@@ -333,29 +340,33 @@ static GameStatus Scorer_CheckEdit(const Scorer *self, const RollEdit *edit)
     if (edit == NULL) {
         return GAME_ERR_INVALID_EDIT;
     }
-    if (!Scorer_EditStartsAtABall(self, edit) || !Scorer_EditRemovesOnlyExistingBalls(self, edit)) {
+    if (!RollEdit_StartsAtABall(edit, self->ball_count) ||
+        !RollEdit_RemovesOnlyBallsThere(edit, self->ball_count)) {
         return GAME_ERR_NO_SUCH_ROLL;
     }
     if (RollEdit_PromisesBallsWithoutPins(edit)) {
         return GAME_ERR_INVALID_EDIT;
     }
-    if (Scorer_BallsAfterEdit(self, edit) > Scorer_Rules(self)->max_balls) {
+    if (RollEdit_BallsAfter(edit, self->ball_count) > Scorer_Rules(self)->max_balls) {
         return GAME_ERR_TOO_MANY_ROLLS;
     }
     return GAME_OK;
 }
 
-/* The ball at `index` of the edited game: before the range, the new balls, then after it. */
+/* The ball at `index` of the edited game: the balls before the edit, then its new balls, then
+ * the balls after the ones it removed. */
 static Pins Scorer_EditedBall(const Scorer *self, const RollEdit *edit, uint8_t index)
 {
-    const uint8_t first = (uint8_t)(edit->first_roll - 1U);
-    if (index < first) {
+    const uint8_t new_from = (uint8_t)(edit->first_roll - 1U);
+    const uint8_t new_until = (uint8_t)(new_from + edit->new_count);
+    if (index < new_from) {
         return self->balls[index];
     }
-    if (index < (uint8_t)(first + edit->new_count)) {
-        return edit->new_pins[index - first];
+    if (index < new_until) {
+        return edit->new_pins[index - new_from];
     }
-    return self->balls[(uint8_t)(index - edit->new_count + edit->rolls_removed)];
+    const uint8_t after_removed = (uint8_t)(new_from + edit->rolls_removed);
+    return self->balls[(uint8_t)(after_removed + (index - new_until))];
 }
 
 /* Every ball of the edited game into a fresh copy, each judged as a roll would be. */
@@ -363,7 +374,7 @@ static GameStatus Scorer_ReplayEdited(const Scorer *self, const RollEdit *edit, 
 {
     FrameEvents ignored;
     Scorer_InitWithRule(edited, self->variant, self->rule);
-    const uint8_t count = (uint8_t)Scorer_BallsAfterEdit(self, edit);
+    const uint8_t count = (uint8_t)RollEdit_BallsAfter(edit, self->ball_count);
     for (uint8_t i = 0U; i < count; i++) {
         const GameStatus status = Scorer_Roll(edited, Scorer_EditedBall(self, edit, i), &ignored);
         if (status != GAME_OK) {
@@ -379,8 +390,8 @@ static void Scorer_ReportAll(const Scorer *self, uint8_t were_complete, FrameEve
 {
     const Lane lane = Scorer_Lane(self);
     const uint8_t now_complete = Lane_CountCompleteFrames(&lane, self->ball_count);
-    const uint8_t frames = (were_complete > now_complete) ? were_complete : now_complete;
-    for (uint8_t i = 0U; i < frames; i++) {
+    const uint8_t frames_to_report = (were_complete > now_complete) ? were_complete : now_complete;
+    for (uint8_t i = 0U; i < frames_to_report; i++) {
         if (i < now_complete) {
             FrameEvents_Add(events, i, Lane_FrameScore(&lane, &lane.frames[i]), true);
         } else {
