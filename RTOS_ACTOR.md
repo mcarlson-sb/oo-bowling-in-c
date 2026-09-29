@@ -1068,3 +1068,68 @@ Also, the output size above: whether to cap an edit's inline balls.
 - **Each kind gets its own selector table,** named as that kind's protocol (Smalltalk's
   `respondsTo:`). If a kind doesn't need one, the report says so, and says whether the game's
   table earned its keep or only moved a branch out of the complexity count.
+
+### Step 5: more kinds at subscriber ids, and what a task per actor costs
+
+The shell is an actor host now. A route binds an id to a kind, an instance and a mailbox, and
+the one dispatch switch reaches any kind's receive function. Two kinds joined the game:
+- **A scoreboard,** which rebuilds the frames from FRAME_CHANGED events and answers
+  QUERY_SCORE with their total.
+- **A running average,** kay-oo's no-tap average listener, now an actor. It hears the same
+  events, and answers the same QUERY_SCORE with their average.
+
+Both keep a `FrameBoard`, a plain value. Each kind has its own protocol table (`respondsTo:`),
+and answers NOT_UNDERSTOOD through the shared outbox.
+
+**The rebinding proof.** One scenario, in the same client code, subscribes an id to the same game,
+rolls a spare and an open frame (7, then 12), and asks whoever sits at that id QUERY_SCORE:
+
+| Bound at the id | Answer |
+|---|---|
+| a scoreboard | 19, the total |
+| a running average | 9, the average, rounded down |
+| a recording double (an external queue) | none; it records the subscription's reply, both events and the question |
+
+Neither the game's code nor the sender's changes between the three. With the two hosted kinds'
+dispatch cases swapped, both hosted bindings fail. The binding is made at startup, before the
+scheduler runs. That way the routing table is written only while nothing else can read it, and
+needs no lock.
+
+**What one hosted actor's task costs**, measured on this host (x86-64, the POSIX port, GCC 13):
+
+| Part | Bytes | Note |
+|---|---|---|
+| Stack | 16384 | The port's minimum, `PTHREAD_STACK_MIN`; the contract needs at most 4320 |
+| Outbox | 1896 | 43 messages: the game's worst case, and every hosted task has one |
+| Mailbox storage | 176 | 4 messages of 44 |
+| Queue control block (`StaticQueue_t`) | 144 | |
+| Task control block (`StaticTask_t`) | 128 | |
+| The message being handled | 44 | |
+| Painted-stack record | 16 | Host only |
+| **One hosted task** | **about 18.8 KB** | |
+| The actor's own state | 34 (scoreboard, average), 96 (game) | |
+
+The shell's static RAM, with three actors hosted, is 57 KB.
+
+**Stack depth by kind**, from the call graph, without the host's allowances:
+
+| Entry | Release | Debug |
+|---|---|---|
+| `GameActor_Handle` | 800 | 1280 |
+| `Scoreboard_Handle` | 48 | 224 |
+| `RunningAverage_Handle` | 64 | 224 |
+| `GameShell_Task`, every hosted task's entry | 896 | 1392 |
+
+What this shows:
+- **The one dispatch switch has a stack cost.** Every hosted task runs the same entry, which
+  reaches every kind, so the call graph can't know which kind a task hosts. Every task's
+  contract is the deepest kind's, the game's, while a scoreboard's own code needs a sixth of it.
+  Only the dispatch switch could fix this: a task entry per kind would be a second switch on the
+  kind, or a function pointer.
+- **Most of a task's cost is hosting, not the actor.** On a target, each task would still carry
+  a stack sized for the game (about 1.3 KB of code path, plus the interrupt frame), the outbox,
+  the queue storage and the control blocks: roughly 3.5 to 4 KB, for an actor whose state is 34
+  bytes. The outbox is the biggest part after the stack. It is sized for the game's worst case,
+  though an observer sends at most one reply per message.
+- **These are the numbers for the decision** between one actor per task and several sharing a
+  task. They are yours to make, as decided. Nothing is changed yet.
