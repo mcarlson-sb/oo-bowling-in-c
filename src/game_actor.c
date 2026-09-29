@@ -23,16 +23,26 @@ static GameOutput *GameOutbox_Next(GameOutbox *outbox, GameOutputKind kind, void
     return out;
 }
 
-/* The reply always goes first. A handler that wants the score after everything the message
- * caused fills it in last. */
-static GameOutput *GameOutbox_Reply(GameOutbox *outbox, const GameMessage *message,
-                                    GameStatus status, Score score)
+/* The reply goes first, before any event the message causes. A handler begins it, and finishes
+ * it once it knows the outcome. */
+static GameOutput *GameOutbox_BeginReply(GameOutbox *outbox, const GameMessage *message)
 {
     GameOutput *reply = GameOutbox_Next(outbox, GAME_OUT_REPLY, message->reply_to);
     reply->seq = message->seq;
+    return reply;
+}
+
+static void GameReply_Finish(GameOutput *reply, GameStatus status, Score score)
+{
     reply->status = status;
     reply->score = score;
-    return reply;
+}
+
+/* A reply whose outcome is known at once. */
+static void GameOutbox_Reply(GameOutbox *outbox, const GameMessage *message, GameStatus status,
+                             Score score)
+{
+    GameReply_Finish(GameOutbox_BeginReply(outbox, message), status, score);
 }
 
 static void GameOutbox_FrameChanged(GameOutbox *outbox, void *to, const FrameEvent *frame)
@@ -149,19 +159,26 @@ static void GameActor_PinsetterRoll(GameActor *self, const GameMessage *message,
     GameActor_Publish(self, &events, outbox);
 }
 
-static void GameActor_Edit(GameActor *self, const GameMessage *message, GameOutbox *outbox)
+/* The edit a message carries, pointing into the message's own copy of the new balls. */
+static RollEdit GameMessage_Edit(const GameMessage *message)
 {
     const RollEdit edit = { message->first_roll, message->rolls_removed,
                             (message->new_count > 0U) ? message->new_pins : NULL,
                             message->new_count };
+    return edit;
+}
+
+static void GameActor_Edit(GameActor *self, const GameMessage *message, GameOutbox *outbox)
+{
+    GameOutput *reply = GameOutbox_BeginReply(outbox, message);
+    const RollEdit edit = GameMessage_Edit(message);
     FrameEvents events;
     const GameStatus status = Scorer_Edit(&self->scorer, &edit, &events);
-    GameOutput *reply = GameOutbox_Reply(outbox, message, status, 0U);
     GameActor_Publish(self, &events, outbox);
     if (status == GAME_OK) {
         GameActor_ReplayHeld(self, outbox);
     }
-    reply->score = Scorer_Score(&self->scorer);
+    GameReply_Finish(reply, status, Scorer_Score(&self->scorer));
 }
 
 static void GameActor_DiscardHeld(GameActor *self, const GameMessage *message,
@@ -171,10 +188,10 @@ static void GameActor_DiscardHeld(GameActor *self, const GameMessage *message,
         GameOutbox_Reply(outbox, message, GAME_ERR_NO_SUCH_ROLL, 0U);
         return;
     }
-    GameOutput *reply = GameOutbox_Reply(outbox, message, GAME_OK, 0U);
+    GameOutput *reply = GameOutbox_BeginReply(outbox, message);
     GameActor_DropFirstHeld(self);
     GameActor_ReplayHeld(self, outbox);
-    reply->score = Scorer_Score(&self->scorer);
+    GameReply_Finish(reply, GAME_OK, Scorer_Score(&self->scorer));
 }
 
 static void GameActor_RollsLost(GameActor *self, const GameMessage *message, GameOutbox *outbox)
