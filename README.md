@@ -1,5 +1,10 @@
 # OO in C: the Bowling Kata
 
+[![Gate](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/workflows/gate.yml/badge.svg?branch=integration%2Frtos-actor)](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/workflows/gate.yml?query=branch%3Aintegration%2Frtos-actor)
+
+The gate's status on `integration/rtos-actor`, where every push is gated. `rtos-actor` itself
+has no runs of its own: it only ever holds commits that passed this gate.
+
 > **On the `rtos-actor` branch:** the frame classes this describes (the State pattern, its
 > vtables and state families) have been replaced by one data-driven scorer with no function
 > pointers; see `RTOS_ACTOR.md`. They are intact on `kay-oo` and `main`. This document is
