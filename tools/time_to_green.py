@@ -7,6 +7,10 @@ spell began when the first of them started. Prints one Markdown line for the job
 
 Usage: time_to_green.py <owner/repo> <workflow file> <branch> <this run's id>
 The token, if any, is read from GITHUB_TOKEN (the repository is public, so reads work without).
+TIME_TO_GREEN_API overrides the API's base URL (for proving the failure path).
+
+It never fails: it runs in the promote job, where nothing may turn a promotion red. Any error
+reading the API prints "time to green unavailable" and exits 0.
 """
 
 import datetime
@@ -48,13 +52,10 @@ def red_spell(runs, this_run):
     return red
 
 
-def main(argv):
-    if len(argv) != 4:
-        print(__doc__)
-        return 2
-    repo, workflow, branch, this_run = argv[0], argv[1], argv[2], int(argv[3])
-    url = "https://api.github.com/repos/%s/actions/workflows/%s/runs?branch=%s&per_page=50" % (
-        repo, workflow, urllib.parse.quote(branch, safe=""))
+def report(repo, workflow, branch, this_run):
+    base = os.environ.get("TIME_TO_GREEN_API", "https://api.github.com")
+    url = "%s/repos/%s/actions/workflows/%s/runs?branch=%s&per_page=50" % (
+        base, repo, workflow, urllib.parse.quote(branch, safe=""))
     runs = get(url)["workflow_runs"]
     red = red_spell(runs, this_run)
     if not red:
@@ -67,6 +68,16 @@ def main(argv):
                                      "" if len(red) == 1 else "s",
                                      red[-1]["run_started_at"], red[-1]["html_url"]))
     return 0
+
+
+def main(argv):
+    try:
+        repo, workflow, branch, this_run = argv[0], argv[1], argv[2], int(argv[3])
+        return report(repo, workflow, branch, this_run)
+    except Exception as error:  # pylint: disable=broad-except -- it must not fail the job
+        print("**Time to green:** time to green unavailable (%s: %s)."
+              % (type(error).__name__, error))
+        return 0
 
 
 if __name__ == "__main__":
