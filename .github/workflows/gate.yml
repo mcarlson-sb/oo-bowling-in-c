@@ -146,15 +146,20 @@ jobs:
           find build -name '*.su' -exec cat {} + | sort -t"$(printf '\t')" -k2 -n | tail -5 \
             | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
 
-  # No function pointers in src/ or include/ outside the files still being strangled and what
-  # FreeRTOS itself requires: over clang's AST, so typedefs and decays can't hide one.
+  # No function pointers in src/, include/ or rtos/ outside the files still being strangled and
+  # what FreeRTOS itself requires: over clang's AST, so typedefs and decays can't hide one.
   function-pointers:
     name: function-pointers
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      # Configuring fetches FreeRTOS-Kernel, whose headers the RTOS shell's files need.
+      - name: Fetch FreeRTOS
+        run: cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ > /dev/null
       - name: Check for function pointers
-        run: python3 tools/check_function_pointers.py --clang clang
+        run: >-
+          python3 tools/check_function_pointers.py --clang clang
+          --freertos build/_deps/freertos_kernel-src
 
   # Every commit since rtos-actor builds and passes its tests, not just the last one: one debug
   # build, reused from commit to commit, so each is an incremental build.

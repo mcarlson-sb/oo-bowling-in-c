@@ -12,5 +12,6 @@ src/frame_reporter.h
 src/game.c
 
 # RTOS shell files: what FreeRTOS itself requires (task entry functions, timer callbacks), each
-# use on a line marked "FUNCTION POINTER EXEMPTION:" with a reason. None yet.
+# use on a line marked "FUNCTION POINTER EXEMPTION:" with a reason.
 [rtos-shell]
+rtos/game_shell.c

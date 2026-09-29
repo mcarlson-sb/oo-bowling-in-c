@@ -3,7 +3,7 @@
 JSON AST dump rather than by grepping text, so a typedef, a macro or an implicit decay can't hide
 one.
 
-Flags, in files under src/ or include/:
+Flags, in files under src/, include/ or rtos/:
   - a declaration whose type is a function pointer: a variable, struct member, parameter,
     typedef, or a function returning one;
   - taking a function's address: `&f`, or `f` decaying to a pointer anywhere but as the callee
@@ -15,7 +15,9 @@ Two ways out, both visible in review:
   - a line carrying the marker `FUNCTION POINTER EXEMPTION:` with a reason, in a file listed as
     an RTOS shell in the allowlist's [rtos-shell] section: what FreeRTOS itself requires.
 
-Usage: check_function_pointers.py [--clang CLANG] [-- extra clang args]
+Usage: check_function_pointers.py [--clang CLANG] [--freertos DIR] [-- extra clang args]
+  --freertos DIR  the FreeRTOS-Kernel source, for the RTOS shell's headers (CMake fetches it to
+                  <build>/_deps/freertos_kernel-src). Required when rtos/ has sources.
 Exit status: 0 clean, 1 violations, 2 the check itself couldn't run.
 """
 
@@ -36,13 +38,13 @@ DECLARATIONS = {"VarDecl", "FieldDecl", "ParmVarDecl", "TypedefDecl", "FunctionD
 
 
 def project_relative(path):
-    """src/... or include/..., or None for anything outside the project's own code."""
+    """src/..., include/... or rtos/..., or None for anything outside the project's own code."""
     try:
         relative = Path(path).resolve().relative_to(ROOT)
     except ValueError:
         return None
     parts = relative.parts
-    if parts and parts[0] in ("src", "include"):
+    if parts and parts[0] in ("src", "include", "rtos"):
         return relative.as_posix()
     return None
 
@@ -115,6 +117,12 @@ def walk(node, tracker, hits, parent=None, index_in_parent=0):
         walk(child, tracker, hits, node, index)
 
 
+def freertos_includes(freertos):
+    port = Path(freertos) / "portable" / "ThirdParty" / "GCC" / "Posix"
+    return ["-I", str(ROOT / "rtos"), "-I", str(Path(freertos) / "include"),
+            "-I", str(port), "-I", str(port / "utils")]
+
+
 def dump_ast(clang, source, extra_args, as_header):
     command = [clang, "-fsyntax-only", "-std=c11", "-I", str(ROOT / "include"),
                "-I", str(ROOT / "src")] + extra_args
@@ -159,8 +167,15 @@ def main(argv):
     if "--" in argv:
         extra = argv[argv.index("--") + 1:]
 
-    sources = sorted((ROOT / "src").glob("*.c"))
-    headers = sorted((ROOT / "src").glob("*.h")) + sorted((ROOT / "include").glob("*.h"))
+    sources = sorted((ROOT / "src").glob("*.c")) + sorted((ROOT / "rtos").glob("*.c"))
+    headers = (sorted((ROOT / "src").glob("*.h")) + sorted((ROOT / "include").glob("*.h")) +
+               sorted(h for h in (ROOT / "rtos").glob("*.h") if h.name != "FreeRTOSConfig.h"))
+    if any((ROOT / "rtos").glob("*.c")):
+        if "--freertos" not in argv:
+            print("check_function_pointers: could not run: rtos/ has sources; "
+                  "pass --freertos <FreeRTOS-Kernel source>")
+            return 2
+        extra = freertos_includes(argv[argv.index("--freertos") + 1]) + extra
     hits = {}
     try:
         for source in sources:
