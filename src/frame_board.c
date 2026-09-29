@@ -23,6 +23,17 @@ void FrameBoard_Hear(FrameBoard *self, const FrameEvent *frame)
     self->complete[index] = frame->frame_complete;
 }
 
+uint8_t FrameBoard_CompleteCount(const FrameBoard *self)
+{
+    uint8_t count = 0U;
+    for (uint8_t i = 0U; i < SCORER_MAX_FRAMES; i++) {
+        if (self->complete[i]) {
+            count++;
+        }
+    }
+    return count;
+}
+
 Score FrameBoard_Total(const FrameBoard *self)
 {
     Score total = 0U;

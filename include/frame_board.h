@@ -26,6 +26,8 @@ void FrameBoard_Hear(FrameBoard *self, const FrameEvent *frame);
 /* The total of the complete frames. */
 Score FrameBoard_Total(const FrameBoard *self);
 
+uint8_t FrameBoard_CompleteCount(const FrameBoard *self);
+
 #ifdef __cplusplus
 }
 #endif
