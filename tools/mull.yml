@@ -7,4 +7,4 @@ includePaths:
 excludePaths:
   - .*/_deps/.*
   - .*/test/.*
-timeout: 30000 # ms per run of the whole test binary; it takes about 10 s under Mull
+timeout: 10000 # ms per run of the test binary; about 2.5 s under Mull, with the default filter
