@@ -208,7 +208,7 @@ static void GameActor_CatchUp(const GameActor *self, void *subscriber, GameOutbo
     for (uint8_t i = 0U; i < Scorer_FrameCount(&self->scorer); i++) {
         const ScorerFrame frame = Scorer_Frame(&self->scorer, i);
         if (!frame.complete) {
-            return; /* frames complete oldest first: none after this one is */
+            return;
         }
         const FrameEvent event = { (FrameNumber)(i + 1U), frame.score, true };
         GameOutbox_FrameChanged(outbox, subscriber, &event);

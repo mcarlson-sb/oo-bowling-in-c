@@ -662,3 +662,46 @@ TEST(TenPinScorerQueryTest, should_report_a_frame_not_yet_started_as_not_complet
         EXPECT_EQ(0U, frame.score) << "frame index " << +index;
     }
 }
+
+/* ---- Frames complete oldest first ------------------------------------------------------- */
+
+namespace {
+
+/* After every ball of random legal games: no frame is complete after one that isn't. */
+template <typename ReferenceLane>
+void ExpectCompleteFramesToComeFirst(ScorerVariant variant, int max_balls, unsigned seed)
+{
+    std::mt19937 random(seed);
+    for (int game_number = 0; game_number < 2000; ++game_number) {
+        Scorer scorer = MakeScorer(variant);
+        ReferenceLane lane;
+        for (int ball = 0; (ball < max_balls) && !lane.over; ++ball) {
+            const bool clear_the_rack = std::uniform_int_distribution<int>(0, 3)(random) == 0;
+            const int down =
+                clear_the_rack ? lane.standing
+                               : std::uniform_int_distribution<int>(0, lane.standing)(random);
+            RollAll(&scorer, {static_cast<Pins>(down)});
+            lane.Roll(down);
+            bool incomplete_seen = false;
+            for (uint8_t index = 0U; index < SCORER_MAX_FRAMES; index++) {
+                const bool complete = Scorer_Frame(&scorer, index).complete;
+                ASSERT_FALSE(incomplete_seen && complete)
+                    << "game " << game_number << ", after ball " << (ball + 1) << ", frame "
+                    << (index + 1) << " is complete after one that isn't";
+                incomplete_seen = incomplete_seen || !complete;
+            }
+        }
+    }
+}
+
+} // namespace
+
+TEST(TenPinScorerTest, should_complete_frames_oldest_first)
+{
+    ExpectCompleteFramesToComeFirst<ten_pin_reference::Lane>(SCORER_TEN_PIN, 21, 20261001U);
+}
+
+TEST(CandlepinTest, should_complete_frames_oldest_first)
+{
+    ExpectCompleteFramesToComeFirst<candlepin_reference::Lane>(SCORER_CANDLEPIN, 30, 20261002U);
+}

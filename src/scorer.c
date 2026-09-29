@@ -237,9 +237,6 @@ void Scorer_InitWithRule(Scorer *self, ScorerVariant variant, CountRule rule)
     self->ball_count = 0U;
 }
 
-/* How many frames are complete. They always complete oldest first: a frame's bonus balls are
- * the next frames' own balls, and no frame completes before the bonus balls of the one before
- * it are in. So the complete frames are always the first few. */
 static uint8_t Lane_CountCompleteFrames(const Lane *lane, uint8_t ball_count)
 {
     uint8_t complete = 0U;
