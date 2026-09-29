@@ -1,0 +1,17 @@
+# ThreadSanitizer suppressions for the FreeRTOS POSIX port, used by the RTOS integration tests.
+#
+# The port simulates interrupts with signals delivered to pthreads, and guards the kernel's
+# data by masking those signals: synchronization ThreadSanitizer can't see, so it reports the
+# kernel racing with itself. Each rule matches only the top frame (race_top), where the access
+# is: every task's stack has the port's thread start at its bottom, so a plain "race:" rule would
+# also hide a race in the shell's own task code. That a race in the shell is still reported was
+# proved with a deliberate one (RTOS_ACTOR.md).
+race_top:freertos_kernel-src/tasks.c
+race_top:freertos_kernel-src/queue.c
+race_top:freertos_kernel-src/list.c
+race_top:freertos_kernel-src/portable/ThirdParty/GCC/Posix/port.c
+race_top:freertos_kernel-src/portable/ThirdParty/GCC/Posix/utils/wait_for_event.c
+# The tick is a signal handler that calls into the kernel, and a deleted task's event is torn
+# down with its mutex held: both the port's design.
+signal:vPortSystemTickHandler
+mutex:event_delete

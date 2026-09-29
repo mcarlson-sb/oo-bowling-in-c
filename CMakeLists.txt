@@ -123,6 +123,65 @@ target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 include(GoogleTest)
 gtest_discover_tests(bowling_tests)
 
+# ---- The RTOS shell (FreeRTOS on its POSIX port) ----------------------------
+# The POSIX port runs on Linux only, so this is on there (WSL, CI) and off elsewhere; the Windows
+# builds keep testing the pure core. Its integration tests are an executable of their own: each
+# starts the scheduler, which is state for the whole process.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(OO_C_RTOS_DEFAULT ON)
+else()
+    set(OO_C_RTOS_DEFAULT OFF)
+endif()
+option(OO_C_RTOS "Build the FreeRTOS shell and its integration tests (POSIX port, Linux)"
+       ${OO_C_RTOS_DEFAULT})
+if(OO_C_RTOS)
+    # FreeRTOS-Kernel, fetched like GoogleTest, and built here from the files the shell needs:
+    # its own CMake isn't used (SOURCE_SUBDIR names a directory it doesn't have). Vendor code,
+    # so it builds without the library's warnings.
+    FetchContent_Declare(
+        freertos_kernel
+        URL https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/V11.1.0.tar.gz
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        SOURCE_SUBDIR not-its-cmake
+    )
+    FetchContent_MakeAvailable(freertos_kernel)
+    set(FREERTOS_DIR ${freertos_kernel_SOURCE_DIR})
+    set(FREERTOS_PORT_DIR ${FREERTOS_DIR}/portable/ThirdParty/GCC/Posix)
+    add_library(freertos STATIC
+        ${FREERTOS_DIR}/tasks.c
+        ${FREERTOS_DIR}/queue.c
+        ${FREERTOS_DIR}/list.c
+        ${FREERTOS_PORT_DIR}/port.c
+        ${FREERTOS_PORT_DIR}/utils/wait_for_event.c
+        # The kernel's hooks for its own static memory: it calls them, so they link with it.
+        rtos/rtos_memory.c
+    )
+    set_source_files_properties(rtos/rtos_memory.c PROPERTIES COMPILE_OPTIONS "${OO_C_WARNINGS}")
+    target_include_directories(freertos SYSTEM PUBLIC
+        rtos ${FREERTOS_DIR}/include ${FREERTOS_PORT_DIR} ${FREERTOS_PORT_DIR}/utils)
+    target_compile_definitions(freertos PRIVATE _GNU_SOURCE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(freertos PUBLIC Threads::Threads bowling) # bowling: Fault_Stop
+
+    # The RTOS shell: everything that touches FreeRTOS, under the library's warnings. For now,
+    # only the kernel's hooks, above.
+    add_library(rtos_shell INTERFACE)
+    target_link_libraries(rtos_shell INTERFACE freertos bowling)
+
+    add_executable(rtos_tests
+        test/rtos_skeleton_test.cpp
+    )
+    target_link_libraries(rtos_tests PRIVATE rtos_shell GTest::gtest_main)
+    target_compile_options(rtos_tests PRIVATE ${OO_TEST_WARNINGS})
+    if(OO_C_TSAN)
+        # The POSIX port's own synchronization is invisible to ThreadSanitizer; see the file.
+        gtest_discover_tests(rtos_tests PROPERTIES ENVIRONMENT
+            "TSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tools/tsan-freertos.supp")
+    else()
+        gtest_discover_tests(rtos_tests)
+    endif()
+endif()
+
 # ---- Coverage (gcov) ------------------------------------------------------
 # Instruments the library only, so GoogleTest's own code stays out of the report.
 # `cmake --build <dir> --target coverage` clears old data, runs the tests and prints a
@@ -146,12 +205,18 @@ if(OO_C_COVERAGE)
     endforeach()
     list(REMOVE_ITEM COVERAGE_DATA fault.c.gcda) # not linked: see coverage_fault_stop.c
 
+    # Every test executable ctest runs must be built first, or ctest fails on the missing one.
+    set(COVERAGE_TEST_TARGETS bowling_tests)
+    if(TARGET rtos_tests)
+        list(APPEND COVERAGE_TEST_TARGETS rtos_tests)
+        target_link_options(rtos_tests PRIVATE --coverage) # it links the instrumented library
+    endif()
     add_custom_target(coverage
         COMMAND ${CMAKE_COMMAND} -E rm -f ${COVERAGE_DATA}
         COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_CURRENT_BINARY_DIR}
         COMMAND ${GCOV_EXECUTABLE} -b -c ${COVERAGE_DATA}
         WORKING_DIRECTORY ${COVERAGE_DIR}
-        DEPENDS bowling_tests
+        DEPENDS ${COVERAGE_TEST_TARGETS}
         COMMENT "Running the tests with coverage, then gcov"
         VERBATIM)
 endif()
