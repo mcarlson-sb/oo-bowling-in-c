@@ -576,3 +576,16 @@ TEST(CandlepinTest, A20_should_a_spare_corrected_to_5_then_2_makes_a_ten_box_of_
     EXPECT_EQ(6U, Scorer_Frame(&scorer, 1U).score);  /* open */
     EXPECT_EQ(16U, Scorer_Score(&scorer));
 }
+
+TEST(CandlepinTest, A21_should_a_correction_that_makes_frame_1_twelve_pins_is_rejected_and_changes_nothing)
+{
+    Scorer scorer = MakeCandlepin();
+    RollAll(&scorer, {5U, 5U, 3U, 4U, 2U});
+    RollMany(&scorer, 24, 0U);
+    const std::vector<Pins> four = {4U};
+    const RollEdit edit = Replace(2U, 1U, four); /* 5, 4, then 3 with one pin standing */
+    FrameEvents events;
+    EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ(0U, events.count);
+    EXPECT_EQ(22U, Scorer_Score(&scorer));
+}
