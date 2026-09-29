@@ -1344,3 +1344,56 @@ the first time a kind has more than one instance.
   change.
 - **The statistics selector hides state from the tests too.** They will still need the state
   headers to allocate an actor, but no longer to read one.
+
+### Interim report, after the task/actor split
+
+**What changed.** Actors are not tasks now:
+- **A hosting task** is one mailbox for every actor it hosts, the message it's handling, and
+  one outbox sized for its role.
+- **A route** binds an id to a kind, an instance, and the mailbox and task of the task that
+  hosts it.
+- **The game** has a task of its own, whose outbox holds 43 messages. **Every observer** shares
+  the observers' task, whose outbox holds 1. That's static-asserted against each observer
+  kind's declared largest burst (`SCOREBOARD_MOST_SENT`, `RUNNING_AVERAGE_MOST_SENT`), which
+  their tests hold them to.
+- **The outbox is the task's storage.** An `Outbox` is its items, in storage its owner provides,
+  and its capacity.
+
+**What it should have shown, tested:**
+
+| Prediction | Evidence | Held? |
+|---|---|---|
+| Sharing a task changes the shell only | `src/`'s actors are unchanged: the diff of the split touches `rtos/`, the outbox's storage, and each observer's declared burst. The rebinding tests pass unchanged, a scoreboard and an average now sharing a task | **Held** |
+| An observer costs far less than a task | The shell's static RAM, hosting a game, a scoreboard and a running average, fell from 57,184 bytes to 36,552. A second scoreboard adds 32 bytes: its state, and nothing of a task's | **Held** |
+
+**RAM, before and after** (this host, x86-64, the POSIX port, GCC 13):
+
+| | Before: a task each | After: the observers share one |
+|---|---|---|
+| The shell's static RAM (`s_shell`), a game and two observers | 57,184 | 36,552 |
+| Each further observer | about 18.8 KB, a task of its own | 32 bytes, its state |
+| A game's task, besides its stack | about 2.4 KB | about 2.4 KB (43-message outbox) |
+| The observers' task, besides its stack | – | about 0.6 KB (1-message outbox) |
+
+**Host only; this would change on a target.**
+- **The stack size.** Every task's 16 KB stack is the POSIX port's `PTHREAD_STACK_MIN`, not the
+  contract. The contract needs 4320 bytes at most, and on a target, without the host's
+  allowances, about 1.4 KB. So on a target the split saves less in absolute terms, about 3.5 KB
+  per observer instead of 18.8 KB, but still the same fraction.
+- **The control blocks** (`StaticTask_t` 128, `StaticQueue_t` 144) are this port's. A target's
+  are smaller.
+
+**Recorded, not built (your answers 3 and 4):**
+- **A stack per task role,** if a target's RAM forces it: a second switch per role (game tasks,
+  observer tasks), never per kind.
+- **Live rebinding is deferred.** Sends look the routing table up in the sender's task, so a
+  rebind message to the shell wouldn't remove the race. It would need every send routed through
+  one task, or an atomic update of the table.
+
+**Process note.** A local WSL build twice ignored a source file edited and restored within a
+second or two from Windows. It kept the old object, so a size measurement read stale. The two
+clocks agree, so it looks like equal timestamps across the file bridge. CI and the every-commit
+clone build from scratch, so neither is affected. Measurements now delete the object first.
+
+**Stop.** The task/actor split ends here, for your review. Next: the two lanes, and the
+statistics selector.
