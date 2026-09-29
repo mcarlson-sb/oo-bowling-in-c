@@ -436,3 +436,9 @@ pushing again, which should keep this from happening; the check is for when it d
 default of 90 days, the most a public repository allows. It is a convenient download for recent
 promotions, not a permanent record of releases: the record is `rtos-actor`'s history, and any
 release can be rebuilt from its SHA.
+
+**Proved:** a commit pointed `time_to_green.py` at a URL that doesn't resolve. The run stayed
+green and promoted `rtos-actor` to it
+([36509487693](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36509487693)), with
+the notice "time to green unavailable (URLError: Name or service not known)". The next commit
+took the bad URL out again.
