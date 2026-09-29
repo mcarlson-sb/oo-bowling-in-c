@@ -544,3 +544,11 @@ TEST(CandlepinTest, A17_should_a_strike_alone_totals_0_with_frame_1_unknown)
     EXPECT_EQ(0U, Scorer_Score(&scorer));
     EXPECT_FALSE(Scorer_Frame(&scorer, 0U).complete);
 }
+
+TEST(CandlepinTest, A18_should_a_strike_and_one_bonus_ball_total_0_with_frame_1_unknown)
+{
+    Scorer scorer = MakeCandlepin();
+    RollAll(&scorer, {10U, 3U});
+    EXPECT_EQ(0U, Scorer_Score(&scorer));
+    EXPECT_FALSE(Scorer_Frame(&scorer, 0U).complete);
+}
