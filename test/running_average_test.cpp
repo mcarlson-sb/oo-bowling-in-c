@@ -3,6 +3,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
+
 #include <initializer_list>
 
 extern "C" {
@@ -96,5 +98,15 @@ TEST(RunningAverageTest, should_take_the_reply_to_its_subscription_in_silence)
     reply.envelope.to = kAverage;
     const Outbox outbox = Send(&average, {reply});
     EXPECT_EQ(0U, outbox.count);
+    EXPECT_EQ(0U, average.not_understood);
+}
+
+TEST(RunningAverageTest, should_start_empty_whatever_memory_it_is_given)
+{
+    RunningAverage average;
+    std::memset(&average, 0xFF, sizeof(average));
+    RunningAverage_Init(&average, kAverage);
+    const Outbox outbox = Send(&average, {FrameChanged(1, 8, true), Query(1U)});
+    EXPECT_EQ(8U, outbox.items[0].payload.reply.score); /* one frame: nothing left over */
     EXPECT_EQ(0U, average.not_understood);
 }

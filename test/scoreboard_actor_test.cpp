@@ -3,6 +3,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
+
 extern "C" {
 #include "scoreboard.h"
 #include "scoreboard_state.h"
@@ -115,4 +117,24 @@ TEST(ScoreboardTest, should_take_a_frames_new_score_and_its_reopening_as_the_gam
     EXPECT_EQ(9U, outbox.items[0].payload.reply.score);
     outbox = Send(&board, {FrameChanged(1, 0, false), Query(2U)});
     EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
+}
+
+/* ---- Pinned at the phase 3 stop, from mutation testing -------------------------------------- */
+
+TEST(ScoreboardTest, should_start_empty_whatever_memory_it_is_given)
+{
+    /* A hosted instance is reused; a stack's is whatever was there. */
+    Scoreboard board;
+    std::memset(&board, 0xFF, sizeof(board));
+    Scoreboard_Init(&board, kBoard);
+    const Outbox outbox = Send(&board, {Query(1U)});
+    EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
+    EXPECT_EQ(0U, board.not_understood);
+}
+
+TEST(ScoreboardTest, should_keep_the_last_frame_the_game_has)
+{
+    Scoreboard board = MakeBoard();
+    const Outbox outbox = Send(&board, {FrameChanged(10, 30, true), Query(1U)});
+    EXPECT_EQ(30U, outbox.items[0].payload.reply.score);
 }
