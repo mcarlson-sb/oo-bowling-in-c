@@ -304,10 +304,19 @@ static void GameActor_Unsubscribe(GameActor *self, const Message *message,
     GameOutbox_Reply(outbox, message, removed ? GAME_OK : GAME_ERR_NOT_SUBSCRIBED, 0U);
 }
 
+/* Not from no one, who can't hear it, nor a NOT_UNDERSTOOD itself, which two kinds would echo. */
+static bool Envelope_WantsNotUnderstood(const Envelope *envelope)
+{
+    return (envelope->from != ACTOR_ID_NONE) && (envelope->selector != MSG_NOT_UNDERSTOOD);
+}
+
 static void GameActor_DoesNotUnderstand(GameActor *self, const Message *message,
                                         GameOutbox *outbox)
 {
     self->not_understood++;
+    if (!Envelope_WantsNotUnderstood(&message->envelope)) {
+        return;
+    }
     Message *reply = GameOutbox_Next(outbox, MSG_NOT_UNDERSTOOD, self->id, message->envelope.from);
     reply->envelope.seq = message->envelope.seq;
     reply->payload.not_understood.selector = message->envelope.selector;

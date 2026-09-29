@@ -611,3 +611,24 @@ TEST(GameActorTest, should_reply_not_understood_to_a_selector_it_does_not_answer
     EXPECT_EQ(MSG_FRAME_CHANGED, reply.payload.not_understood.selector);
     EXPECT_EQ(1U, actor.not_understood);
 }
+
+TEST(GameActorTest, should_count_but_never_answer_a_not_understood_so_two_kinds_cannot_echo_it)
+{
+    /* Two kinds that don't understand each other would otherwise trade NOT_UNDERSTOODs
+     * forever. The same for a message from no one, such as the pinsetter's. */
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Message not_understood = {};
+    not_understood.envelope.selector = MSG_NOT_UNDERSTOOD;
+    not_understood.envelope.from = kReplyTo;
+    not_understood.envelope.to = kGame;
+    Send(&actor, not_understood, &outbox);
+    EXPECT_EQ(0U, outbox.count);
+    Message from_no_one = {};
+    from_no_one.envelope.selector = MSG_REPLY;
+    from_no_one.envelope.from = ACTOR_ID_NONE;
+    from_no_one.envelope.to = kGame;
+    Send(&actor, from_no_one, &outbox);
+    EXPECT_EQ(0U, outbox.count);
+    EXPECT_EQ(2U, actor.not_understood);
+}
