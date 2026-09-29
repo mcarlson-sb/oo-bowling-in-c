@@ -373,3 +373,24 @@ TEST(TenPinScorerQueryTest, should_report_the_pins_standing_and_when_the_game_is
     RollAll(&scorer, {0U});
     EXPECT_TRUE(Scorer_IsOver(&scorer));
 }
+
+/* ---- Candlepin: the brief's acceptance examples, A1 to A22 --------------------------- */
+
+namespace {
+
+Scorer MakeCandlepin()
+{
+    return MakeScorer(SCORER_CANDLEPIN);
+}
+
+} // namespace
+
+TEST(CandlepinTest, A1_should_score_thirty_zeros_as_0_with_the_game_over_after_ball_30)
+{
+    Scorer scorer = MakeCandlepin();
+    RollMany(&scorer, 29, 0U);
+    EXPECT_FALSE(Scorer_IsOver(&scorer));
+    RollAll(&scorer, {0U});
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+    EXPECT_EQ(0U, Scorer_Score(&scorer));
+}

@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-/* Storage for the largest variant. */
+/* Storage for the largest variant, candlepin (see scorer.c's static asserts). */
 #define SCORER_MAX_BALLS 30U
 #define SCORER_MAX_FRAMES 10U
 
@@ -26,7 +26,8 @@ extern "C" {
 #define SCORER_MAX_EVENTS SCORER_MAX_FRAMES
 
 typedef enum {
-    SCORER_TEN_PIN = 0
+    SCORER_TEN_PIN = 0,
+    SCORER_CANDLEPIN
 } ScorerVariant;
 
 /* How a ball counts, given the pins standing and the pins that fell: a closed set, chosen by

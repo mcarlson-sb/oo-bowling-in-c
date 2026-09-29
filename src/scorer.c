@@ -16,9 +16,20 @@ typedef struct {
     uint8_t bonus_balls[SCORER_MAX_BALLS_PER_FRAME];
 } VariantRules;
 
+/* The most balls a game can take: every frame's own balls, and the last frame's fill balls. */
+#define TEN_PIN_MAX_BALLS 21U   /* 9 frames of 2, then 3 in the tenth */
+#define CANDLEPIN_MAX_BALLS 30U /* 10 frames of 3: a strike or a spare in the tenth takes fill
+                                 * balls up to the same 3 */
+
+_Static_assert(TEN_PIN_MAX_BALLS <= SCORER_MAX_BALLS, "ten-pin must fit the scorer's storage");
+_Static_assert(CANDLEPIN_MAX_BALLS <= SCORER_MAX_BALLS, "candlepin must fit the scorer's storage");
+
 static const VariantRules k_variant_rules[] = {
     [SCORER_TEN_PIN] = { .frames = 10U, .balls_per_frame = 2U, .pins_per_rack = 10U,
-                         .max_balls = 21U, .bonus_balls = { 2U, 1U, 0U } },
+                         .max_balls = TEN_PIN_MAX_BALLS, .bonus_balls = { 2U, 1U, 0U } },
+    /* The third ball can clear the rack too, a ten-box, which earns no bonus. */
+    [SCORER_CANDLEPIN] = { .frames = 10U, .balls_per_frame = 3U, .pins_per_rack = 10U,
+                           .max_balls = CANDLEPIN_MAX_BALLS, .bonus_balls = { 2U, 1U, 0U } },
 };
 
 /* Where a frame's balls are in the game's list, and how many bonus balls it is owed. */
