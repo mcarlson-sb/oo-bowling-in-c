@@ -686,3 +686,45 @@ Not done yet: the scorer's edit arithmetic (`RollEdit_*`, `Scorer_EditedBall`) i
 belongs in its own file. The legacy facade's `src/roll_edit.c` still has that name and does the
 same job over `RollLog`, so the move waits for the facade's deletion (phase 2's switch-over),
 and the scorer's version then takes the file.
+
+### The shell: one game task, three queues, one notification
+
+`rtos/game_shell.c` owns the one `GameActor`, in a statically allocated task of its own:
+
+| Into the game task | Holds | Filled by |
+|---|---|---|
+| The command queue | 4 `GameMessage`s | `GameShell_Send`, from any task |
+| The pinsetter's queue | 32 rolls, static-asserted to hold a whole game (30) | `GameShell_PinsetterCountedFromIsr` |
+| The lost report | 1 total, overwritten | The same, when the pinsetter's queue is full |
+
+Every sender posts to its queue and then gives the game task its notification. The task waits on
+that and then handles everything waiting: the pinsetter's rolls, then its lost report, then a
+command. The plan was a queue set, but FreeRTOS V11.1.0 has only `xQueueCreateSet`, which needs
+the heap this experiment forbids, and there's no `xQueueCreateSetStatic`. A notification does the
+same job with no allocation. Its count is cleared on wake, and the task drains every queue before
+it waits again, so a post that lands during the drain wakes it once more and is never missed.
+
+Out of the game task, every output goes to the queue its `to` names: a caller's reply queue, or a
+subscriber's. Each is sent with no wait. One its queue can't take is dropped and counted
+(`GameShell_OutputsDropped`, a C11 atomic, since any task may read it). So a caller's reply queue
+must hold as many replies as it has requests outstanding. A full pinsetter queue drops the newest
+roll: the interrupt counts it in a variable only it touches, and overwrites the one-slot report
+with the new total, so the game task never reads the interrupt's variable.
+
+**The simulated interrupt, and its limits.** The tests' interrupt is the highest-priority task.
+When fired, it counts its rolls back to back, and nothing lower runs until it's done: that is how
+33 rolls overrun a queue of 32. It calls the real `FromISR` functions, and yields as an interrupt
+would, through `portYIELD_FROM_ISR`. What it can't do:
+- preempt a task mid-instruction, or inside a critical section;
+- nest;
+- run on a real interrupt stack.
+
+So it tests the queue and notification protocol, not interrupt latency or interrupt-stack depth.
+Phase 2's stack sizing (from the call graph) covers the depth.
+
+**Gates.** The function-pointer check, lizard, cognitive complexity and the stack tripwire now read
+`rtos/` as well. The first two of those need FreeRTOS's headers, so their CI jobs configure first,
+which fetches the kernel. The function-pointer check was proved on `rtos/`: with the task entry's
+exemption marker removed, it fails on `rtos/game_shell.c`, "address of function 'GameShell_Task'
+taken". Line coverage still measures the library only; the shell's coverage is part of the
+integration tests.
