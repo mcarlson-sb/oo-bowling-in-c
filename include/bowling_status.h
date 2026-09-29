@@ -13,7 +13,8 @@ typedef enum {
     GAME_ERR_TOO_MANY_SUBSCRIBERS,
     GAME_ERR_NOT_SUBSCRIBED,
     GAME_ERR_INVALID_RULES,     /* rules the scorer can't play */
-    GAME_ERR_NO_GAME            /* a request before any NEW_GAME has started a game */
+    GAME_ERR_NO_GAME,           /* a request before any NEW_GAME has started a game */
+    GAME_ERR_GAME_IN_PROGRESS   /* a NEW_GAME while a game is still in play */
 } GameStatus;
 
 #endif /* BOWLING_STATUS_H */

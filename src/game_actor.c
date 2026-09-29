@@ -356,8 +356,17 @@ static GameRequest GameActor_RequestOf(const Message *message)
     return k_game_requests[selector];
 }
 
+static bool GameActor_IsPlayingAGame(const GameActor *self)
+{
+    return (self->lifecycle == GAME_IN_PLAY) && !Scorer_IsOver(&self->scorer);
+}
+
 static void GameActor_NewGame(GameActor *self, const Message *message, GameOutbox *outbox)
 {
+    if (GameActor_IsPlayingAGame(self)) {
+        GameOutbox_Reply(outbox, message, GAME_ERR_GAME_IN_PROGRESS, 0U);
+        return;
+    }
     const GameStatus status = Scorer_Start(&self->scorer, &message->payload.new_game.rules);
     if (status == GAME_OK) {
         self->lifecycle = GAME_IN_PLAY;

@@ -682,3 +682,26 @@ TEST(GameActorLifecycleTest, should_reply_no_game_to_anything_but_a_new_game_bef
     Send(&actor, ScoreQuery(3U), &outbox);
     EXPECT_EQ(GAME_ERR_NO_GAME, outbox.items[0].payload.reply.status);
 }
+
+TEST(GameActorLifecycleTest, should_refuse_a_new_game_by_rules_the_scorer_cannot_play)
+{
+    GameActor actor;
+    GameActor_Init(&actor, kGame);
+    GameOutbox outbox;
+    const ScorerRules no_frames = {0U, 2U, 10U, {2U, 1U, 0U}, 0U};
+    Send(&actor, NewGameRequest(1U, no_frames), &outbox);
+    EXPECT_EQ(GAME_ERR_INVALID_RULES, outbox.items[0].payload.reply.status);
+    Send(&actor, RollRequest(2U, 3U), &outbox);
+    EXPECT_EQ(GAME_ERR_NO_GAME, outbox.items[0].payload.reply.status); /* still no game */
+}
+
+TEST(GameActorLifecycleTest, should_refuse_a_new_game_while_one_is_in_play_and_keep_it)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    GameOutbox outbox;
+    Send(&actor, RollRequest(1U, 3U), &outbox);
+    Send(&actor, RollRequest(2U, 4U), &outbox);
+    Send(&actor, NewGameRequest(3U, rules::kCandlepin), &outbox);
+    EXPECT_EQ(GAME_ERR_GAME_IN_PROGRESS, outbox.items[0].payload.reply.status);
+    EXPECT_EQ(7U, ScoreOf(&actor));
+}
