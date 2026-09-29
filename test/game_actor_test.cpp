@@ -214,3 +214,72 @@ TEST(GameActorPinsetterTest, should_roll_a_pinsetter_roll_into_the_game_and_tell
               FrameEventsIn(outbox));
     EXPECT_EQ(1U, outbox.count);
 }
+
+/* ---- A pinsetter roll the game rejects is held, with every one after it -------------------
+ * Kay-oo's pinsetter stops its drain at the roll and keeps it until the scorer resolves it
+ * (pinsetter_test.cpp on kay-oo); here the actor holds it, so the pinsetter's queue never
+ * backs up. These tests mirror kay-oo's, to compare the two. */
+
+namespace {
+
+struct Held {
+    int pins;
+    int position;
+    int held;
+    GameStatus status;
+    bool operator==(const Held &other) const
+    {
+        return (pins == other.pins) && (position == other.position) && (held == other.held) &&
+               (status == other.status);
+    }
+};
+
+std::vector<Held> HeldEventsIn(const GameOutbox &outbox)
+{
+    std::vector<Held> held;
+    for (uint8_t i = 0U; i < outbox.count; i++) {
+        const GameOutput &out = outbox.items[i];
+        if (out.kind == GAME_OUT_ROLL_HELD) {
+            held.push_back({out.pins, out.position, out.held, out.status});
+        }
+    }
+    return held;
+}
+
+GameMessage ScoreQuery(RequestSeq seq)
+{
+    GameMessage message = {};
+    message.kind = GAME_MSG_QUERY_SCORE;
+    message.seq = seq;
+    message.reply_to = &s_reply_queue;
+    return message;
+}
+
+Score ScoreOf(GameActor *actor)
+{
+    GameOutbox outbox;
+    Send(actor, ScoreQuery(99U), &outbox);
+    EXPECT_EQ(GAME_OUT_REPLY, outbox.items[0].kind);
+    return outbox.items[0].score;
+}
+
+} // namespace
+
+TEST(GameActorPinsetterTest, should_hold_an_impossible_roll_and_those_after_it_until_a_correction)
+{
+    /* The pinsetter counted 5 when 2 fell, so its true 8 looks impossible. */
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(1U, &s_subscriber_queue), &outbox);
+    Send(&actor, PinsetterRoll(5U), &outbox); /* miscounted: 2 fell */
+    Send(&actor, PinsetterRoll(8U), &outbox);
+    EXPECT_EQ((std::vector<Held>{{8, 2, 1, GAME_ERR_INVALID_PINS}}), HeldEventsIn(outbox));
+    Send(&actor, PinsetterRoll(3U), &outbox); /* held behind the 8 */
+    EXPECT_EQ((std::vector<Held>{{3, 3, 2, GAME_ERR_INVALID_PINS}}), HeldEventsIn(outbox));
+    EXPECT_EQ(0U, ScoreOf(&actor)); /* frame 1 is still open: the 8 and the 3 are held */
+
+    Send(&actor, EditRequest(2U, 1U, 1U, {2U}), &outbox); /* ball 1: 5 to 2 */
+    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+    EXPECT_EQ(13U, outbox.items[0].score); /* 2 then 8, a spare, with the 3 as its bonus */
+    EXPECT_EQ((std::vector<Held>{}), HeldEventsIn(outbox));
+}

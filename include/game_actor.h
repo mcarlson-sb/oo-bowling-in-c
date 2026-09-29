@@ -32,8 +32,11 @@ typedef enum {
      * message, so nothing in it may point back into the sender's memory. A correction is an
      * edit of one ball out and one in. */
     GAME_MSG_EDIT,
-    /* A roll the pinsetter counted, from its interrupt: no reply_to, and no reply. */
-    GAME_MSG_PINSETTER_ROLL
+    /* A roll the pinsetter counted, from its interrupt: no reply_to, and no reply. One the
+     * game rejects is held, with every pinsetter roll after it, until a correction lets it
+     * through; see GameActor. */
+    GAME_MSG_PINSETTER_ROLL,
+    GAME_MSG_QUERY_SCORE
 } GameMessageKind;
 
 typedef struct {
@@ -48,8 +51,11 @@ typedef struct {
 } GameMessage;
 
 typedef enum {
-    GAME_OUT_REPLY,        /* seq, status, score */
-    GAME_OUT_FRAME_CHANGED /* frame */
+    GAME_OUT_REPLY,         /* seq, status, score */
+    GAME_OUT_FRAME_CHANGED, /* frame */
+    /* A pinsetter roll was held: its pins, the ball it would be (position), how many are held
+     * now, and why the first of them was rejected (status). */
+    GAME_OUT_ROLL_HELD
 } GameOutputKind;
 
 typedef struct {
@@ -59,6 +65,9 @@ typedef struct {
     GameStatus status;
     Score score;
     FrameEvent frame;
+    Pins pins;
+    RollNumber position;
+    uint8_t held;
 } GameOutput;
 
 #define GAME_MAX_SUBSCRIBERS 2U
@@ -76,10 +85,16 @@ typedef struct {
     uint8_t count;
 } GameOutbox;
 
+/* The actor's state: the game, its subscribers, and the pinsetter rolls it is holding. A held
+ * roll waits, in the order it came, for a correction to let it through; the first of them was
+ * rejected with held_status. */
 typedef struct {
     Scorer scorer;
     void *subscribers[GAME_MAX_SUBSCRIBERS];
     uint8_t subscriber_count;
+    Pins held[SCORER_MAX_BALLS];
+    uint8_t held_count;
+    GameStatus held_status;
 } GameActor;
 
 void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule);

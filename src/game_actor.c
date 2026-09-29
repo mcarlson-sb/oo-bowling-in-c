@@ -6,7 +6,11 @@ void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule)
 {
     Scorer_InitWithRule(&self->scorer, variant, rule);
     self->subscriber_count = 0U;
+    self->held_count = 0U;
+    self->held_status = GAME_OK;
 }
+
+/* ---- The outbox --------------------------------------------------------------------------- */
 
 static GameOutput *GameOutbox_Next(GameOutbox *outbox, GameOutputKind kind, void *to)
 {
@@ -17,19 +21,24 @@ static GameOutput *GameOutbox_Next(GameOutbox *outbox, GameOutputKind kind, void
     return out;
 }
 
-static void GameOutbox_Reply(GameOutbox *outbox, const GameMessage *message, GameStatus status,
-                             Score score)
+/* The reply always goes first. A handler that wants the score after everything the message
+ * caused fills it in last. */
+static GameOutput *GameOutbox_Reply(GameOutbox *outbox, const GameMessage *message,
+                                    GameStatus status, Score score)
 {
     GameOutput *reply = GameOutbox_Next(outbox, GAME_OUT_REPLY, message->reply_to);
     reply->seq = message->seq;
     reply->status = status;
     reply->score = score;
+    return reply;
 }
 
 static void GameOutbox_FrameChanged(GameOutbox *outbox, void *to, const FrameEvent *frame)
 {
     GameOutbox_Next(outbox, GAME_OUT_FRAME_CHANGED, to)->frame = *frame;
 }
+
+/* ---- Telling the subscribers -------------------------------------------------------------- */
 
 /* Every subscriber hears every frame change, in the order the scorer reported them. */
 static void GameActor_Publish(const GameActor *self, const FrameEvents *events,
@@ -42,6 +51,53 @@ static void GameActor_Publish(const GameActor *self, const FrameEvents *events,
     }
 }
 
+/* The held roll at `index`: the ball it would be, once every roll before it is in. */
+static void GameActor_PublishHeld(const GameActor *self, uint8_t index, GameOutbox *outbox)
+{
+    for (uint8_t s = 0U; s < self->subscriber_count; s++) {
+        GameOutput *out = GameOutbox_Next(outbox, GAME_OUT_ROLL_HELD, self->subscribers[s]);
+        out->pins = self->held[index];
+        out->position = (RollNumber)(self->scorer.ball_count + index + 1U);
+        out->held = self->held_count;
+        out->status = self->held_status;
+    }
+}
+
+/* ---- Held rolls --------------------------------------------------------------------------- */
+
+static void GameActor_Hold(GameActor *self, Pins pins, GameOutbox *outbox)
+{
+    self->held[self->held_count] = pins;
+    self->held_count++;
+    GameActor_PublishHeld(self, (uint8_t)(self->held_count - 1U), outbox);
+}
+
+static void GameActor_DropFirstHeld(GameActor *self)
+{
+    self->held_count--;
+    for (uint8_t i = 0U; i < self->held_count; i++) {
+        self->held[i] = self->held[i + 1U];
+    }
+}
+
+/* After the game changed: the held rolls, in order, until one is rejected again. */
+static void GameActor_ReplayHeld(GameActor *self, GameOutbox *outbox)
+{
+    while (self->held_count > 0U) {
+        FrameEvents events;
+        const GameStatus status = Scorer_Roll(&self->scorer, self->held[0], &events);
+        if (status != GAME_OK) {
+            self->held_status = status;
+            GameActor_PublishHeld(self, 0U, outbox);
+            return;
+        }
+        GameActor_DropFirstHeld(self);
+        GameActor_Publish(self, &events, outbox);
+    }
+}
+
+/* ---- Messages ----------------------------------------------------------------------------- */
+
 static void GameActor_Roll(GameActor *self, const GameMessage *message, GameOutbox *outbox)
 {
     FrameEvents events;
@@ -53,8 +109,17 @@ static void GameActor_Roll(GameActor *self, const GameMessage *message, GameOutb
 static void GameActor_PinsetterRoll(GameActor *self, const GameMessage *message,
                                     GameOutbox *outbox)
 {
+    if (self->held_count > 0U) {
+        GameActor_Hold(self, message->pins, outbox); /* behind the rolls already held */
+        return;
+    }
     FrameEvents events;
-    (void)Scorer_Roll(&self->scorer, message->pins, &events);
+    const GameStatus status = Scorer_Roll(&self->scorer, message->pins, &events);
+    if (status != GAME_OK) {
+        self->held_status = status;
+        GameActor_Hold(self, message->pins, outbox);
+        return;
+    }
     GameActor_Publish(self, &events, outbox);
 }
 
@@ -65,8 +130,12 @@ static void GameActor_Edit(GameActor *self, const GameMessage *message, GameOutb
                             message->new_count };
     FrameEvents events;
     const GameStatus status = Scorer_Edit(&self->scorer, &edit, &events);
-    GameOutbox_Reply(outbox, message, status, Scorer_Score(&self->scorer));
+    GameOutput *reply = GameOutbox_Reply(outbox, message, status, 0U);
     GameActor_Publish(self, &events, outbox);
+    if (status == GAME_OK) {
+        GameActor_ReplayHeld(self, outbox);
+    }
+    reply->score = Scorer_Score(&self->scorer);
 }
 
 /* The frames complete so far, for a subscriber that has just joined. */
@@ -106,6 +175,9 @@ void GameActor_Handle(GameActor *self, const GameMessage *message, GameOutbox *o
         break;
     case GAME_MSG_PINSETTER_ROLL:
         GameActor_PinsetterRoll(self, message, outbox);
+        break;
+    case GAME_MSG_QUERY_SCORE:
+        GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
         break;
     case GAME_MSG_ROLL:
     default:
