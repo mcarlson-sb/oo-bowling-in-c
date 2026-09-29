@@ -1,5 +1,10 @@
 # Architecture
 
+> **On the `rtos-actor` branch:** the frame classes this describes (the State pattern, its
+> vtables and state families) have been replaced by one data-driven scorer with no function
+> pointers; see `RTOS_ACTOR.md`. They are intact on `kay-oo` and `main`. This document is
+> rewritten at the end of the experiment.
+
 How the bowling scorer is put together, in pictures. The [README](README.md) explains *why*
 the code is written this way; this document shows *what* is where and how the pieces
 connect. Every name below is a real type, function or file in `src/` or `include/`.

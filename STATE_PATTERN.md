@@ -1,5 +1,10 @@
 # The State Pattern, in Depth
 
+> **On the `rtos-actor` branch:** the frame classes this describes (the State pattern, its
+> vtables and state families) have been replaced by one data-driven scorer with no function
+> pointers; see `RTOS_ACTOR.md`. They are intact on `kay-oo` and `main`. This document is
+> rewritten at the end of the experiment.
+
 This is the design pattern at the heart of the scorer. This document covers what problem it
 solves, how each part of it is built in C, the full transition table, the decisions behind
 it, the alternatives that were rejected, and how to add a state.

@@ -227,3 +227,30 @@ A nightly run was considered and skipped for now (2026-09-28). GitHub runs sched
 manually dispatched workflows only from the default branch's workflow files, so a nightly for
 this branch would mean a commit to `main`, which stays untouched. The checkpoints above are the
 cadence.
+
+## The strangle: the frame classes replaced by the core
+
+1. `Scorecard`, the Game facade's frames, became an adapter over the scorer core (4ace724).
+   Every existing test passed unchanged, among them the random games against the ten-pin
+   reference and the four edit and correction property tests.
+2. The mutation checkpoint before deleting anything (debug 483 mutants, release 413) showed the
+   frame classes were dead: 66 of the debug run's 88 survivors were in them, because no test
+   ran them any more, and the release run, with no debug-only test reaching them, didn't
+   mutate them at all. On the live code, 22 survived where 26 had before, all of them the kinds
+   already classified above; release scored 95.6%, up from 94.9%.
+3. The frame classes, their vtables and state-family factories, and `RollList` were deleted
+   (0c50d88): 757 lines. The function-pointer allowlist went from 13 files and 31 uses to 6
+   files and 13, all of them the callback facade (`PinCountRule`, `FrameChangedCallback`).
+
+The white-box tests that went with them:
+
+| Test | What it guarded | Why it isn't needed |
+|---|---|---|
+| `FrameDeathTest.should_stop_a_roll_made_without_a_context` | a vtable call without its context pointer | there is no vtable and no context pointer |
+| `RollListTest` (5) and `RollListDeathTest` (2): empty at start, order and sum, full at capacity, a roll past capacity, reading a roll not made | a frame's own fixed list of rolls | the core has no per-frame list: its balls are one array, and a ball after the game is over is refused before anything is written (`should_reject_a_ball_after_the_game_is_over`), so the array never fills past a game's balls |
+
+**A cost found on the way.** The core works everything out from the balls each time it is
+asked, which is what makes it a copyable value. Through the adapter, kay-oo's property tests,
+thousands of edits each replayed ball by ball with the reporter asking about every frame, made
+the test binary about 10 times slower under Mull's instrumentation (0.9 s to 9.7 s; 0.54 s in a
+plain debug build). A worst-case execution time question for ENG-1.3, for the phase report.
