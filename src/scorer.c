@@ -1,5 +1,6 @@
 #include "scorer.h"
 
+#include <assert.h>
 #include <stddef.h>
 
 /* A frame takes at most this many balls of its own, in any variant. */
@@ -163,7 +164,8 @@ static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index
         break;
     case LANE_OVER:
     default:
-        break; /* Scorer_Roll refuses a ball once the lane is over */
+        assert(!"Lane_CheckBall refuses a ball once the lane is over");
+        break;
     }
 }
 
@@ -257,6 +259,7 @@ static uint8_t Scorer_CountCompleteFrames(const Scorer *self)
 
 static void FrameEvents_Add(FrameEvents *events, uint8_t index, Score score, bool complete)
 {
+    assert(events->count < SCORER_MAX_EVENTS);
     FrameEvent *event = &events->events[events->count];
     event->frame_number = (FrameNumber)(index + 1U);
     event->frame_score = score;
@@ -326,10 +329,9 @@ static bool RollEdit_StartsAtABall(const RollEdit *edit, uint8_t ball_count)
     return (edit->first_roll != 0U) && (edit->first_roll <= ball_count);
 }
 
-/* Only once it starts at a ball: ball 0 has no index. */
 static bool RollEdit_RemovesOnlyBallsThere(const RollEdit *edit, uint8_t ball_count)
 {
-    return ((unsigned)(edit->first_roll - 1U) + edit->rolls_removed) <= ball_count;
+    return ((unsigned)edit->first_roll + edit->rolls_removed) <= (ball_count + 1U);
 }
 
 static bool RollEdit_PromisesBallsWithoutPins(const RollEdit *edit)
@@ -337,9 +339,9 @@ static bool RollEdit_PromisesBallsWithoutPins(const RollEdit *edit)
     return (edit->new_pins == NULL) && (edit->new_count > 0U);
 }
 
-/* Only once the edit is within the balls: more removed than there are would wrap. */
 static unsigned RollEdit_BallsAfter(const RollEdit *edit, uint8_t ball_count)
 {
+    assert(edit->rolls_removed <= ball_count);
     return ((unsigned)ball_count - edit->rolls_removed) + edit->new_count;
 }
 

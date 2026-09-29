@@ -22,7 +22,6 @@ extern "C" {
 #define SCORER_MAX_BALLS 30U
 #define SCORER_MAX_FRAMES 10U
 
-/* An operation tells each frame at most once. */
 #define SCORER_MAX_EVENTS SCORER_MAX_FRAMES
 
 typedef enum {
