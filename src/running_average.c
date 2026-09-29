@@ -5,12 +5,14 @@
 typedef enum {
     AVERAGE_DOES_NOT_UNDERSTAND = 0,
     AVERAGE_FRAME_CHANGED,
-    AVERAGE_QUERY_SCORE
+    AVERAGE_QUERY_SCORE,
+    AVERAGE_REPLY
 } AverageRequest;
 
 static const AverageRequest k_average_protocol[MSG_SELECTOR_COUNT] = {
     [MSG_FRAME_CHANGED] = AVERAGE_FRAME_CHANGED,
     [MSG_QUERY_SCORE] = AVERAGE_QUERY_SCORE,
+    [MSG_REPLY] = AVERAGE_REPLY,
 };
 
 void RunningAverage_Init(RunningAverage *self, ActorId id)
@@ -48,6 +50,8 @@ void RunningAverage_Handle(RunningAverage *self, const Message *message, Outbox 
     case AVERAGE_QUERY_SCORE:
         Outbox_Reply(outbox, message, GAME_OK, RunningAverage_Average(self));
         break;
+    case AVERAGE_REPLY:
+        break; /* to its subscription: nothing to do */
     case AVERAGE_DOES_NOT_UNDERSTAND:
         self->not_understood++;
         Outbox_NotUnderstood(outbox, self->id, message);

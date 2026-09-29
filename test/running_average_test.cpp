@@ -85,3 +85,15 @@ TEST(RunningAverageTest, should_not_understand_a_roll_and_count_it)
     EXPECT_EQ(MSG_NOT_UNDERSTOOD, outbox.items[0].envelope.selector);
     EXPECT_EQ(1U, average.not_understood);
 }
+
+TEST(RunningAverageTest, should_take_the_reply_to_its_subscription_in_silence)
+{
+    RunningAverage average = MakeAverage();
+    Message reply = {};
+    reply.envelope.selector = MSG_REPLY;
+    reply.envelope.from = kGame;
+    reply.envelope.to = kAverage;
+    const Outbox outbox = Send(&average, {reply});
+    EXPECT_EQ(0U, outbox.count);
+    EXPECT_EQ(0U, average.not_understood);
+}
