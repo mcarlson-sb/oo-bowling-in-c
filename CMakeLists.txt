@@ -30,6 +30,7 @@ endif()
 # ---- Library under test ---------------------------------------------------
 add_library(bowling STATIC
     src/fault.c
+    src/roll_edit.c
     src/scorer.c
     src/game_actor.c
 )

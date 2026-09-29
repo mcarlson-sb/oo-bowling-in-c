@@ -1,5 +1,7 @@
 #include "scorer.h"
 
+#include "roll_edit.h"
+
 #include <assert.h>
 #include <stddef.h>
 
@@ -368,33 +370,6 @@ Score Scorer_Score(const Scorer *self)
     return Lane_TotalOfFirstFrames(&lane, Lane_CountCompleteFrames(&lane, self->ball_count));
 }
 
-static bool RollEdit_StartsAtABall(const RollEdit *edit, uint8_t ball_count)
-{
-    return (edit->first_roll != 0U) && (edit->first_roll <= ball_count);
-}
-
-static bool RollEdit_RemovesOnlyBallsThere(const RollEdit *edit, uint8_t ball_count)
-{
-    return ((unsigned)edit->first_roll + edit->rolls_removed) <= (ball_count + 1U);
-}
-
-static bool RollEdit_IsWithinBalls(const RollEdit *edit, uint8_t ball_count)
-{
-    return RollEdit_StartsAtABall(edit, ball_count) &&
-           RollEdit_RemovesOnlyBallsThere(edit, ball_count);
-}
-
-static bool RollEdit_PromisesBallsWithoutPins(const RollEdit *edit)
-{
-    return (edit->new_pins == NULL) && (edit->new_count > 0U);
-}
-
-static unsigned RollEdit_BallsAfter(const RollEdit *edit, uint8_t ball_count)
-{
-    assert(edit->rolls_removed <= ball_count);
-    return ((unsigned)ball_count - edit->rolls_removed) + edit->new_count;
-}
-
 static bool Scorer_IsLongerThanAGame(const Scorer *self, unsigned ball_count)
 {
     return ball_count > Scorer_Rules(self)->max_balls_per_game;
@@ -417,27 +392,13 @@ static GameStatus Scorer_CheckEdit(const Scorer *self, const RollEdit *edit)
     return GAME_OK;
 }
 
-static Pins Scorer_EditedBall(const Scorer *self, const RollEdit *edit, uint8_t index)
-{
-    const uint8_t new_from = (uint8_t)(edit->first_roll - 1U);
-    const uint8_t new_until = (uint8_t)(new_from + edit->new_count);
-    if (index < new_from) {
-        return self->balls[index];
-    }
-    if (index < new_until) {
-        return edit->new_pins[index - new_from];
-    }
-    const uint8_t after_removed = (uint8_t)(new_from + edit->rolls_removed);
-    return self->balls[(uint8_t)(after_removed + (index - new_until))];
-}
-
 static GameStatus Scorer_ReplayEdited(const Scorer *self, const RollEdit *edit, Scorer *edited)
 {
     FrameEvents ignored;
     Scorer_InitWithRule(edited, self->variant, self->rule);
     const uint8_t count = (uint8_t)RollEdit_BallsAfter(edit, self->ball_count);
     for (uint8_t i = 0U; i < count; i++) {
-        const GameStatus status = Scorer_Roll(edited, Scorer_EditedBall(self, edit, i), &ignored);
+        const GameStatus status = Scorer_Roll(edited, RollEdit_Ball(edit, self->balls, i), &ignored);
         if (status != GAME_OK) {
             return status;
         }
