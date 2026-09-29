@@ -420,6 +420,11 @@ GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events)
 
 /* ---- Questions ------------------------------------------------------------------------- */
 
+uint8_t Scorer_BallCount(const Scorer *self)
+{
+    return self->ball_count;
+}
+
 uint8_t Scorer_FrameCount(const Scorer *self)
 {
     const Lane lane = Scorer_Lane(self);

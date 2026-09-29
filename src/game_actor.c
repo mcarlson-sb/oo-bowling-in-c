@@ -7,7 +7,7 @@ void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule)
     Scorer_InitWithRule(&self->scorer, variant, rule);
     self->subscriber_count = 0U;
     self->held_count = 0U;
-    self->held_status = GAME_OK;
+    self->held_reason = GAME_OK;
     self->lost_by_pinsetter = 0U;
     self->lost_by_actor = 0U;
 }
@@ -59,9 +59,9 @@ static void GameActor_PublishHeld(const GameActor *self, uint8_t index, GameOutb
     for (uint8_t s = 0U; s < self->subscriber_count; s++) {
         GameOutput *out = GameOutbox_Next(outbox, GAME_OUT_ROLL_HELD, self->subscribers[s]);
         out->pins = self->held[index];
-        out->position = (RollNumber)(self->scorer.ball_count + index + 1U);
+        out->position = (RollNumber)(Scorer_BallCount(&self->scorer) + index + 1U);
         out->held = self->held_count;
-        out->status = self->held_status;
+        out->status = self->held_reason;
     }
 }
 
@@ -77,14 +77,25 @@ static void GameActor_PublishLost(const GameActor *self, GameOutbox *outbox)
 
 static void GameActor_Hold(GameActor *self, Pins pins, GameOutbox *outbox)
 {
-    if (self->held_count == SCORER_MAX_BALLS) {
-        self->lost_by_actor++; /* no room: more than a whole game is already held */
-        GameActor_PublishLost(self, outbox);
-        return;
-    }
     self->held[self->held_count] = pins;
     self->held_count++;
     GameActor_PublishHeld(self, (uint8_t)(self->held_count - 1U), outbox);
+}
+
+/* No room: more than a whole game's balls are already held. */
+static void GameActor_Lose(GameActor *self, GameOutbox *outbox)
+{
+    self->lost_by_actor++;
+    GameActor_PublishLost(self, outbox);
+}
+
+static void GameActor_HoldOrLose(GameActor *self, Pins pins, GameOutbox *outbox)
+{
+    if (self->held_count == SCORER_MAX_BALLS) {
+        GameActor_Lose(self, outbox);
+    } else {
+        GameActor_Hold(self, pins, outbox);
+    }
 }
 
 static void GameActor_DropFirstHeld(GameActor *self)
@@ -102,7 +113,7 @@ static void GameActor_ReplayHeld(GameActor *self, GameOutbox *outbox)
         FrameEvents events;
         const GameStatus status = Scorer_Roll(&self->scorer, self->held[0], &events);
         if (status != GAME_OK) {
-            self->held_status = status;
+            self->held_reason = status;
             GameActor_PublishHeld(self, 0U, outbox);
             return;
         }
@@ -125,14 +136,14 @@ static void GameActor_PinsetterRoll(GameActor *self, const GameMessage *message,
                                     GameOutbox *outbox)
 {
     if (self->held_count > 0U) {
-        GameActor_Hold(self, message->pins, outbox); /* behind the rolls already held */
+        GameActor_HoldOrLose(self, message->pins, outbox); /* behind the rolls already held */
         return;
     }
     FrameEvents events;
     const GameStatus status = Scorer_Roll(&self->scorer, message->pins, &events);
     if (status != GAME_OK) {
-        self->held_status = status;
-        GameActor_Hold(self, message->pins, outbox);
+        self->held_reason = status;
+        GameActor_HoldOrLose(self, message->pins, outbox);
         return;
     }
     GameActor_Publish(self, &events, outbox);

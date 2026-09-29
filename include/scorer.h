@@ -86,6 +86,9 @@ Pins Scorer_PinsStanding(const Scorer *self);
 /* True once the last frame, and its fill balls, are done. */
 bool Scorer_IsOver(const Scorer *self);
 
+/* The balls taken so far. */
+uint8_t Scorer_BallCount(const Scorer *self);
+
 /* Frames started so far: a frame starts with its first ball. */
 uint8_t Scorer_FrameCount(const Scorer *self);
 

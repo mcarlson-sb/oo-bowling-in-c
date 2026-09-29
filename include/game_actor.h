@@ -100,14 +100,14 @@ typedef struct {
 
 /* The actor's state: the game, its subscribers, and the pinsetter rolls it is holding. A held
  * roll waits, in the order it came, for a correction or a discard to let it through; the first
- * of them was rejected with held_status. */
+ * of them was refused for held_reason. */
 typedef struct {
     Scorer scorer;
     void *subscribers[GAME_MAX_SUBSCRIBERS];
     uint8_t subscriber_count;
     Pins held[SCORER_MAX_BALLS];
     uint8_t held_count;
-    GameStatus held_status;
+    GameStatus held_reason;
     uint16_t lost_by_pinsetter; /* its queue was full */
     uint16_t lost_by_actor;     /* no room to hold them: more than a whole game's balls */
 } GameActor;
