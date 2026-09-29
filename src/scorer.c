@@ -353,16 +353,19 @@ GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events)
     return GAME_OK;
 }
 
+static Score Lane_TotalOfFirstFrames(const Lane *lane, uint8_t frames)
+{
+    Score total = 0U;
+    for (uint8_t i = 0U; i < frames; i++) {
+        total = (Score)(total + Lane_FrameScore(lane, &lane->frames[i]));
+    }
+    return total;
+}
+
 Score Scorer_Score(const Scorer *self)
 {
     const Lane lane = Scorer_Lane(self);
-    Score score = 0U;
-    for (uint8_t i = 0U; i < lane.frames_started; i++) {
-        if (FrameShape_IsComplete(&lane.frames[i], self->ball_count)) {
-            score = (Score)(score + Lane_FrameScore(&lane, &lane.frames[i]));
-        }
-    }
-    return score;
+    return Lane_TotalOfFirstFrames(&lane, Lane_CountCompleteFrames(&lane, self->ball_count));
 }
 
 static bool RollEdit_StartsAtABall(const RollEdit *edit, uint8_t ball_count)
@@ -473,16 +476,12 @@ uint8_t Scorer_FramesStarted(const Scorer *self)
 ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index)
 {
     const Lane lane = Scorer_Lane(self);
-    ScorerFrame result = { 0U, false };
-    if (index >= lane.frames_started) {
-        return result;
+    ScorerFrame frame = { 0U, false };
+    if (index < Lane_CountCompleteFrames(&lane, self->ball_count)) {
+        frame.score = Lane_FrameScore(&lane, &lane.frames[index]);
+        frame.complete = true;
     }
-    const FrameShape *frame = &lane.frames[index];
-    result.complete = FrameShape_IsComplete(frame, self->ball_count);
-    if (result.complete) {
-        result.score = Lane_FrameScore(&lane, frame);
-    }
-    return result;
+    return frame;
 }
 
 Pins Scorer_PinsStanding(const Scorer *self)
