@@ -34,6 +34,7 @@ add_library(bowling STATIC
     src/scorer.c
     src/game_actor.c
     src/outbox.c
+    src/scoreboard.c
 )
 target_include_directories(bowling PUBLIC include PRIVATE src)
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
@@ -80,6 +81,7 @@ add_executable(bowling_tests
     test/scorer_test.cpp
     test/fault_test.cpp
     test/game_actor_test.cpp
+    test/scoreboard_actor_test.cpp
 )
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
 target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
