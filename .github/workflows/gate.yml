@@ -181,6 +181,9 @@ jobs:
             echo "::endgroup::"
           done
 
+  # Nothing that can fail runs after the push: once rtos-actor has moved, the run must be green.
+  # So everything else, the gated library, the summary and the release upload, comes first, and
+  # the summary and time to green can't fail at all.
   promote:
     name: promote
     needs: [build, tsan, coverage, lizard, cognitive-complexity, stack-usage, function-pointers, every-commit]
@@ -196,41 +199,63 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # No --force: GitHub itself rejects anything that isn't a fast-forward of rtos-actor. The
-      # push is made with GITHUB_TOKEN, so it starts no run of its own: the SHA is already tested.
-      - name: Fast-forward rtos-actor to this commit
+      # Runs can finish out of order: an older push's run can reach promote after a newer one
+      # has already moved rtos-actor past it. Then there is nothing to do, and no push to refuse.
+      - name: Already promoted?
+        id: already
         run: |
-          if ! git push origin HEAD:refs/heads/rtos-actor; then
-            echo "::error::rtos-actor moved: it is no longer an ancestor of this commit. Rebase integration/rtos-actor onto rtos-actor and push again, so the result is gated."
-            exit 1
+          git fetch --no-tags origin rtos-actor
+          if git merge-base --is-ancestor HEAD origin/rtos-actor; then
+            echo "::notice title=Promote::already promoted by a later run: rtos-actor is at $(git rev-parse --short origin/rtos-actor), which contains this commit"
+            echo "done=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "done=false" >> "$GITHUB_OUTPUT"
           fi
       - name: The gated release library
+        if: steps.already.outputs.done == 'false'
         uses: actions/download-artifact@v8
         with:
           name: gated-release-${{ github.sha }}
           path: release
       - name: Summary
+        if: steps.already.outputs.done == 'false'
         env:
           NEEDS: ${{ toJSON(needs) }}
           GITHUB_TOKEN: ${{ github.token }}
+        # Can't fail: every command that can is caught, and the summary is only text.
         run: |
-          time_to_green=$(python3 tools/time_to_green.py "$GITHUB_REPOSITORY" gate.yml "$GITHUB_REF_NAME" "$GITHUB_RUN_ID")
+          time_to_green=$(python3 tools/time_to_green.py "$GITHUB_REPOSITORY" gate.yml "$GITHUB_REF_NAME" "$GITHUB_RUN_ID" || echo "**Time to green:** time to green unavailable.")
+          gates=$(echo "$NEEDS" | python3 -c 'import json, sys; [print("| %s | %s |" % (k, v["result"])) for k, v in sorted(json.load(sys.stdin).items())]' || echo "| (gate results unavailable) | |")
           {
-            echo "### Promoted \`${GITHUB_SHA}\` to rtos-actor"
+            echo "### Gate results for \`${GITHUB_SHA}\`"
             echo
             echo "| Gate | Result |"
             echo "|---|---|"
-            echo "$NEEDS" | python3 -c 'import json, sys; [print("| %s | %s |" % (k, v["result"])) for k, v in sorted(json.load(sys.stdin).items())]'
+            echo "$gates"
             echo
             echo "$time_to_green"
-          } | tee release/gate-summary.md >> "$GITHUB_STEP_SUMMARY"
+          } | tee release/gate-summary.md >> "$GITHUB_STEP_SUMMARY" || true
           # Also as an annotation, which the Actions API shows without signing in.
           echo "::notice title=Time to green::$time_to_green"
-      # The release: the library and headers this gate built and tested, and its summary, named by
-      # the commit now at the tip of rtos-actor.
+      # The release, named by the commit about to be at the tip of rtos-actor: the library and
+      # headers this gate built and tested, and its summary. Before the push, so an upload that
+      # fails can't leave a promoted commit with a red run. If the push is then refused, this
+      # artifact exists for a commit that wasn't promoted, and its run is red.
       - name: Upload the release
+        if: steps.already.outputs.done == 'false'
         uses: actions/upload-artifact@v7
         with:
           name: bowling-${{ github.sha }}
           path: release
           if-no-files-found: error
+      # The last step. No --force: GitHub itself rejects anything that isn't a fast-forward of
+      # rtos-actor, and the ruleset requires every gate job. Made with GITHUB_TOKEN, so it starts
+      # no run of its own: the SHA is already tested.
+      - name: Fast-forward rtos-actor to this commit
+        if: steps.already.outputs.done == 'false'
+        run: |
+          if ! git push origin HEAD:refs/heads/rtos-actor; then
+            echo "::error::rtos-actor moved: it is no longer an ancestor of this commit. Rebase integration/rtos-actor onto rtos-actor and push again, so the result is gated."
+            exit 1
+          fi
+          echo "Promoted \`${GITHUB_SHA}\` to rtos-actor." >> "$GITHUB_STEP_SUMMARY" || true
