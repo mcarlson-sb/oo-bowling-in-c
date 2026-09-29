@@ -562,3 +562,17 @@ TEST(CandlepinTest, A19_should_a_strike_and_both_bonus_balls_frame_1_is_known_at
     EXPECT_EQ(17U, first.score);
     EXPECT_EQ(17U, Scorer_Score(&scorer)); /* frame 2, 3 and 4, still takes a third ball */
 }
+
+TEST(CandlepinTest, A20_should_a_spare_corrected_to_5_then_2_makes_a_ten_box_of_frame_1_and_an_open_6_of_frame)
+{
+    Scorer scorer = MakeCandlepin();
+    RollAll(&scorer, {5U, 5U, 3U, 4U, 2U});
+    RollMany(&scorer, 24, 0U);
+    const std::vector<Pins> two = {2U};
+    const RollEdit edit = Replace(2U, 1U, two); /* 5, 2, 3 | 4, 2, 0 | ... */
+    FrameEvents events;
+    EXPECT_EQ(GAME_OK, Scorer_Edit(&scorer, &edit, &events));
+    EXPECT_EQ(10U, Scorer_Frame(&scorer, 0U).score); /* a ten-box */
+    EXPECT_EQ(6U, Scorer_Frame(&scorer, 1U).score);  /* open */
+    EXPECT_EQ(16U, Scorer_Score(&scorer));
+}
