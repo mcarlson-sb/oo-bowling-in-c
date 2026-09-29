@@ -28,6 +28,7 @@ typedef enum {
     /* reply_to is the subscriber: it gets the reply, a catch-up of the complete frames, then
      * every frame change. */
     GAME_MSG_SUBSCRIBE,
+    GAME_MSG_UNSUBSCRIBE, /* reply_to is the subscriber, which gets the reply */
     /* An edit (see RollEdit), with its new balls carried in the message: a queue copies the
      * message, so nothing in it may point back into the sender's memory. A correction is an
      * edit of one ball out and one in. */

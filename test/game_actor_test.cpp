@@ -388,3 +388,37 @@ TEST(GameActorPinsetterTest, should_tell_the_subscribers_the_total_of_rolls_lost
     Send(&actor, RollsLostReport(5U), &outbox);
     EXPECT_EQ((std::vector<int>{5}), LostEventsIn(outbox));
 }
+
+namespace {
+
+GameMessage UnsubscribeRequest(RequestSeq seq, void *subscriber)
+{
+    GameMessage message = SubscribeRequest(seq, subscriber);
+    message.kind = GAME_MSG_UNSUBSCRIBE;
+    return message;
+}
+
+} // namespace
+
+TEST(GameActorTest, should_stop_telling_a_subscriber_that_unsubscribes)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    int a = 0;
+    int b = 0;
+    Send(&actor, SubscribeRequest(1U, &a), &outbox);
+    Send(&actor, SubscribeRequest(2U, &b), &outbox);
+    Send(&actor, UnsubscribeRequest(3U, &a), &outbox);
+    ASSERT_EQ(1U, outbox.count);
+    EXPECT_EQ(&a, outbox.items[0].to);
+    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+
+    Send(&actor, RollRequest(4U, 3U), &outbox);
+    Send(&actor, RollRequest(5U, 4U), &outbox);
+    EXPECT_EQ((std::vector<Sent>{{GAME_OUT_FRAME_CHANGED, &b, 1, 7, true}}), FrameEventsIn(outbox));
+
+    Send(&actor, UnsubscribeRequest(6U, &a), &outbox);
+    EXPECT_EQ(GAME_ERR_NOT_SUBSCRIBED, outbox.items[0].status);
+    Send(&actor, SubscribeRequest(7U, &a), &outbox); /* its room is free again */
+    EXPECT_EQ(GAME_OK, outbox.items[0].status);
+}

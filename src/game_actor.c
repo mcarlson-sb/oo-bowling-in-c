@@ -199,12 +199,29 @@ static void GameActor_Subscribe(GameActor *self, const GameMessage *message, Gam
     GameActor_CatchUp(self, message->reply_to, outbox);
 }
 
+static void GameActor_Unsubscribe(GameActor *self, const GameMessage *message,
+                                  GameOutbox *outbox)
+{
+    for (uint8_t i = 0U; i < self->subscriber_count; i++) {
+        if (self->subscribers[i] == message->reply_to) {
+            self->subscriber_count--;
+            self->subscribers[i] = self->subscribers[self->subscriber_count];
+            GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
+            return;
+        }
+    }
+    GameOutbox_Reply(outbox, message, GAME_ERR_NOT_SUBSCRIBED, Scorer_Score(&self->scorer));
+}
+
 void GameActor_Handle(GameActor *self, const GameMessage *message, GameOutbox *outbox)
 {
     outbox->count = 0U;
     switch (message->kind) {
     case GAME_MSG_SUBSCRIBE:
         GameActor_Subscribe(self, message, outbox);
+        break;
+    case GAME_MSG_UNSUBSCRIBE:
+        GameActor_Unsubscribe(self, message, outbox);
         break;
     case GAME_MSG_EDIT:
         GameActor_Edit(self, message, outbox);
