@@ -27,19 +27,20 @@ constexpr TickType_t kPatience = pdMS_TO_TICKS(1000);
 
 /* A caller's own queue of outputs, for replies or as a subscriber. */
 struct OutputQueue {
-    static constexpr UBaseType_t kLength = 64U;
+    static constexpr UBaseType_t kMaxLength = 64U;
     StaticQueue_t queue;
-    uint8_t storage[kLength * sizeof(GameOutput)];
+    uint8_t storage[kMaxLength * sizeof(GameOutput)];
     QueueHandle_t handle;
 
-    void Create()
+    void Create(UBaseType_t length = kMaxLength)
     {
-        handle = xQueueCreateStatic(kLength, sizeof(GameOutput), storage, &queue);
+        handle = xQueueCreateStatic(length, sizeof(GameOutput), storage, &queue);
     }
 };
 
 OutputQueue s_replies;
 OutputQueue s_subscriber;
+UBaseType_t s_subscriber_queue_length = OutputQueue::kMaxLength;
 
 /* The pinsetter's interrupt, simulated by the highest-priority task: when fired, it counts its
  * rolls one after another, as back-to-back interrupts would, and nothing lower runs until it's
@@ -94,7 +95,7 @@ void RunClient(void (*body)())
 {
     GameShell_Start(SCORER_TEN_PIN, SCORER_COUNT_PINS_DOWN, kGamePriority);
     s_replies.Create();
-    s_subscriber.Create();
+    s_subscriber.Create(s_subscriber_queue_length);
     s_interrupt = xTaskCreateStatic(&InterruptTask, "interrupt", configMINIMAL_STACK_SIZE,
                                     nullptr, kInterruptPriority, s_interrupt_stack,
                                     &s_interrupt_task);
@@ -123,6 +124,15 @@ GameMessage SubscribeRequest(RequestSeq seq)
     message.kind = GAME_MSG_SUBSCRIBE;
     message.seq = seq;
     message.reply_to = s_subscriber.handle;
+    return message;
+}
+
+GameMessage ScoreQuery(RequestSeq seq)
+{
+    GameMessage message = {};
+    message.kind = GAME_MSG_QUERY_SCORE;
+    message.seq = seq;
+    message.reply_to = s_replies.handle;
     return message;
 }
 
@@ -204,4 +214,28 @@ TEST(GameShellTest, should_count_a_roll_lost_to_the_pinsetters_full_queue_and_te
     ASSERT_FALSE(s_heard.empty());
     EXPECT_EQ(GAME_OUT_ROLLS_LOST, s_heard.back().kind);
     EXPECT_EQ(1U, s_heard.back().lost);
+}
+
+namespace {
+
+uint16_t s_dropped;
+
+} // namespace
+
+TEST(GameShellTest, should_drop_and_count_an_event_for_a_subscriber_whose_queue_is_full)
+{
+    /* The subscriber's queue has room for one, which its subscribe reply takes. */
+    s_subscriber_queue_length = 1U;
+    RunClient([] {
+        const GameMessage subscribe = SubscribeRequest(1U);
+        s_sent = GameShell_Send(&subscribe, 0U);
+        FirePinsetter({3U, 4U}); /* completes frame 1: an event it has no room for */
+        const GameMessage query = ScoreQuery(2U);
+        (void)GameShell_Send(&query, kPatience);
+        s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience); /* after the rolls */
+        s_dropped = GameShell_OutputsDropped();
+    });
+    ASSERT_EQ(pdPASS, s_received);
+    EXPECT_EQ(7U, s_reply.score);
+    EXPECT_EQ(1U, s_dropped);
 }

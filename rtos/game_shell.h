@@ -20,6 +20,9 @@ BaseType_t GameShell_Send(const GameMessage *message, TickType_t wait);
 /* From the pinsetter's interrupt: a roll it counted. */
 void GameShell_PinsetterCountedFromIsr(Pins pins);
 
+/* Replies and events not delivered, so far, because the queue they were for was full. */
+uint16_t GameShell_OutputsDropped(void);
+
 #ifdef __cplusplus
 }
 #endif
