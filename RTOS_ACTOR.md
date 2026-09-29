@@ -630,3 +630,39 @@ value, `NULL` or a pointer when there are no new balls, and two in the catch-up'
 the UBSan build traps on but Mull's build doesn't. Also found: Mull's `diff` mode skips files
 new since the ref altogether, so it reported no mutants for the whole new actor; a new module
 is checked with `tools/mutation.sh only <regex>`.
+
+### Comment clutter: names, checks and tests instead
+
+Before the RTOS shell, the 114 comments in the core and the actor (`bowling_types.h`,
+`bowling_status.h`, `scorer.h`, `scorer.c`, `game_actor.h`, `game_actor.c`) were sorted by
+what could replace them:
+
+| What it was | Count | Became |
+|---|---|---|
+| A name's job: restating a function or field, or a section divider | 60 | A name, or nothing |
+| A claim about behavior | 24 | A test, an assert or a derived constant; most were already tests |
+| History or design notes | 8 | This file, where most already were |
+| The public contract (ENG-3.6), or a real "why" | 16 | Kept, trimmed |
+| Include guards, and the facade's own statuses, going with it | 6 | Left |
+
+One claim was already false: `GAME_ERR_TOO_MANY_ROLLS` said an edit would leave "more than 21
+rolls" long after candlepin made it 30. Nothing failed when it went stale. The claims nothing
+checked became checks:
+
+- **Frames complete oldest first**, which the complete-frame count and the actor's catch-up
+  both rely on: a test over random games of both variants.
+- **The outbox's capacity**: a test sends the worst case, an edit that reopens all ten frames and
+  lets through held rolls that complete them again before holding the next, to two subscribers,
+  and it fills the outbox exactly. The old formula, from a comment's "a notice or two", had room
+  for 45; the most is 43. An assert stops any write past it.
+- **At most one event per frame**, **no ball on a lane that is over** and **an edit's removals
+  within the balls**: asserts. Removing only balls the game has is now worked out without the
+  subtraction that wrapped at ball 0, so its precondition comment went with the hazard.
+- **The longest game**, 21 and 30, is worked out from each row's frames and balls
+  (`LONGEST_GAME`), and the bonus table is indexed by the ball that cleared the rack
+  (`CLEARED_BY_STRIKE`, `_SPARE`, `_TEN_BOX`), where comments said what `[0]`, `[1]` and `[2]`
+  meant.
+
+A note that had no home here yet: `Scorer_Edit` checks an edit with the same rules, in the same
+order, as the `Game` facade's edits, so the two report the same status for the same bad edit
+while both exist.
