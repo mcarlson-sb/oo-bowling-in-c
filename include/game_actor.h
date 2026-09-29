@@ -100,9 +100,13 @@ typedef struct {
 } HeldRolls;
 
 typedef struct {
+    void *queues[GAME_MAX_SUBSCRIBERS];
+    uint8_t count;
+} Subscribers;
+
+typedef struct {
     Scorer scorer;
-    void *subscribers[GAME_MAX_SUBSCRIBERS];
-    uint8_t subscriber_count;
+    Subscribers subscribers;
     HeldRolls held;
     uint16_t lost_to_full_queue;
     uint16_t lost_to_full_held_list;
