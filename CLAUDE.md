@@ -28,8 +28,9 @@
 - The feedback loop is fast atomic TDD: one failing test, only enough code to pass it, refactor,
   and the debug build's tests after each step.
 - The gate is every test passing in every build, with lizard, clang-tidy, the stack tripwires,
-  coverage and the function-pointer check. Locally, all of them before each commit; in CI, on
-  every commit pushed.
+  coverage and the function-pointer check. Locally: the quick debug build's tests before each
+  commit, and all of the gates before each push. In CI: all of them on every push, and
+  `every-commit` builds and tests each commit pushed.
 - Mutation testing (`tools/mutation.sh`) is feedback, run by hand at phase stops. It is not a
   gate.
 
