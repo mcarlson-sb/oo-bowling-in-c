@@ -42,9 +42,14 @@ typedef struct {
 
 static GameShell s_shell;
 
+static QueueHandle_t GameShell_Route(const GameShell *self, ActorId id)
+{
+    return (id < GAME_SHELL_ACTORS) ? self->routes[id] : NULL;
+}
+
 static bool GameShell_SendTo(const GameShell *self, const GameOutput *out)
 {
-    const QueueHandle_t queue = self->routes[out->to];
+    const QueueHandle_t queue = GameShell_Route(self, out->to);
     return (queue != NULL) && (xQueueSend(queue, out, 0U) == pdPASS);
 }
 

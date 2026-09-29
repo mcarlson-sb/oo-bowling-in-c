@@ -373,3 +373,18 @@ TEST(GameShellTest, should_drop_and_count_an_output_to_an_id_nothing_is_bound_to
     EXPECT_EQ(2U, s_reply.payload.reply.seq);
     EXPECT_EQ(1U, s_dropped);
 }
+
+TEST(GameShellTest, should_drop_and_count_an_output_to_an_id_past_the_routing_table)
+{
+    RunClient([] {
+        GameMessage subscribe = SubscribeRequest(1U);
+        subscribe.envelope.from = 200U;
+        (void)GameShell_Send(&subscribe, kPatience);
+        const GameMessage query = ScoreQuery(2U);
+        (void)GameShell_Send(&query, kPatience);
+        s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
+        s_dropped = GameShell_OutputsDropped();
+    });
+    ASSERT_EQ(pdPASS, s_received);
+    EXPECT_EQ(1U, s_dropped);
+}

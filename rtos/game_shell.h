@@ -39,7 +39,8 @@ BaseType_t GameShell_Send(const GameMessage *message, TickType_t wait);
 /* From the pinsetter's interrupt: a roll it counted. */
 void GameShell_PinsetterCountedFromIsr(Pins pins);
 
-/* Replies and events not delivered, so far: to an id nothing is bound to, or a full queue. */
+/* Replies and events not delivered, so far: to an id nothing is bound to, or can be, or to a
+ * full queue. */
 uint16_t GameShell_OutputsDropped(void);
 
 /* The deepest the game task's stack has gone, in bytes, measured by painting it. */
