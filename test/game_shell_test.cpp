@@ -274,3 +274,38 @@ TEST(GameShellTest, should_play_the_pinsetters_waiting_rolls_before_an_edit_wait
     EXPECT_EQ(GAME_OK, s_reply.status);
     EXPECT_EQ(9U, s_reply.score);
 }
+
+namespace {
+
+std::vector<GameOutput> s_heard_held;
+
+} // namespace
+
+TEST(GameShellTest, should_hold_a_miscounted_roll_until_a_correction_lets_it_through)
+{
+    /* The pinsetter counted 5 when 2 fell, so its true 8 looks impossible: held, with the 3
+     * after it. Correcting ball 1 to 2 lets both through: 2, 8, a spare, then 3, is 13. */
+    RunClient([] {
+        const GameMessage subscribe = SubscribeRequest(1U);
+        s_sent = GameShell_Send(&subscribe, 0U);
+        GameOutput reply;
+        (void)xQueueReceive(s_subscriber.handle, &reply, kPatience);
+        FirePinsetter({5U, 8U, 3U});
+        s_heard_held = HearUntil(GAME_OUT_ROLL_HELD);
+        const GameMessage correction = EditRequest(2U, 1U, 1U, {2U});
+        (void)GameShell_Send(&correction, kPatience);
+        s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
+        s_heard = HearUntil(GAME_OUT_FRAME_CHANGED);
+    });
+    ASSERT_FALSE(s_heard_held.empty());
+    EXPECT_EQ(GAME_OUT_ROLL_HELD, s_heard_held.back().kind);
+    EXPECT_EQ(8U, s_heard_held.back().pins);
+    EXPECT_EQ(2U, s_heard_held.back().position);
+    ASSERT_EQ(pdPASS, s_received);
+    EXPECT_EQ(GAME_OK, s_reply.status);
+    EXPECT_EQ(13U, s_reply.score);
+    ASSERT_FALSE(s_heard.empty());
+    EXPECT_EQ(GAME_OUT_FRAME_CHANGED, s_heard.back().kind);
+    EXPECT_EQ(1U, s_heard.back().frame.frame_number);
+    EXPECT_EQ(13U, s_heard.back().frame.frame_score);
+}
