@@ -705,3 +705,16 @@ TEST(GameActorLifecycleTest, should_refuse_a_new_game_while_one_is_in_play_and_k
     EXPECT_EQ(GAME_ERR_GAME_IN_PROGRESS, outbox.items[0].payload.reply.status);
     EXPECT_EQ(7U, ScoreOf(&actor));
 }
+
+TEST(GameActorLifecycleTest, should_start_a_new_game_after_one_ends)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    BowlAGutterGame(&actor);
+    GameOutbox outbox;
+    Send(&actor, NewGameRequest(21U, rules::kCandlepin), &outbox);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
+    Send(&actor, RollRequest(22U, 3U), &outbox);
+    Send(&actor, RollRequest(23U, 3U), &outbox);
+    Send(&actor, RollRequest(24U, 3U), &outbox);
+    EXPECT_EQ(9U, outbox.items[0].payload.reply.score); /* candlepin's three balls a frame */
+}
