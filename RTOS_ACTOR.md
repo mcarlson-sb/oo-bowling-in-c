@@ -1133,3 +1133,174 @@ What this shows:
   though an observer sends at most one reply per message.
 - **These are the numbers for the decision** between one actor per task and several sharing a
   task. They are yours to make, as decided. Nothing is changed yet.
+
+## Phase 3 report: polymorphism by id, and late binding through messages
+
+**What changed.** Kay's three properties, as far as Power of Ten lets them go:
+
+1. **One protocol** (`include/message.h`). Every message, request, reply or event, is an
+   envelope (selector, from, to, seq) and a payload of its selector's fields only. Replies and
+   NOT_UNDERSTOOD are answered the same way by every kind (`src/outbox.c`).
+2. **Actor ids and an actor host.** Senders address `ActorId`s, one byte each:
+   - the shell's routing table binds each id to a kind, an instance and a mailbox;
+   - each hosted actor has a task of its own;
+   - the one switch on the kind at a message's `to` calls that kind's receive function.
+
+   No queue handle, and no pointer, is part of any actor's state.
+3. **The rules as data.** NEW_GAME carries them: frames, balls a frame, pins a rack, bonus balls
+   by clearing ball, and the count rule, as one field. The scorer compiles no variant in: the
+   presets live with the senders. Rules it can't play are refused. The game's lifecycle is
+   explicit, and forced by the feature: awaiting rules, or in play.
+4. **More kinds.** A scoreboard, and a running average (kay-oo's no-tap average listener). Both
+   rebuild the frames from FRAME_CHANGED events in a `FrameBoard`, and answer the same
+   QUERY_SCORE the game does, each its own way. Each kind has its own protocol table,
+   `respondsTo:`.
+5. **Hidden state.** Each actor's struct is defined in `src/*_state.h`. The public headers have
+   an incomplete type, and a test fails if a definition moves back.
+6. **The docs.** The README, `ARCHITECTURE.md` and `STATE_PATTERN.md` describe the code as it is.
+
+**The hypothesis, tested.**
+
+| Claim | Evidence | Held? |
+|---|---|---|
+| Rebinding an id changes behavior without the sender changing | One scenario, in the same client code, against the same game. At the subscriber's id, a scoreboard answers 19, a running average 9, and a recording double records the game's messages and answers no one. With the two hosted kinds' dispatch cases swapped, both hosted bindings fail | **Held.** The binding is made at startup; rebinding a live id is not built (see decisions) |
+| Once the rules arrive in a message, a variant needs no code | A 5-frame game, and a 3-ball game at a rack of 5, never compiled in. Both play 5000 random games against a reference that shares no code with the scorer, with the scorer untouched | **Held** |
+| The lifecycle becomes an explicit state machine because the feature forces it | Before NEW_GAME, the actor played on a scorer that was never started. Two states were forced, not three: "over" stays the scorer's to say | **Held** |
+| The actor core holds no pointers, and no queue handle crosses into `src/` | The game, the scoreboard and the average hold ids, counts and values. The shell owns every `QueueHandle_t`. The one pointer in `src/`'s API, `RollEdit.new_pins`, is transient: it points into the message being handled, and is never kept | **Held** |
+| The tagged layout shrinks what each queue copies | A request went from 56 bytes to 44, most of that from the ids replacing a pointer. A reply or event went from 40 to 44: one type for every kind is sized by the edit's 30 inline balls | **Failed for replies and events**, and kept on your decision |
+| Actor state can be hidden from everything but the shell and the tests | Enforced by the build: only three targets have `src/` on their include path, and `actor_state_is_hidden` fails if a definition becomes visible from `include/`. Within those targets it is still convention, since the tests read the actors' counters directly | **Held, by the include path, not the language** |
+
+**The protocol tables: earning their keep, or moving a branch?**
+- **The observers' tables don't earn it on complexity.** The scoreboard and the running average
+  answer three selectors each. A switch with a `default:` would be as clear, and as short.
+- **What the table buys every kind is two properties.** A selector the protocol gains later
+  reads as "doesn't understand", by construction, until someone lists it. And the switch on the
+  kind's own request enum keeps `-Wswitch`'s check, which a `default:` would switch off.
+- **The game's table mostly moved branches out of the count.** Its request switch sits at the
+  complexity limit, 10. A switch on the selector itself would need a case for every selector the
+  game doesn't answer as well, or a `default:`. The table took those cases out of the count,
+  while keeping the check.
+- **So:** the table is a real design element for the "unlisted means not understood" rule, and
+  partly a way around the complexity count. It's kept for both, and recorded as both.
+
+**NEW_GAME is decided outside the lifecycle switch.**
+- It is the lifecycle's own message: the one that moves the state, so it comes before the state
+  is consulted.
+- Whether a game is still in play is the scorer's to say, and a third lifecycle state holding
+  "over" could go stale when an edit reopens a finished game.
+- As one more case of the request switch, it would have taken that switch past ENG-3.1's
+  limit.
+
+**Metrics** (the baseline is kay-oo at ad857ff; phase 2 is at 194fb52):
+
+| | Baseline | Phase 2 | Phase 3 |
+|---|---|---|---|
+| Tests, host / with the POSIX port | 114 / – | 82 / 90 | 115 / 128 |
+| Functions (lizard) | 143 | 111 | 149 |
+| NLOC, `src/`, `include/`, `rtos/` | 1,283 | 1,079 | 1,602 |
+| Highest cyclomatic complexity (limit 10) | 5 | 9 | 10, `GameActor_Receive` |
+| Highest cognitive complexity (limit 7) | 4 | 5 | 5 |
+| Function pointers | 6 | 1 | 1, the task entry |
+| Release line coverage | 99.8% | 99.6% | 99.1% |
+| Stack contract, game task, release / debug (budget 4608) | – | 3952 / 4224 | 3968 / 4320 |
+| A request / a reply or event, bytes | – | 56 / 40 | 44 / 44 |
+| One hosted task, this host | – | – | about 18.8 KB; about 2.4 KB of it besides the stack |
+| Actor state: game / scoreboard / average, bytes | – | 104 (game) | 96 / 34 / 34 |
+
+Phase 3 took 51 commits, this report's included: 23 `[make-change]`, 9 `[make-easy]` and 19
+`[clean-up]`.
+
+**What the change lost.**
+- **The rules' `_Static_assert`s became runtime validation.** What was a closed set checked at
+  compile time is now open, with a hazard surface of its own:
+  - rules the scorer can't play, which are refused;
+  - messages before a game, which are answered;
+  - a NEW_GAME mid-game, which is refused;
+  - selectors a kind doesn't respond to, which get NOT_UNDERSTOOD.
+
+  The tests for the refusals found two real hazards: 11 frames within the ball limit walked
+  past the lane's frames, and 0 frames wrapped the longest-game sum round to 1.
+- **Replies and events copy 24 bytes more,** for one protocol, kept on your decision.
+- **Every hosted task is sized for the deepest kind.** The one dispatch switch, reached from one
+  task entry, keeps every call target visible. But the call graph can't know which kind a task
+  hosts, so a scoreboard's task gets the game's stack, while its own path is 48 bytes in
+  release.
+- **The kinds are a closed set.** A new kind is a new case in the shell's switch and a new
+  instance array: a code change in the shell. Kay's late binding would add a kind at run time;
+  Power of Ten, with no function pointers, can't.
+- **The Duplicate Switch Case.** Each kind switches on the protocol's selector, which the
+  constitution's smell catalog flags. Its remedy is a function-pointer table.
+- **A caller-supplied counting rule stays lost.** The count rule is one field, and doesn't
+  express kay-oo's one-pin-left rule.
+
+**Surprises.**
+1. **One protocol cost the outputs** what tagging had saved them. A union is as big as its
+   largest member, and every kind's messages share it.
+2. **Validating the rules found real bugs,** the hazards above. Neither had been reachable while
+   the rules were compiled in.
+3. **The complexity limit shaped the design twice:** the game's protocol became a table, and
+   NEW_GAME was taken before the lifecycle switch. Both were recorded rather than hidden.
+4. **Hosting costs about 70 times the actor.** A scoreboard is 34 bytes of state, and about 2.4
+   KB of hosting even before its stack. Most of that is an outbox sized for the game's worst
+   case, and an observer sends at most one reply per message.
+5. **A test that waits for what can't come waits out its timeout.** The recording double's
+   first version waited a second for a reply that no one sends. Under ThreadSanitizer the
+   POSIX port's ticks slowed that second past the test's 60-second limit. The test now waits for
+   what does arrive.
+6. **The hidden-state probe needed each compiler's words.** GCC and clang refuse an incomplete
+   type differently, and GCC quotes with curly quotes in a UTF-8 locale. The probe runs in the C
+   locale, and has a pattern for each compiler.
+7. **Process:** the local every-commit check compared against a local `rtos-actor` branch that
+   never moves, since promotion moves the remote one. It re-checked every commit since phase 2,
+   until it was pointed at the promoted commit.
+
+**Mutation feedback at the phase stop:** debug had 450 mutants, of which 424 were killed and 26 survived, a score of 94.2%, in 11 m 54 s,
+before the tests below. Release had 450, of which 431 were killed and 19 survived, 95.8%, in
+15 m 34 s, after the first of them. The survivors:
+- **The classes known from phase 2 and the interim stop:** equivalents, the event's
+  deliberately unpinned `seq`, and undefined behavior that only UBSan catches (including the
+  selector exactly at the protocol's end).
+- **The frame board:**
+  - its index arithmetic and its loops' bounds, which read one past its arrays: undefined
+    behavior, trapped only by UBSan;
+  - the clearing of its scores, which is equivalent, since a score is only read once its frame
+    is complete, and a frame only becomes complete by being heard, which writes its score;
+  - a Mull artifact: storing 42 in a `bool` reads back as false under clang, which loads a
+    `bool` by its lowest bit, so that mutant leaves the flag cleared. My own mutant, which leaves
+    the memory as it was, is killed.
+- **Real gaps, now pinned by tests** that fail against their mutants:
+  - a scoreboard and a running average start empty whatever memory they are given (6 mutants:
+    every test had started them in memory that happened to be zero);
+  - the frame board keeps the last frame, 10;
+  - each observer says NOT_UNDERSTOOD from its own id (2 mutants).
+- **A slip in my own proof:** a hand mutant that didn't compile looked like a survivor, because
+  the harness read only the test results. Rerun as a mutant that compiles, it was killed.
+
+**Decisions for phase 4.**
+- **One actor per task, or several sharing a task.** A hosted task costs about 18.8 KB on this
+  host, and about 3.5 to 4 KB on a target, for 34 bytes of observer state. Sharing a task would
+  share the stack and the outbox. It would still need one mailbox per actor, or one per task,
+  with the dispatch choosing the actor by `to`, as it does now.
+- **An outbox per kind.** Sized for each kind's worst case, it would cut about 1.8 KB from each
+  observer's task. The capacity would become a property of the kind, and the shell's hosted slot
+  would need a size per kind.
+- **A stack contract per kind.** Only possible with an entry per kind, which is a second switch
+  on the kind, or a function pointer. So far the one switch has been worth the cost.
+- **Rebinding a live id.** The routing table is written only before the scheduler starts, so it
+  needs no lock. Rebinding at run time would need a critical section around every lookup, or a
+  message to the shell that rebinds between dispatches.
+- **Counters as queries.** The tests read the actors' counters (not understood, lost) from their
+  state. A statistics selector would let the tests ask instead, and would make the hidden state
+  hidden from the tests too.
+- **The target stage** (the QEMU plan in the gated-CI section) is still deferred. A target would
+  make the stack and RAM figures real ones, where these are the host's.
+
+### Kay's three properties, scored
+
+| Property | Enforced by the structure | Still convention | Overridden by Power of Ten |
+|---|---|---|---|
+| **Messaging** | An actor's public interface is its init and its receive function; everything else is a message. Actors in different tasks meet only through queues. A selector a kind doesn't respond to is answered NOT_UNDERSTOOD, never dropped | The tests call a kind's receive function directly, as the shell does: they stand in for the host | The scorer is called, not messaged: a value inside the game, by design, since it has no lifetime or concurrency of its own |
+| **Local, protected state** | Each actor's struct is in `src/`, off every include path but the library's, the shell's and the tests'. `actor_state_is_hidden` fails if that changes | Inside those three targets, nothing stops code reading an actor's fields, and the tests do read its counters | Static allocation means the host must know each actor's size to allocate it, so the state can't be hidden from the host. With a heap, an opaque handle could hide it from the host too, and the heap is ruled out |
+| **Extreme late binding** | Who receives a message is the routing table's data, and what it means is the bound kind's. The rules are a message. The same QUERY_SCORE gets three answers from three kinds, and the game's code doesn't know which | Bindings are made at startup only. The routing table isn't locked, so it must not change while tasks run | The kinds are a closed enum, and the dispatch a switch over it: a new kind is a code change in the shell. Each task's stack is sized for the deepest kind, because one entry reaches them all. Both are the price of every call target being known |
+
+**Stop.** Phase 3 ends here, as the brief asks.
