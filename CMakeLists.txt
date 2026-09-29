@@ -99,9 +99,14 @@ gtest_discover_tests(bowling_tests)
 add_test(NAME actor_state_is_hidden
          COMMAND ${CMAKE_C_COMPILER} -std=c11 -fsyntax-only -I ${CMAKE_CURRENT_SOURCE_DIR}/include
                  ${CMAKE_CURRENT_SOURCE_DIR}/test/hidden_state_probe.c)
-# In the C locale, so GCC quotes with ASCII quotes; matched loosely all the same.
+# In the C locale, so GCC quotes with ASCII quotes; matched loosely all the same. One pattern for
+# GCC's wording and one for clang's (the mutation build's compiler), each requiring all three.
 set_tests_properties(actor_state_is_hidden PROPERTIES ENVIRONMENT "LC_ALL=C"
-    PASS_REGULAR_EXPRESSION "size of [^ ]*game[^ ]* isn.t known.*size of [^ ]*board[^ ]* isn.t known.*size of [^ ]*average[^ ]* isn.t known")
+    PASS_REGULAR_EXPRESSION
+    "size of [^ ]*game[^ ]* isn.t known.*size of [^ ]*board[^ ]* isn.t known.*size of [^ ]*average[^ ]* isn.t known;GameActor[^
+]*never completed.*Scoreboard[^
+]*never completed.*RunningAverage[^
+]*never completed")
 
 # ---- The RTOS shell (FreeRTOS on its POSIX port) ----------------------------
 # The POSIX port runs on Linux only, so this is on there (WSL, CI) and off elsewhere; the Windows
