@@ -58,7 +58,9 @@ typedef struct {
 } GameMessage;
 
 typedef enum {
-    GAME_OUT_REPLY,         /* seq, status, score */
+    /* seq and status; and score, after everything the message caused, for a Roll, an Edit, an
+     * accepted DiscardHeld and a QueryScore (0 in every other reply) */
+    GAME_OUT_REPLY,
     GAME_OUT_FRAME_CHANGED, /* frame */
     /* A pinsetter roll was held: its pins, the ball it would be (position), how many are held
      * now, and why the first of them was rejected (status). */

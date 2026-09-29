@@ -157,7 +157,7 @@ static void GameActor_DiscardHeld(GameActor *self, const GameMessage *message,
                                   GameOutbox *outbox)
 {
     if (self->held_count == 0U) {
-        GameOutbox_Reply(outbox, message, GAME_ERR_NO_SUCH_ROLL, Scorer_Score(&self->scorer));
+        GameOutbox_Reply(outbox, message, GAME_ERR_NO_SUCH_ROLL, 0U);
         return;
     }
     GameOutput *reply = GameOutbox_Reply(outbox, message, GAME_OK, 0U);
@@ -190,12 +190,12 @@ static void GameActor_CatchUp(const GameActor *self, void *subscriber, GameOutbo
 static void GameActor_Subscribe(GameActor *self, const GameMessage *message, GameOutbox *outbox)
 {
     if (self->subscriber_count == GAME_MAX_SUBSCRIBERS) {
-        GameOutbox_Reply(outbox, message, GAME_ERR_NO_ROOM, Scorer_Score(&self->scorer));
+        GameOutbox_Reply(outbox, message, GAME_ERR_NO_ROOM, 0U);
         return;
     }
     self->subscribers[self->subscriber_count] = message->reply_to;
     self->subscriber_count++;
-    GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
+    GameOutbox_Reply(outbox, message, GAME_OK, 0U);
     GameActor_CatchUp(self, message->reply_to, outbox);
 }
 
@@ -206,11 +206,11 @@ static void GameActor_Unsubscribe(GameActor *self, const GameMessage *message,
         if (self->subscribers[i] == message->reply_to) {
             self->subscriber_count--;
             self->subscribers[i] = self->subscribers[self->subscriber_count];
-            GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
+            GameOutbox_Reply(outbox, message, GAME_OK, 0U);
             return;
         }
     }
-    GameOutbox_Reply(outbox, message, GAME_ERR_NOT_SUBSCRIBED, Scorer_Score(&self->scorer));
+    GameOutbox_Reply(outbox, message, GAME_ERR_NOT_SUBSCRIBED, 0U);
 }
 
 void GameActor_Handle(GameActor *self, const GameMessage *message, GameOutbox *outbox)
