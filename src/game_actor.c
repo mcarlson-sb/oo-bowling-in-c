@@ -312,7 +312,7 @@ static const GameRequest k_game_requests[MSG_SELECTOR_COUNT] = {
 static GameRequest GameActor_RequestOf(const Message *message)
 {
     const Selector selector = message->envelope.selector;
-    if ((unsigned)selector >= MSG_SELECTOR_COUNT) {
+    if (!Selector_IsInProtocol(selector)) {
         return GAME_DOES_NOT_UNDERSTAND;
     }
     return k_game_requests[selector];

@@ -25,7 +25,7 @@ void Scoreboard_Init(Scoreboard *self, ActorId id)
 static ScoreboardRequest Scoreboard_RequestOf(const Message *message)
 {
     const Selector selector = message->envelope.selector;
-    if ((unsigned)selector >= MSG_SELECTOR_COUNT) {
+    if (!Selector_IsInProtocol(selector)) {
         return SCOREBOARD_DOES_NOT_UNDERSTAND;
     }
     return k_scoreboard_protocol[selector];

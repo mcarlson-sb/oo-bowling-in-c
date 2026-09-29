@@ -25,7 +25,7 @@ void RunningAverage_Init(RunningAverage *self, ActorId id)
 static AverageRequest RunningAverage_RequestOf(const Message *message)
 {
     const Selector selector = message->envelope.selector;
-    if ((unsigned)selector >= MSG_SELECTOR_COUNT) {
+    if (!Selector_IsInProtocol(selector)) {
         return AVERAGE_DOES_NOT_UNDERSTAND;
     }
     return k_average_protocol[selector];

@@ -115,6 +115,13 @@ typedef struct {
     } payload;
 } Message;
 
+/* A selector is an enum any sender can fill in: only one of the protocol's indexes a kind's
+ * protocol table. */
+static inline bool Selector_IsInProtocol(Selector selector)
+{
+    return (unsigned)selector < MSG_SELECTOR_COUNT;
+}
+
 #ifdef __cplusplus
 }
 #endif
