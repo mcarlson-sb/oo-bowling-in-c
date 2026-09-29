@@ -89,7 +89,7 @@ bool Scorer_IsOver(const Scorer *self);
 /* Frames started so far: a frame starts with its first ball. */
 uint8_t Scorer_FrameCount(const Scorer *self);
 
-/* Frame `index` (the first is 0), which must have started. */
+/* Frame `index` (the first is 0). One not yet started is not complete, and scores 0. */
 ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index);
 
 #ifdef __cplusplus

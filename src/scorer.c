@@ -390,8 +390,12 @@ ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index)
 {
     Lane lane;
     Lane_Walk(&lane, self);
+    ScorerFrame result = { 0U, false };
+    if (index >= lane.frame_count) {
+        return result; /* not started: only the frames the walk wrote are read */
+    }
     const FrameShape *frame = &lane.frames[index];
-    ScorerFrame result = { 0U, Scorer_IsFrameComplete(self, frame) };
+    result.complete = Scorer_IsFrameComplete(self, frame);
     if (result.complete) {
         result.score = Lane_FrameScore(&lane, frame);
     }

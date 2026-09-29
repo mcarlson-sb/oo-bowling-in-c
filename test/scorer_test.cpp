@@ -649,3 +649,16 @@ TEST(CandlepinTest, should_score_ten_thousand_random_games_as_the_reference_does
         }
     }
 }
+
+TEST(TenPinScorerQueryTest, should_report_a_frame_not_yet_started_as_not_complete_and_0)
+{
+    /* Defined for any frame, not only those started: no frame is read that the walk didn't
+     * write. */
+    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    RollAll(&scorer, {3U, 4U});
+    for (uint8_t index = 1U; index < 12U; index++) {
+        const ScorerFrame frame = Scorer_Frame(&scorer, index);
+        EXPECT_FALSE(frame.complete) << "frame index " << +index;
+        EXPECT_EQ(0U, frame.score) << "frame index " << +index;
+    }
+}
