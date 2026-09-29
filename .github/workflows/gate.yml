@@ -222,6 +222,7 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
           GITHUB_TOKEN: ${{ github.token }}
+          TIME_TO_GREEN_API: https://api.github.invalid # PROOF: a bad URL; removed next commit
         # Can't fail: every command that can is caught, and the summary is only text.
         run: |
           time_to_green=$(python3 tools/time_to_green.py "$GITHUB_REPOSITORY" gate.yml "$GITHUB_REF_NAME" "$GITHUB_RUN_ID" || echo "**Time to green:** time to green unavailable.")
