@@ -30,6 +30,11 @@ static uint8_t HeldRolls_Newest(const HeldRolls *held)
     return (uint8_t)(held->count - 1U);
 }
 
+static void HeldRolls_RefuseFirst(HeldRolls *held, GameStatus why)
+{
+    held->first_refused_for = why;
+}
+
 static void HeldRolls_DropFirst(HeldRolls *held)
 {
     held->count--;
@@ -164,44 +169,51 @@ static void GameActor_HoldOrLose(GameActor *self, Pins pins, GameOutbox *outbox)
     }
 }
 
+static GameStatus GameActor_Play(GameActor *self, Pins pins, GameOutbox *outbox)
+{
+    FrameEvents events;
+    const GameStatus status = Scorer_Roll(&self->scorer, pins, &events);
+    GameActor_Publish(self, &events, outbox);
+    return status;
+}
+
 static void GameActor_LetHeldRollsThrough(GameActor *self, GameOutbox *outbox)
 {
     while (!HeldRolls_IsEmpty(&self->held)) {
-        FrameEvents events;
-        const GameStatus status = Scorer_Roll(&self->scorer, self->held.pins[0], &events);
+        const GameStatus status = GameActor_Play(self, self->held.pins[0], outbox);
         if (status != GAME_OK) {
-            self->held.first_refused_for = status;
+            HeldRolls_RefuseFirst(&self->held, status);
             GameActor_PublishHeld(self, 0U, outbox);
             return;
         }
         HeldRolls_DropFirst(&self->held);
-        GameActor_Publish(self, &events, outbox);
     }
 }
 
 static void GameActor_Roll(GameActor *self, const GameMessage *message, GameOutbox *outbox)
 {
-    FrameEvents events;
-    const GameStatus status = Scorer_Roll(&self->scorer, message->pins, &events);
-    GameOutbox_Reply(outbox, message, status, Scorer_Score(&self->scorer));
-    GameActor_Publish(self, &events, outbox);
+    GameOutput *reply = GameOutbox_BeginReply(outbox, message);
+    const GameStatus status = GameActor_Play(self, message->pins, outbox);
+    GameReply_Finish(reply, status, Scorer_Score(&self->scorer));
+}
+
+static void GameActor_PlayOrHold(GameActor *self, Pins pins, GameOutbox *outbox)
+{
+    const GameStatus status = GameActor_Play(self, pins, outbox);
+    if (status != GAME_OK) {
+        HeldRolls_RefuseFirst(&self->held, status);
+        GameActor_HoldOrLose(self, pins, outbox);
+    }
 }
 
 static void GameActor_PinsetterRoll(GameActor *self, const GameMessage *message,
                                     GameOutbox *outbox)
 {
-    if (!HeldRolls_IsEmpty(&self->held)) {
+    if (HeldRolls_IsEmpty(&self->held)) {
+        GameActor_PlayOrHold(self, message->pins, outbox);
+    } else {
         GameActor_HoldOrLose(self, message->pins, outbox);
-        return;
     }
-    FrameEvents events;
-    const GameStatus status = Scorer_Roll(&self->scorer, message->pins, &events);
-    if (status != GAME_OK) {
-        self->held.first_refused_for = status;
-        GameActor_HoldOrLose(self, message->pins, outbox);
-        return;
-    }
-    GameActor_Publish(self, &events, outbox);
 }
 
 static RollEdit GameMessage_Edit(const GameMessage *message)
@@ -244,6 +256,12 @@ static void GameActor_RollsLost(GameActor *self, const GameMessage *message, Gam
         self->lost_to_full_queue = message->lost;
         GameActor_PublishLost(self, outbox);
     }
+}
+
+static void GameActor_QueryScore(const GameActor *self, const GameMessage *message,
+                                 GameOutbox *outbox)
+{
+    GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
 }
 
 static void GameActor_SendCompleteFrames(const GameActor *self, void *subscriber,
@@ -300,7 +318,7 @@ void GameActor_Handle(GameActor *self, const GameMessage *message, GameOutbox *o
         GameActor_RollsLost(self, message, outbox);
         break;
     case GAME_MSG_QUERY_SCORE:
-        GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
+        GameActor_QueryScore(self, message, outbox);
         break;
     case GAME_MSG_ROLL:
         GameActor_Roll(self, message, outbox);
