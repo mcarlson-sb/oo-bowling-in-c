@@ -90,8 +90,9 @@ void ClientTask(void *parameter)
 }
 
 /* Runs `body` in the client task, with the game shell started, and returns once the client has
- * finished and the scheduler has stopped. */
-void RunClient(void (*body)())
+ * finished and the scheduler has stopped. A client above the game task can queue several
+ * messages before the game task runs. */
+void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
 {
     GameShell_Start(SCORER_TEN_PIN, SCORER_COUNT_PINS_DOWN, kGamePriority);
     s_replies.Create();
@@ -102,7 +103,7 @@ void RunClient(void (*body)())
     ASSERT_NE(nullptr, s_interrupt);
     s_client_body = body;
     ASSERT_NE(nullptr, xTaskCreateStatic(&ClientTask, "client", configMINIMAL_STACK_SIZE,
-                                         nullptr, kClientPriority, s_client_stack,
+                                         nullptr, client_priority, s_client_stack,
                                          &s_client_task));
     vTaskStartScheduler();
     ASSERT_TRUE(s_client_done.load(std::memory_order_acquire));
@@ -133,6 +134,21 @@ GameMessage ScoreQuery(RequestSeq seq)
     message.kind = GAME_MSG_QUERY_SCORE;
     message.seq = seq;
     message.reply_to = s_replies.handle;
+    return message;
+}
+
+GameMessage EditRequest(RequestSeq seq, RollNumber first, uint8_t removed,
+                        std::initializer_list<Pins> new_pins)
+{
+    GameMessage message = {};
+    message.kind = GAME_MSG_EDIT;
+    message.seq = seq;
+    message.reply_to = s_replies.handle;
+    message.first_roll = first;
+    message.rolls_removed = removed;
+    for (const Pins pins : new_pins) {
+        message.new_pins[message.new_count++] = pins;
+    }
     return message;
 }
 
@@ -238,4 +254,23 @@ TEST(GameShellTest, should_drop_and_count_an_event_for_a_subscriber_whose_queue_
     ASSERT_EQ(pdPASS, s_received);
     EXPECT_EQ(7U, s_reply.score);
     EXPECT_EQ(1U, s_dropped);
+}
+
+TEST(GameShellTest, should_play_the_pinsetters_waiting_rolls_before_an_edit_waiting_with_them)
+{
+    /* Above the game task, the client queues a correction of ball 1, and the interrupt then
+     * counts two rolls, before the game task runs at all. Rolls first: the correction finds
+     * ball 1 there, and 5 then 4 scores 9. Command first, it would find no ball 1. */
+    RunClient(
+        [] {
+            const GameMessage correction = EditRequest(1U, 1U, 1U, {5U});
+            s_sent = GameShell_Send(&correction, 0U);
+            FirePinsetter({3U, 4U});
+            s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
+        },
+        kGamePriority + 1U);
+    ASSERT_EQ(pdPASS, s_sent);
+    ASSERT_EQ(pdPASS, s_received);
+    EXPECT_EQ(GAME_OK, s_reply.status);
+    EXPECT_EQ(9U, s_reply.score);
 }
