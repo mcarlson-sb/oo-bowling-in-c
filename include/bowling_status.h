@@ -15,7 +15,8 @@ typedef enum {
     GAME_ERR_BUSY,
     GAME_ERR_NO_SUCH_ROLL,      /* an edit's range isn't rolls the game has had */
     GAME_ERR_TOO_MANY_ROLLS,    /* an edit would leave more than 21 rolls */
-    GAME_ERR_INVALID_EDIT       /* a NULL edit, or one that promises rolls but gives no pins */
+    GAME_ERR_INVALID_EDIT,      /* a NULL edit, or one that promises rolls but gives no pins */
+    GAME_ERR_NO_ROOM            /* the game actor has no room for another subscriber */
 } GameStatus;
 
 #endif /* BOWLING_STATUS_H */

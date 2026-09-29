@@ -117,3 +117,26 @@ TEST(GameActorTest, should_catch_a_new_subscriber_up_on_the_complete_frames_then
     const Sent live = {GAME_OUT_FRAME_CHANGED, &s_subscriber_queue, 2, 7, true};
     EXPECT_EQ((std::vector<Sent>{live}), FrameEventsIn(outbox));
 }
+
+TEST(GameActorTest, should_refuse_a_subscriber_past_the_room_for_two)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    int a = 0;
+    int b = 0;
+    int c = 0;
+    Send(&actor, SubscribeRequest(1U, &a), &outbox);
+    Send(&actor, SubscribeRequest(2U, &b), &outbox);
+    Send(&actor, SubscribeRequest(3U, &c), &outbox);
+    ASSERT_EQ(1U, outbox.count);
+    EXPECT_EQ(GAME_ERR_NO_ROOM, outbox.items[0].status);
+    EXPECT_EQ(&c, outbox.items[0].to); /* told, and nothing more */
+
+    Send(&actor, RollRequest(4U, 3U), &outbox);
+    Send(&actor, RollRequest(5U, 4U), &outbox);
+    std::vector<void *> heard_by;
+    for (const Sent &sent : FrameEventsIn(outbox)) {
+        heard_by.push_back(sent.to);
+    }
+    EXPECT_EQ((std::vector<void *>{&a, &b}), heard_by);
+}

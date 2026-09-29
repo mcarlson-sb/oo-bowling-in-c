@@ -63,6 +63,10 @@ static void GameActor_CatchUp(const GameActor *self, void *subscriber, GameOutbo
 
 static void GameActor_Subscribe(GameActor *self, const GameMessage *message, GameOutbox *outbox)
 {
+    if (self->subscriber_count == GAME_MAX_SUBSCRIBERS) {
+        GameOutbox_Reply(outbox, message, GAME_ERR_NO_ROOM, Scorer_Score(&self->scorer));
+        return;
+    }
     self->subscribers[self->subscriber_count] = message->reply_to;
     self->subscriber_count++;
     GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
