@@ -930,3 +930,9 @@ TEST(ScorerRulesTest, should_refuse_no_balls_a_frame_or_more_than_its_bonus_tabl
     ExpectRefused({5U, 0U, 10U, {0U, 0U, 0U}, 0U});
     ExpectRefused({5U, 4U, 10U, {0U, 0U, 0U}, 0U}); /* a bonus for the fourth ball: none */
 }
+
+TEST(ScorerRulesTest, should_refuse_a_bonus_for_a_ball_past_the_frames_own)
+{
+    /* Two balls a frame, and a bonus for clearing the rack with a third it never throws. */
+    ExpectRefused({10U, 2U, 10U, {2U, 1U, 1U}, 0U});
+}
