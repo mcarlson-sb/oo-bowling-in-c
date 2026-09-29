@@ -19,11 +19,19 @@ _Static_assert(GAME_SHELL_PINSETTER_ROLLS >= SCORER_MAX_BALLS,
 _Static_assert(GAME_SHELL_TASK_STACK_WORDS * sizeof(StackType_t) >= GAME_SHELL_TASK_STACK_BUDGET,
                "the game task's stack holds its budget");
 
+/* A row of the routing table: the kind at an id, the queue its messages go to, and the task to
+ * wake, when the shell runs it. */
+typedef struct {
+    ActorKind kind;
+    QueueHandle_t mailbox;
+    TaskHandle_t task;
+} GameShellRoute;
+
 typedef struct {
     GameActor actor;
     GameOutbox outbox;
     Message message;
-    QueueHandle_t routes[GAME_SHELL_ACTORS];
+    GameShellRoute routes[GAME_SHELL_ACTORS];
     atomic_uint_least16_t outputs_dropped; /* written by the game task, read by any */
     QueueHandle_t commands;
     StaticQueue_t commands_queue;
@@ -42,23 +50,52 @@ typedef struct {
 
 static GameShell s_shell;
 
-static QueueHandle_t GameShell_Route(const GameShell *self, ActorId id)
+static const GameShellRoute s_no_route = { ACTOR_KIND_NONE, NULL, NULL };
+
+static const GameShellRoute *GameShell_RouteTo(const GameShell *self, ActorId id)
 {
-    return (id < GAME_SHELL_ACTORS) ? self->routes[id] : NULL;
+    return (id < GAME_SHELL_ACTORS) ? &self->routes[id] : &s_no_route;
 }
 
-static bool GameShell_SendTo(const GameShell *self, const Message *out)
+static void GameShell_CountDropped(GameShell *self)
 {
-    const QueueHandle_t queue = GameShell_Route(self, out->envelope.to);
-    return (queue != NULL) && (xQueueSend(queue, out, 0U) == pdPASS);
+    (void)atomic_fetch_add_explicit(&self->outputs_dropped, 1U, memory_order_relaxed);
+}
+
+/* Into the mailbox of whoever is bound at the message's "to", waking its task. */
+static bool GameShell_Post(const GameShell *self, const Message *message, TickType_t wait)
+{
+    const GameShellRoute *route = GameShell_RouteTo(self, message->envelope.to);
+    if ((route->mailbox == NULL) || (xQueueSend(route->mailbox, message, wait) != pdPASS)) {
+        return false;
+    }
+    if (route->task != NULL) {
+        xTaskNotifyGive(route->task);
+    }
+    return true;
 }
 
 static void GameShell_Deliver(GameShell *self)
 {
     for (uint8_t i = 0U; i < self->outbox.count; i++) {
-        if (!GameShell_SendTo(self, &self->outbox.items[i])) {
-            (void)atomic_fetch_add_explicit(&self->outputs_dropped, 1U, memory_order_relaxed);
+        if (!GameShell_Post(self, &self->outbox.items[i], 0U)) {
+            GameShell_CountDropped(self);
         }
+    }
+}
+
+/* The one late-binding point: the kind at the message's "to" decides who receives it. */
+static void GameShell_Dispatch(GameShell *self, const Message *message)
+{
+    switch (GameShell_RouteTo(self, message->envelope.to)->kind) {
+    case ACTOR_KIND_GAME:
+        GameActor_Handle(&self->actor, message, &self->outbox);
+        GameShell_Deliver(self);
+        break;
+    case ACTOR_KIND_EXTERNAL:
+    case ACTOR_KIND_NONE:
+        GameShell_CountDropped(self);
+        break;
     }
 }
 
@@ -104,8 +141,7 @@ static bool GameShell_TakeMessage(GameShell *self, Message *message)
 static void GameShell_HandleEverythingWaiting(GameShell *self)
 {
     while (GameShell_TakeMessage(self, &self->message)) {
-        GameActor_Handle(&self->actor, &self->message, &self->outbox);
-        GameShell_Deliver(self);
+        GameShell_Dispatch(self, &self->message);
     }
 }
 
@@ -124,7 +160,7 @@ void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority
     GameShell *self = &s_shell;
     GameActor_Init(&self->actor, GAME_SHELL_GAME_ID, variant, rule);
     for (uint8_t id = 0U; id < GAME_SHELL_ACTORS; id++) {
-        self->routes[id] = NULL;
+        self->routes[id] = s_no_route;
     }
     atomic_init(&self->outputs_dropped, 0U);
     self->commands = xQueueCreateStatic(GAME_SHELL_COMMANDS, sizeof(Message),
@@ -136,6 +172,9 @@ void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority
     /* FUNCTION POINTER EXEMPTION: FreeRTOS takes a task's entry function by address. */
     self->task = xTaskCreateStatic(&GameShell_Task, "game", GAME_SHELL_TASK_STACK_WORDS, self,
                                    priority, self->stack, &self->task_buffer);
+    self->routes[GAME_SHELL_GAME_ID].kind = ACTOR_KIND_GAME;
+    self->routes[GAME_SHELL_GAME_ID].mailbox = self->commands;
+    self->routes[GAME_SHELL_GAME_ID].task = self->task;
     self->ports.pinsetter = self->pinsetter;
     self->ports.lost_report = self->lost_report;
     self->ports.game_task = self->task;
@@ -145,7 +184,9 @@ void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority
 void GameShell_Bind(ActorId id, QueueHandle_t queue)
 {
     configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
-    s_shell.routes[id] = queue;
+    s_shell.routes[id].kind = ACTOR_KIND_EXTERNAL;
+    s_shell.routes[id].mailbox = queue;
+    s_shell.routes[id].task = NULL;
 }
 
 const GameShellPorts *GameShell_Ports(void)
@@ -165,9 +206,5 @@ size_t GameShell_TaskStackUsed(void)
 
 BaseType_t GameShell_Send(const Message *message, TickType_t wait)
 {
-    const BaseType_t sent = xQueueSend(s_shell.commands, message, wait);
-    if (sent == pdPASS) {
-        xTaskNotifyGive(s_shell.task);
-    }
-    return sent;
+    return GameShell_Post(&s_shell, message, wait) ? pdPASS : pdFAIL;
 }

@@ -29,11 +29,21 @@ extern "C" {
 #define GAME_SHELL_ACTORS 8U
 #define GAME_SHELL_GAME_ID 1U
 
+/* What sits at an id, which decides what a message sent there means. An external actor reads
+ * its own queue, outside the shell; the shell's own kinds are dispatched by its tasks. */
+typedef enum {
+    ACTOR_KIND_NONE,
+    ACTOR_KIND_EXTERNAL,
+    ACTOR_KIND_GAME
+} ActorKind;
+
 void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority);
 
-/* After GameShell_Start, before the scheduler starts: outputs to `id` go to `queue`. */
+/* After GameShell_Start, before the scheduler starts: an external actor at `id`, which reads
+ * `queue`. */
 void GameShell_Bind(ActorId id, QueueHandle_t queue);
 
+/* To whoever is bound at the message's "to". */
 BaseType_t GameShell_Send(const Message *message, TickType_t wait);
 
 /* From the pinsetter's interrupt: a roll it counted. */
