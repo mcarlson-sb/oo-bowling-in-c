@@ -207,7 +207,7 @@ static void GameActor_RollsLost(GameActor *self, const GameMessage *message, Gam
 /* The frames complete so far, for a subscriber that has just joined. */
 static void GameActor_CatchUp(const GameActor *self, void *subscriber, GameOutbox *outbox)
 {
-    for (uint8_t i = 0U; i < Scorer_FrameCount(&self->scorer); i++) {
+    for (uint8_t i = 0U; i < Scorer_FramesStarted(&self->scorer); i++) {
         const ScorerFrame frame = Scorer_Frame(&self->scorer, i);
         if (!frame.complete) {
             return;

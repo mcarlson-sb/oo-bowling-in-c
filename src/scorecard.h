@@ -27,7 +27,7 @@ Score Scorecard_Score(const Scorecard *self);
 
 static inline uint8_t Scorecard_FrameCount(const Scorecard *self)
 {
-    return Scorer_FrameCount(&self->scorer);
+    return Scorer_FramesStarted(&self->scorer);
 }
 
 static inline bool Scorecard_IsFrameComplete(const Scorecard *self, uint8_t index)

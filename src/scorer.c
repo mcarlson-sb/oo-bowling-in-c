@@ -40,8 +40,6 @@ static const VariantRules k_variant_rules[] = {
                                                              [CLEARED_BY_TEN_BOX] = 0U } },
 };
 
-/* Where a frame's balls are in the game's list, and how many bonus balls it is owed. A closed
- * frame takes no more balls of its own; it is complete once its bonus balls are in too. */
 typedef struct {
     uint8_t first_ball;
     uint8_t own_balls;
@@ -49,19 +47,16 @@ typedef struct {
     bool closed;
 } FrameShape;
 
-/* What the lane takes next. The last frame's bonus balls are fill balls: they are thrown after
- * it, on a fresh rack whenever one is cleared, but they start no frame. */
 typedef enum {
     LANE_TAKING_FRAMES,
-    LANE_TAKING_FILL_BALLS,
+    LANE_TAKING_FILL_BALLS, /* the last frame's bonus balls: they start no frame */
     LANE_OVER
 } LanePhase;
 
-/* The frames, worked out by walking the balls from the start. */
 typedef struct {
     FrameShape frames[SCORER_MAX_FRAMES];
-    uint8_t frame_count; /* started */
-    Pins counted[SCORER_MAX_BALLS]; /* each ball, as its rule counts it */
+    uint8_t frames_started;
+    Pins counted_pins[SCORER_MAX_BALLS];
     Pins standing;
     LanePhase phase;
     uint8_t fill_balls_left;
@@ -74,18 +69,17 @@ static const VariantRules *Scorer_Rules(const Scorer *self)
 
 static bool Lane_NeedsNewFrame(const Lane *lane)
 {
-    return (lane->frame_count == 0U) || lane->frames[lane->frame_count - 1U].closed;
+    return (lane->frames_started == 0U) || lane->frames[lane->frames_started - 1U].closed;
 }
 
-/* On the fresh rack the frame before left, or the game started with. */
 static FrameShape *Lane_StartFrame(Lane *lane, uint8_t ball_index)
 {
-    FrameShape *frame = &lane->frames[lane->frame_count];
+    FrameShape *frame = &lane->frames[lane->frames_started];
     frame->first_ball = ball_index;
     frame->own_balls = 0U;
     frame->bonus_balls = 0U;
     frame->closed = false;
-    lane->frame_count++;
+    lane->frames_started++;
     return frame;
 }
 
@@ -94,7 +88,7 @@ static FrameShape *Lane_FrameTakingBall(Lane *lane, uint8_t ball_index)
     if (Lane_NeedsNewFrame(lane)) {
         return Lane_StartFrame(lane, ball_index);
     }
-    return &lane->frames[lane->frame_count - 1U];
+    return &lane->frames[lane->frames_started - 1U];
 }
 
 static ClearingBall FrameShape_ClearingBall(const FrameShape *frame)
@@ -110,10 +104,9 @@ static void FrameShape_CloseClearingTheRack(FrameShape *frame, const VariantRule
 
 static bool Lane_IsLastFrame(const Lane *lane, const VariantRules *rules)
 {
-    return lane->frame_count == rules->frames;
+    return lane->frames_started == rules->frames;
 }
 
-/* After a frame closes: the next frame, the last frame's fill balls, or the end of the game. */
 static void Lane_AfterFrameCloses(Lane *lane, const VariantRules *rules, const FrameShape *frame)
 {
     lane->standing = rules->pins_per_rack;
@@ -129,13 +122,12 @@ static void Lane_KnockDown(Lane *lane, Pins pins)
     lane->standing = (Pins)(lane->standing - pins);
 }
 
-/* A frame closes when it clears the rack, or when it has taken all its own balls. */
 static void FrameShape_CloseIfDone(FrameShape *frame, const VariantRules *rules, Pins standing)
 {
     if (standing == 0U) {
         FrameShape_CloseClearingTheRack(frame, rules);
     } else if (frame->own_balls == rules->balls_per_frame) {
-        frame->closed = true; /* an open frame: no bonus */
+        frame->closed = true;
     }
 }
 
@@ -150,7 +142,6 @@ static void Lane_ThrowInFrame(Lane *lane, const VariantRules *rules, uint8_t bal
     }
 }
 
-/* The last frame's fill balls: a fresh rack whenever one is cleared, until they are all in. */
 static void Lane_ThrowFillBall(Lane *lane, const VariantRules *rules, Pins pins)
 {
     Lane_KnockDown(lane, pins);
@@ -179,13 +170,11 @@ static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index
     }
 }
 
-/* Nine-pin no-tap: a ball off a full rack that leaves only one pin standing. */
 static bool NoTap_LeavesOnePinOfAFullRack(Pins standing, Pins pins, Pins full_rack)
 {
     return (standing == full_rack) && ((Pins)(pins + 1U) == standing);
 }
 
-/* How many pins a ball counts as, by the game's rule. */
 static Pins Scorer_CountPins(const Scorer *self, Pins standing, Pins pins)
 {
     switch (self->rule) {
@@ -199,25 +188,21 @@ static Pins Scorer_CountPins(const Scorer *self, Pins standing, Pins pins)
     }
 }
 
-/* The lane as it stands after every ball so far: the frames, the pins, and what it takes next.
- * Worked out from the balls each time, which is what keeps a Scorer a plain value. */
 static Lane Scorer_Lane(const Scorer *self)
 {
     const VariantRules *rules = Scorer_Rules(self);
     Lane lane;
-    lane.frame_count = 0U;
+    lane.frames_started = 0U;
     lane.standing = rules->pins_per_rack;
     lane.phase = LANE_TAKING_FRAMES;
     lane.fill_balls_left = 0U;
     for (uint8_t i = 0U; i < self->ball_count; i++) {
-        lane.counted[i] = Scorer_CountPins(self, lane.standing, self->balls[i]);
-        Lane_Throw(&lane, rules, i, lane.counted[i]);
+        lane.counted_pins[i] = Scorer_CountPins(self, lane.standing, self->balls[i]);
+        Lane_Throw(&lane, rules, i, lane.counted_pins[i]);
     }
     return lane;
 }
 
-/* Just past the last ball a frame scores: its own balls, then its bonus balls. One rule for open
- * frames, spares and strikes. */
 static uint8_t FrameShape_EndOfScoredBalls(const FrameShape *frame)
 {
     return (uint8_t)(frame->first_ball + frame->own_balls + frame->bonus_balls);
@@ -232,7 +217,7 @@ static Score Lane_FrameScore(const Lane *lane, const FrameShape *frame)
 {
     Score score = 0U;
     for (uint8_t i = frame->first_ball; i < FrameShape_EndOfScoredBalls(frame); i++) {
-        score = (Score)(score + lane->counted[i]);
+        score = (Score)(score + lane->counted_pins[i]);
     }
     return score;
 }
@@ -252,15 +237,13 @@ void Scorer_InitWithRule(Scorer *self, ScorerVariant variant, CountRule rule)
 static uint8_t Lane_CountCompleteFrames(const Lane *lane, uint8_t ball_count)
 {
     uint8_t complete = 0U;
-    while ((complete < lane->frame_count) &&
+    while ((complete < lane->frames_started) &&
            FrameShape_IsComplete(&lane->frames[complete], ball_count)) {
         complete++;
     }
     return complete;
 }
 
-/* Its own lane, walked and gone before its caller walks another: two live at once is too much
- * stack for Scorer_Edit. */
 static uint8_t Scorer_CountCompleteFrames(const Scorer *self)
 {
     const Lane lane = Scorer_Lane(self);
@@ -277,7 +260,6 @@ static void FrameEvents_Add(FrameEvents *events, uint8_t index, Score score, boo
     events->count++;
 }
 
-/* Whether the lane takes this ball: not once the game is over, nor more pins than stand. */
 static GameStatus Lane_CheckBall(const Lane *lane, Pins pins)
 {
     if (lane->phase == LANE_OVER) {
@@ -295,7 +277,6 @@ static void Scorer_AddBall(Scorer *self, Pins pins)
     self->ball_count++;
 }
 
-/* The frames that are complete now but weren't before, oldest first. */
 static void Scorer_ReportNewlyComplete(const Scorer *self, uint8_t were_complete,
                                        FrameEvents *events)
 {
@@ -324,15 +305,13 @@ Score Scorer_Score(const Scorer *self)
 {
     const Lane lane = Scorer_Lane(self);
     Score score = 0U;
-    for (uint8_t i = 0U; i < lane.frame_count; i++) {
+    for (uint8_t i = 0U; i < lane.frames_started; i++) {
         if (FrameShape_IsComplete(&lane.frames[i], self->ball_count)) {
             score = (Score)(score + Lane_FrameScore(&lane, &lane.frames[i]));
         }
     }
     return score;
 }
-
-/* ---- Edits ------------------------------------------------------------------------------ */
 
 static bool RollEdit_StartsAtABall(const RollEdit *edit, uint8_t ball_count)
 {
@@ -355,7 +334,6 @@ static unsigned RollEdit_BallsAfter(const RollEdit *edit, uint8_t ball_count)
     return ((unsigned)ball_count - edit->rolls_removed) + edit->new_count;
 }
 
-/* The same rules, in the same order, as the Game facade's edits. */
 static GameStatus Scorer_CheckEdit(const Scorer *self, const RollEdit *edit)
 {
     if (edit == NULL) {
@@ -374,8 +352,6 @@ static GameStatus Scorer_CheckEdit(const Scorer *self, const RollEdit *edit)
     return GAME_OK;
 }
 
-/* The ball at `index` of the edited game: the balls before the edit, then its new balls, then
- * the balls after the ones it removed. */
 static Pins Scorer_EditedBall(const Scorer *self, const RollEdit *edit, uint8_t index)
 {
     const uint8_t new_from = (uint8_t)(edit->first_roll - 1U);
@@ -390,7 +366,6 @@ static Pins Scorer_EditedBall(const Scorer *self, const RollEdit *edit, uint8_t 
     return self->balls[(uint8_t)(after_removed + (index - new_until))];
 }
 
-/* Every ball of the edited game into a fresh copy, each judged as a roll would be. */
 static GameStatus Scorer_ReplayEdited(const Scorer *self, const RollEdit *edit, Scorer *edited)
 {
     FrameEvents ignored;
@@ -405,9 +380,8 @@ static GameStatus Scorer_ReplayEdited(const Scorer *self, const RollEdit *edit, 
     return GAME_OK;
 }
 
-/* After an edit, every frame again: a complete one with its score, and one that was complete
- * but no longer is with complete = false. */
-static void Scorer_ReportAll(const Scorer *self, uint8_t were_complete, FrameEvents *events)
+static void Scorer_ReportEveryFrameAgain(const Scorer *self, uint8_t were_complete,
+                                         FrameEvents *events)
 {
     const Lane lane = Scorer_Lane(self);
     const uint8_t now_complete = Lane_CountCompleteFrames(&lane, self->ball_count);
@@ -432,32 +406,30 @@ GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events)
     Scorer edited;
     const GameStatus replayed = Scorer_ReplayEdited(self, edit, &edited);
     if (replayed != GAME_OK) {
-        return replayed; /* self was never touched: nothing to undo */
+        return replayed;
     }
-    *self = edited; /* a plain value, so a copy is the whole game */
-    Scorer_ReportAll(self, were_complete, events);
+    *self = edited;
+    Scorer_ReportEveryFrameAgain(self, were_complete, events);
     return GAME_OK;
 }
-
-/* ---- Questions ------------------------------------------------------------------------- */
 
 uint8_t Scorer_BallCount(const Scorer *self)
 {
     return self->ball_count;
 }
 
-uint8_t Scorer_FrameCount(const Scorer *self)
+uint8_t Scorer_FramesStarted(const Scorer *self)
 {
     const Lane lane = Scorer_Lane(self);
-    return lane.frame_count;
+    return lane.frames_started;
 }
 
 ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index)
 {
     const Lane lane = Scorer_Lane(self);
     ScorerFrame result = { 0U, false };
-    if (index >= lane.frame_count) {
-        return result; /* not started: only the frames the walk wrote are read */
+    if (index >= lane.frames_started) {
+        return result;
     }
     const FrameShape *frame = &lane.frames[index];
     result.complete = FrameShape_IsComplete(frame, self->ball_count);

@@ -2,7 +2,7 @@
 #define SCORER_H
 
 /* The scorer core: one generic scorer for every variant of the game, driven by a table of
- * rules, with no callbacks and no function pointers. It is pure: an operation changes only the
+ * rules. It is pure: an operation changes only the
  * scorer it is given, and reports the frames it changed in a buffer the caller supplies.
  *
  * A Scorer is a plain value, its variant and the balls it has taken, so it can be copied, and a
@@ -18,7 +18,6 @@
 extern "C" {
 #endif
 
-/* Storage for the largest variant, candlepin (see scorer.c's static asserts). */
 #define SCORER_MAX_BALLS 30U
 #define SCORER_MAX_FRAMES 10U
 
@@ -29,37 +28,32 @@ typedef enum {
     SCORER_CANDLEPIN
 } ScorerVariant;
 
-/* How a ball counts, given the pins standing and the pins that fell: a closed set, chosen by
- * data, where kay-oo took a caller's function. */
 typedef enum {
     SCORER_COUNT_PINS_DOWN = 0,
     /* A ball that leaves one pin standing from a full rack counts as clearing it. */
     SCORER_COUNT_NO_TAP
 } CountRule;
 
-/* A frame's number (1 to 10), its score, and whether it is complete. */
 typedef struct {
     FrameNumber frame_number;
     Score frame_score;
     bool frame_complete;
 } FrameEvent;
 
-/* The frames one operation changed, oldest first. */
 typedef struct {
     FrameEvent events[SCORER_MAX_EVENTS];
     uint8_t count;
 } FrameEvents;
 
-/* One frame: its score, and whether that score is known yet. */
 typedef struct {
-    Score score; /* 0 until complete */
+    Score score;
     bool complete;
 } ScorerFrame;
 
 typedef struct {
     ScorerVariant variant;
     CountRule rule;
-    Pins balls[SCORER_MAX_BALLS]; /* as they fell */
+    Pins balls[SCORER_MAX_BALLS];
     uint8_t ball_count;
 } Scorer;
 
@@ -79,19 +73,15 @@ GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events);
 /* The total of the complete frames. */
 Score Scorer_Score(const Scorer *self);
 
-/* The pins standing for the next ball. */
 Pins Scorer_PinsStanding(const Scorer *self);
 
 /* True once the last frame, and its fill balls, are done. */
 bool Scorer_IsOver(const Scorer *self);
 
-/* The balls taken so far. */
 uint8_t Scorer_BallCount(const Scorer *self);
 
-/* Frames started so far: a frame starts with its first ball. */
-uint8_t Scorer_FrameCount(const Scorer *self);
+uint8_t Scorer_FramesStarted(const Scorer *self);
 
-/* Frame `index` (the first is 0). One not yet started is not complete, and scores 0. */
 ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index);
 
 #ifdef __cplusplus

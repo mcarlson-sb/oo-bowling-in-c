@@ -353,7 +353,7 @@ TEST(TenPinScorerQueryTest, should_report_each_frame_as_unknown_until_it_is_comp
 {
     Scorer scorer = MakeScorer(SCORER_TEN_PIN);
     RollAll(&scorer, {10U, 3U});
-    EXPECT_EQ(2U, Scorer_FrameCount(&scorer)); /* frames started */
+    EXPECT_EQ(2U, Scorer_FramesStarted(&scorer));
     EXPECT_FALSE(Scorer_Frame(&scorer, 0U).complete); /* the strike waits for one more ball */
     RollAll(&scorer, {4U});
     const ScorerFrame first = Scorer_Frame(&scorer, 0U);
@@ -497,7 +497,7 @@ TEST(CandlepinTest, A12_should_6_then_5_is_rejected_too_many_pins_and_changes_no
     FrameEvents events;
     EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Roll(&scorer, 5U, &events));
     EXPECT_EQ(4U, Scorer_PinsStanding(&scorer));
-    EXPECT_EQ(1U, Scorer_FrameCount(&scorer));
+    EXPECT_EQ(1U, Scorer_FramesStarted(&scorer));
 }
 
 TEST(CandlepinTest, A13_should_a_strike_in_the_tenth_then_6_then_5_is_rejected_too_many_pins)
@@ -514,7 +514,7 @@ TEST(CandlepinTest, A14_should_after_an_open_3_3_3_a_10_is_frame_2s_strike)
 {
     Scorer scorer = MakeCandlepin();
     RollAll(&scorer, {3U, 3U, 3U, 10U});
-    EXPECT_EQ(2U, Scorer_FrameCount(&scorer));
+    EXPECT_EQ(2U, Scorer_FramesStarted(&scorer));
     EXPECT_EQ(9U, Scorer_Frame(&scorer, 0U).score);
     EXPECT_FALSE(Scorer_Frame(&scorer, 1U).complete); /* the strike waits for its bonus */
 }
@@ -523,7 +523,7 @@ TEST(CandlepinTest, A15_should_a_spare_ends_frame_1_after_two_balls_with_a_strik
 {
     Scorer scorer = MakeCandlepin();
     RollAll(&scorer, {5U, 5U, 10U});
-    EXPECT_EQ(2U, Scorer_FrameCount(&scorer)); /* the 10 is frame 2s first ball */
+    EXPECT_EQ(2U, Scorer_FramesStarted(&scorer)); /* the 10 is frame 2s first ball */
     const ScorerFrame first = Scorer_Frame(&scorer, 0U);
     EXPECT_TRUE(first.complete);
     EXPECT_EQ(20U, first.score);
