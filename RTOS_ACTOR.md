@@ -293,6 +293,7 @@ recorded these proofs, through a normal gated run
 | Static gates: a function pointer, and a long, tangled, uncalled function | [36505443556](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505443556) | `function-pointers`, `lizard`, `cognitive-complexity`, `coverage` (at its 95% check), each at its own step; every build and test green | skipped | did not move |
 | Stack: a 400-byte frame | [36505554411](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505554411) | `stack-usage-debug`, `stack-usage-release`, and every other GCC build, which carries the same tripwire | skipped | did not move |
 | 2: a green tip on a red commit | [36505633406](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505633406) | `every-commit` only | skipped | did not move |
+| 3: a red commit, a fast-forward of `rtos-actor`, pushed to `rtos-actor` directly | [36506959168](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36506959168) (the same SHA on integration) | `build-*`, `tsan`, `coverage`, `every-commit` | not reached: the push went straight at `rtos-actor` | refused by the ruleset: "GH013: Repository rule violations found for refs/heads/rtos-actor. 6 of 11 required status checks are failing." Stayed at `edfef2d` |
 | 4: a green commit on an older base, after `rtos-actor` moved to `c8abe6e` | [36505912098](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36505912098) | none: every gate passed | failed: GitHub refused the non-fast-forward push, and the job said "rtos-actor moved: it is no longer an ancestor of this commit. Rebase integration/rtos-actor onto rtos-actor and push again, so the result is gated." | stayed at `c8abe6e` |
 
 ### The ruleset on `rtos-actor`
@@ -325,4 +326,5 @@ remote: - Cannot delete this branch
 ```
 
 `rtos-actor` stayed at `edfef2d` through all three. The commit that records this was then
-promoted by the gate as usual, with the ruleset in force: see its run below.
+promoted by the gate as usual, with the ruleset in force, so `promote`'s own push passes the
+required checks: [36507119638](https://github.com/mcarlson-sb/oo-bowling-in-c/actions/runs/36507119638).
