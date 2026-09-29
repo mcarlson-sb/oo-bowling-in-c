@@ -18,6 +18,8 @@ extern "C" {
 #include "game_shell.h"
 }
 
+#include "rules_presets.h"
+
 namespace {
 
 constexpr UBaseType_t kClientPriority = tskIDLE_PRIORITY + 1U;
@@ -100,7 +102,7 @@ void ClientTask(void *parameter)
  * messages before the game task runs. */
 void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
 {
-    GameShell_Start(SCORER_TEN_PIN, SCORER_COUNT_PINS_DOWN, kGamePriority);
+    GameShell_Start(&rules::kTenPin, kGamePriority);
     s_replies.Create();
     s_subscriber.Create(s_subscriber_queue_length);
     s_second_subscriber.Create();

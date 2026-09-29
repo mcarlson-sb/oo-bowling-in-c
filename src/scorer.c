@@ -5,43 +5,6 @@
 #include <assert.h>
 #include <stddef.h>
 
-#define SCORER_MAX_BALLS_PER_FRAME 3U
-
-typedef enum {
-    CLEARED_BY_STRIKE,
-    CLEARED_BY_SPARE,
-    CLEARED_BY_TEN_BOX
-} ClearingBall;
-
-typedef struct {
-    uint8_t frames;
-    uint8_t balls_per_frame;
-    Pins pins_per_rack;
-    uint8_t max_balls_per_game;
-    uint8_t bonus_balls_by_clearing_ball[SCORER_MAX_BALLS_PER_FRAME];
-} VariantRules;
-
-/* The last frame takes fill balls up to the same SCORER_MAX_BALLS_PER_FRAME, in any variant. */
-#define LONGEST_GAME(frames, balls_per_frame) \
-    ((((frames) - 1U) * (balls_per_frame)) + SCORER_MAX_BALLS_PER_FRAME)
-#define TEN_PIN_MAX_BALLS LONGEST_GAME(10U, 2U)
-#define CANDLEPIN_MAX_BALLS LONGEST_GAME(10U, 3U)
-
-_Static_assert(TEN_PIN_MAX_BALLS <= SCORER_MAX_BALLS, "ten-pin must fit the scorer's storage");
-_Static_assert(CANDLEPIN_MAX_BALLS <= SCORER_MAX_BALLS, "candlepin must fit the scorer's storage");
-
-static const VariantRules k_variant_rules[] = {
-    [SCORER_TEN_PIN] = { .frames = 10U, .balls_per_frame = 2U, .pins_per_rack = 10U,
-                         .max_balls_per_game = TEN_PIN_MAX_BALLS,
-                         .bonus_balls_by_clearing_ball = { [CLEARED_BY_STRIKE] = 2U,
-                                                           [CLEARED_BY_SPARE] = 1U } },
-    [SCORER_CANDLEPIN] = { .frames = 10U, .balls_per_frame = 3U, .pins_per_rack = 10U,
-                           .max_balls_per_game = CANDLEPIN_MAX_BALLS,
-                           .bonus_balls_by_clearing_ball = { [CLEARED_BY_STRIKE] = 2U,
-                                                             [CLEARED_BY_SPARE] = 1U,
-                                                             [CLEARED_BY_TEN_BOX] = 0U } },
-};
-
 typedef struct {
     uint8_t first_ball;
     uint8_t own_balls;
@@ -64,9 +27,9 @@ typedef struct {
     uint8_t fill_balls_left;
 } Lane;
 
-static const VariantRules *Scorer_Rules(const Scorer *self)
+static const ScorerRules *Scorer_Rules(const Scorer *self)
 {
-    return &k_variant_rules[self->variant];
+    return &self->rules;
 }
 
 static bool Lane_NeedsNewFrame(const Lane *lane)
@@ -93,23 +56,23 @@ static FrameShape *Lane_FrameTakingBall(Lane *lane, uint8_t ball_index)
     return &lane->frames[lane->frames_started - 1U];
 }
 
-static ClearingBall FrameShape_ClearingBall(const FrameShape *frame)
+static ScorerClearingBall FrameShape_ClearingBall(const FrameShape *frame)
 {
-    return (ClearingBall)(frame->own_balls - 1U);
+    return (ScorerClearingBall)(frame->own_balls - 1U);
 }
 
-static void FrameShape_CloseClearingTheRack(FrameShape *frame, const VariantRules *rules)
+static void FrameShape_CloseClearingTheRack(FrameShape *frame, const ScorerRules *rules)
 {
     frame->closed = true;
     frame->bonus_balls = rules->bonus_balls_by_clearing_ball[FrameShape_ClearingBall(frame)];
 }
 
-static bool Lane_IsLastFrame(const Lane *lane, const VariantRules *rules)
+static bool Lane_IsLastFrame(const Lane *lane, const ScorerRules *rules)
 {
     return lane->frames_started == rules->frames;
 }
 
-static void Lane_ResetRack(Lane *lane, const VariantRules *rules)
+static void Lane_ResetRack(Lane *lane, const ScorerRules *rules)
 {
     lane->standing = rules->pins_per_rack;
 }
@@ -138,7 +101,7 @@ static void Lane_UseFillBall(Lane *lane)
     }
 }
 
-static void Lane_AfterFrameCloses(Lane *lane, const VariantRules *rules, const FrameShape *frame)
+static void Lane_AfterFrameCloses(Lane *lane, const ScorerRules *rules, const FrameShape *frame)
 {
     Lane_ResetRack(lane, rules);
     if (Lane_IsLastFrame(lane, rules)) {
@@ -151,7 +114,7 @@ static void FrameShape_TakeBall(FrameShape *frame)
     frame->own_balls++;
 }
 
-static void FrameShape_CloseIfDone(FrameShape *frame, const VariantRules *rules, bool cleared)
+static void FrameShape_CloseIfDone(FrameShape *frame, const ScorerRules *rules, bool cleared)
 {
     if (cleared) {
         FrameShape_CloseClearingTheRack(frame, rules);
@@ -160,7 +123,7 @@ static void FrameShape_CloseIfDone(FrameShape *frame, const VariantRules *rules,
     }
 }
 
-static void Lane_ThrowInFrame(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins pins)
+static void Lane_ThrowInFrame(Lane *lane, const ScorerRules *rules, uint8_t ball_index, Pins pins)
 {
     FrameShape *frame = Lane_FrameTakingBall(lane, ball_index);
     FrameShape_TakeBall(frame);
@@ -171,7 +134,7 @@ static void Lane_ThrowInFrame(Lane *lane, const VariantRules *rules, uint8_t bal
     }
 }
 
-static void Lane_ThrowFillBall(Lane *lane, const VariantRules *rules, Pins pins)
+static void Lane_ThrowFillBall(Lane *lane, const ScorerRules *rules, Pins pins)
 {
     Lane_KnockDown(lane, pins);
     if (Lane_IsRackCleared(lane)) {
@@ -180,7 +143,7 @@ static void Lane_ThrowFillBall(Lane *lane, const VariantRules *rules, Pins pins)
     Lane_UseFillBall(lane);
 }
 
-static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins pins)
+static void Lane_Throw(Lane *lane, const ScorerRules *rules, uint8_t ball_index, Pins pins)
 {
     switch (lane->phase) {
     case LANE_TAKING_FRAMES:
@@ -196,25 +159,19 @@ static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index
     }
 }
 
-static bool NoTap_LeavesOnePinOfAFullRack(Pins standing, Pins pins, Pins full_rack)
+/* Off a full rack, few enough left standing to count as clearing it. */
+static bool ScorerRules_CountsAsAClear(const ScorerRules *rules, Pins standing, Pins pins)
 {
-    return (standing == full_rack) && ((Pins)(pins + 1U) == standing);
+    return (standing == rules->pins_per_rack) &&
+           ((Pins)(standing - pins) <= rules->pins_standing_that_count_as_a_clear);
 }
 
 static Pins Scorer_CountPins(const Scorer *self, Pins standing, Pins pins)
 {
-    switch (self->rule) {
-    case SCORER_COUNT_NO_TAP:
-        return NoTap_LeavesOnePinOfAFullRack(standing, pins, Scorer_Rules(self)->pins_per_rack)
-                   ? standing
-                   : pins;
-    case SCORER_COUNT_PINS_DOWN:
-    default:
-        return pins;
-    }
+    return ScorerRules_CountsAsAClear(Scorer_Rules(self), standing, pins) ? standing : pins;
 }
 
-static void Lane_Start(Lane *lane, const VariantRules *rules)
+static void Lane_Start(Lane *lane, const ScorerRules *rules)
 {
     lane->frames_started = 0U;
     Lane_ResetRack(lane, rules);
@@ -222,7 +179,7 @@ static void Lane_Start(Lane *lane, const VariantRules *rules)
     lane->fill_balls_left = 0U;
 }
 
-static void Lane_TakeBall(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins counted)
+static void Lane_TakeBall(Lane *lane, const ScorerRules *rules, uint8_t ball_index, Pins counted)
 {
     lane->counted_pins[ball_index] = counted;
     Lane_Throw(lane, rules, ball_index, counted);
@@ -230,7 +187,7 @@ static void Lane_TakeBall(Lane *lane, const VariantRules *rules, uint8_t ball_in
 
 static Lane Scorer_Lane(const Scorer *self)
 {
-    const VariantRules *rules = Scorer_Rules(self);
+    const ScorerRules *rules = Scorer_Rules(self);
     Lane lane;
     Lane_Start(&lane, rules);
     for (uint8_t i = 0U; i < self->ball_count; i++) {
@@ -258,15 +215,27 @@ static Score Lane_FrameScore(const Lane *lane, const FrameShape *frame)
     return score;
 }
 
-void Scorer_Init(Scorer *self, ScorerVariant variant)
+/* The most balls the last frame takes, its fill balls included. */
+static uint8_t ScorerRules_LastFrameBalls(const ScorerRules *rules)
 {
-    Scorer_InitWithRule(self, variant, SCORER_COUNT_PINS_DOWN);
+    uint8_t most = rules->balls_per_frame;
+    for (uint8_t ball = 1U; ball <= rules->balls_per_frame; ball++) {
+        const uint8_t with_fill = (uint8_t)(ball + rules->bonus_balls_by_clearing_ball[ball - 1U]);
+        most = (with_fill > most) ? with_fill : most;
+    }
+    return most;
 }
 
-void Scorer_InitWithRule(Scorer *self, ScorerVariant variant, CountRule rule)
+static uint8_t ScorerRules_LongestGame(const ScorerRules *rules)
 {
-    self->variant = variant;
-    self->rule = rule;
+    return (uint8_t)(((rules->frames - 1U) * rules->balls_per_frame) +
+                     ScorerRules_LastFrameBalls(rules));
+}
+
+void Scorer_Start(Scorer *self, const ScorerRules *rules)
+{
+    self->rules = *rules;
+    self->max_balls = ScorerRules_LongestGame(rules);
     self->ball_count = 0U;
 }
 
@@ -372,7 +341,7 @@ Score Scorer_Score(const Scorer *self)
 
 static bool Scorer_IsLongerThanAGame(const Scorer *self, unsigned ball_count)
 {
-    return ball_count > Scorer_Rules(self)->max_balls_per_game;
+    return ball_count > self->max_balls;
 }
 
 static GameStatus Scorer_CheckEdit(const Scorer *self, const RollEdit *edit)
@@ -395,7 +364,8 @@ static GameStatus Scorer_CheckEdit(const Scorer *self, const RollEdit *edit)
 static GameStatus Scorer_ReplayEdited(const Scorer *self, const RollEdit *edit, Scorer *edited)
 {
     FrameEvents ignored;
-    Scorer_InitWithRule(edited, self->variant, self->rule);
+    *edited = *self;
+    edited->ball_count = 0U;
     const uint8_t count = (uint8_t)RollEdit_BallsAfter(edit, self->ball_count);
     for (uint8_t i = 0U; i < count; i++) {
         const Pins pins = RollEdit_Ball(edit, self->balls, i);

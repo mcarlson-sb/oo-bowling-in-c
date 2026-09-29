@@ -1,11 +1,11 @@
 #ifndef SCORER_H
 #define SCORER_H
 
-/* The scorer core: one generic scorer for every variant of the game, driven by a table of
- * rules. It is pure: an operation changes only the
- * scorer it is given, and reports the frames it changed in a buffer the caller supplies.
+/* The scorer core: one generic scorer for every variant of the game, which plays whatever rules
+ * it is started with. It is pure: an operation changes only the scorer it is given, and reports
+ * the frames it changed in a buffer the caller supplies.
  *
- * A Scorer is a plain value, its variant and the balls it has taken, so it can be copied, and a
+ * A Scorer is a plain value, its rules and the balls it has taken, so it can be copied, and a
  * copy is a separate game. Treat its fields as private: use the functions. */
 
 #include <stdbool.h>
@@ -20,19 +20,26 @@ extern "C" {
 
 #define SCORER_MAX_BALLS 30U
 #define SCORER_MAX_FRAMES 10U
+#define SCORER_MAX_BALLS_PER_FRAME 3U
 
 #define SCORER_MAX_EVENTS SCORER_MAX_FRAMES
 
 typedef enum {
-    SCORER_TEN_PIN = 0,
-    SCORER_CANDLEPIN
-} ScorerVariant;
+    SCORER_CLEARED_BY_FIRST_BALL,
+    SCORER_CLEARED_BY_SECOND_BALL,
+    SCORER_CLEARED_BY_THIRD_BALL
+} ScorerClearingBall;
 
-typedef enum {
-    SCORER_COUNT_PINS_DOWN = 0,
-    /* A ball that leaves one pin standing from a full rack counts as clearing it. */
-    SCORER_COUNT_NO_TAP
-} CountRule;
+/* A variant's rules, as data: the game is whatever these say. */
+typedef struct {
+    uint8_t frames;
+    uint8_t balls_per_frame;
+    Pins pins_per_rack;
+    uint8_t bonus_balls_by_clearing_ball[SCORER_MAX_BALLS_PER_FRAME];
+    /* Off a full rack, a ball that leaves this many standing or fewer counts as clearing it:
+     * 0 counts the pins that fell, 1 is nine-pin no-tap. */
+    Pins pins_standing_that_count_as_a_clear;
+} ScorerRules;
 
 typedef struct {
     FrameNumber frame_number;
@@ -51,16 +58,13 @@ typedef struct {
 } ScorerFrame;
 
 typedef struct {
-    ScorerVariant variant;
-    CountRule rule;
+    ScorerRules rules;
+    uint8_t max_balls;
     Pins balls[SCORER_MAX_BALLS];
     uint8_t ball_count;
 } Scorer;
 
-/* Counting the pins that fell. */
-void Scorer_Init(Scorer *self, ScorerVariant variant);
-
-void Scorer_InitWithRule(Scorer *self, ScorerVariant variant, CountRule rule);
+void Scorer_Start(Scorer *self, const ScorerRules *rules);
 
 GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events);
 

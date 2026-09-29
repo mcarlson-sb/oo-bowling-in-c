@@ -155,10 +155,10 @@ static void GameShell_Task(void *parameter)
     }
 }
 
-void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority)
+void GameShell_Start(const ScorerRules *rules, UBaseType_t priority)
 {
     GameShell *self = &s_shell;
-    GameActor_Init(&self->actor, GAME_SHELL_GAME_ID, variant, rule);
+    GameActor_Init(&self->actor, GAME_SHELL_GAME_ID, rules);
     for (uint8_t id = 0U; id < GAME_SHELL_ACTORS; id++) {
         self->routes[id] = s_no_route;
     }

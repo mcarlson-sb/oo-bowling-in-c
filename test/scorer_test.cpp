@@ -11,15 +11,16 @@
 #include <vector>
 
 #include "scorer.h"
+#include "rules_presets.h"
 #include "candlepin_reference.h"
 #include "ten_pin_reference.h"
 
 namespace {
 
-Scorer MakeScorer(ScorerVariant variant)
+Scorer MakeScorer(const ScorerRules &rules)
 {
     Scorer scorer;
-    Scorer_Init(&scorer, variant);
+    Scorer_Start(&scorer, &rules);
     return scorer;
 }
 
@@ -43,14 +44,14 @@ void RollMany(Scorer *scorer, int count, Pins pins)
 
 TEST(TenPinScorerTest, should_add_up_open_frames)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollMany(&scorer, 20, 1U);
     EXPECT_EQ(20U, Scorer_Score(&scorer));
 }
 
 TEST(TenPinScorerTest, should_add_a_spares_next_ball_as_its_bonus)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {5U, 5U, 3U});
     RollMany(&scorer, 17, 0U);
     EXPECT_EQ(16U, Scorer_Score(&scorer)); /* 5 + 5 + 3, then 3 */
@@ -58,7 +59,7 @@ TEST(TenPinScorerTest, should_add_a_spares_next_ball_as_its_bonus)
 
 TEST(TenPinScorerTest, should_add_a_strikes_next_two_balls_as_its_bonus)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {10U, 3U, 4U});
     RollMany(&scorer, 16, 0U);
     EXPECT_EQ(24U, Scorer_Score(&scorer)); /* 10 + 3 + 4, then 3 + 4 */
@@ -66,7 +67,7 @@ TEST(TenPinScorerTest, should_add_a_strikes_next_two_balls_as_its_bonus)
 
 TEST(TenPinScorerTest, should_leave_a_strike_out_of_the_total_until_its_bonus_is_known)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {10U, 3U});
     EXPECT_EQ(0U, Scorer_Score(&scorer)); /* the strike still waits for one ball */
     RollAll(&scorer, {4U});
@@ -75,14 +76,14 @@ TEST(TenPinScorerTest, should_leave_a_strike_out_of_the_total_until_its_bonus_is
 
 TEST(TenPinScorerTest, should_score_a_perfect_game_as_300)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollMany(&scorer, 12, 10U); /* the last two are the tenth frame's fill balls */
     EXPECT_EQ(300U, Scorer_Score(&scorer));
 }
 
 TEST(TenPinScorerTest, should_reject_a_ball_after_the_game_is_over)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollMany(&scorer, 19, 0U);
     RollAll(&scorer, {3U}); /* an open tenth frame ends the game */
     FrameEvents events;
@@ -93,7 +94,7 @@ TEST(TenPinScorerTest, should_reject_a_ball_after_the_game_is_over)
 
 TEST(TenPinScorerTest, should_reject_more_pins_than_are_standing)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {6U});
     FrameEvents events;
     EXPECT_EQ(GAME_ERR_INVALID_PINS, Scorer_Roll(&scorer, 5U, &events));
@@ -103,7 +104,7 @@ TEST(TenPinScorerTest, should_reject_more_pins_than_are_standing)
 
 TEST(TenPinScorerTest, should_reject_a_fill_ball_with_more_pins_than_are_standing)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollMany(&scorer, 18, 0U);
     RollAll(&scorer, {10U, 3U});
     FrameEvents events;
@@ -147,7 +148,7 @@ std::vector<Event> EventsOfRoll(Scorer *scorer, Pins pins)
 
 TEST(TenPinScorerEventsTest, should_report_each_frame_a_ball_completes_oldest_first)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     EXPECT_EQ((std::vector<Event>{}), EventsOfRoll(&scorer, 10U));
     EXPECT_EQ((std::vector<Event>{}), EventsOfRoll(&scorer, 3U));
     /* The 4 completes the strike (17) and its own frame (7). */
@@ -162,7 +163,7 @@ TEST(TenPinScorerTest, should_score_random_games_as_the_reference_does)
      * ball. The reference plays its own lane to know how many pins stand. */
     std::mt19937 random(20260928U);
     for (int game_number = 0; game_number < 2000; ++game_number) {
-        Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+        Scorer scorer = MakeScorer(rules::kTenPin);
         ten_pin_reference::Lane lane;
         std::vector<int> balls;
         const int stop_after = std::uniform_int_distribution<int>(1, 21)(random);
@@ -199,7 +200,7 @@ RollEdit Replace(RollNumber first_ball, uint8_t removed, const std::vector<Pins>
 
 TEST(TenPinScorerEditTest, should_rescore_and_report_every_complete_frame_after_a_correction)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {3U, 4U, 5U, 5U, 2U}); /* 7, then a spare waiting... 12 */
     const std::vector<Pins> five = {5U};
     const RollEdit edit = Replace(1U, 1U, five);
@@ -211,7 +212,7 @@ TEST(TenPinScorerEditTest, should_rescore_and_report_every_complete_frame_after_
 
 TEST(TenPinScorerEditTest, should_reject_an_edit_that_makes_a_ball_impossible_and_change_nothing)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {3U, 4U, 5U, 5U, 2U});
     const std::vector<Pins> eight = {8U};
     const RollEdit edit = Replace(2U, 1U, eight); /* 3 then 8: 11 pins */
@@ -223,7 +224,7 @@ TEST(TenPinScorerEditTest, should_reject_an_edit_that_makes_a_ball_impossible_an
 
 TEST(TenPinScorerEditTest, should_report_a_frame_the_edit_reopened_as_not_complete)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {5U, 5U, 2U}); /* frame 1, a spare, is complete at 12 */
     const RollEdit edit = Replace(3U, 1U, {}); /* delete the 2: the spare waits again */
     FrameEvents events;
@@ -234,7 +235,7 @@ TEST(TenPinScorerEditTest, should_report_a_frame_the_edit_reopened_as_not_comple
 
 TEST(TenPinScorerEditTest, should_reject_an_edit_outside_the_balls_the_game_has_had)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {3U, 4U});
     const std::vector<Pins> one = {1U};
     FrameEvents events;
@@ -249,7 +250,7 @@ TEST(TenPinScorerEditTest, should_reject_an_edit_outside_the_balls_the_game_has_
 
 TEST(TenPinScorerEditTest, should_reject_a_null_edit_or_one_that_promises_balls_it_does_not_give)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {3U, 4U});
     FrameEvents events;
     const RollEdit no_pins = {1U, 1U, nullptr, 1U};
@@ -260,7 +261,7 @@ TEST(TenPinScorerEditTest, should_reject_a_null_edit_or_one_that_promises_balls_
 
 TEST(TenPinScorerEditTest, should_reject_an_edit_that_leaves_more_balls_than_a_game_can_have)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollMany(&scorer, 12, 10U); /* a perfect game, 12 balls */
     RollAll(&scorer, {});
     const std::vector<Pins> ten_ones(10U, 1U);
@@ -275,7 +276,7 @@ TEST(TenPinScorerEditTest, should_reject_an_edit_that_leaves_more_balls_than_a_g
 TEST(NoTapScorerTest, should_score_a_first_ball_nine_as_a_strike)
 {
     Scorer scorer;
-    Scorer_InitWithRule(&scorer, SCORER_TEN_PIN, SCORER_COUNT_NO_TAP);
+    Scorer_Start(&scorer, &rules::kTenPinNoTap);
     RollAll(&scorer, {9U, 3U, 4U});
     EXPECT_EQ(24U, Scorer_Score(&scorer)); /* (10 + 3 + 4) + (3 + 4) */
 }
@@ -285,7 +286,7 @@ namespace {
 Scorer MakeNoTapScorer()
 {
     Scorer scorer;
-    Scorer_InitWithRule(&scorer, SCORER_TEN_PIN, SCORER_COUNT_NO_TAP);
+    Scorer_Start(&scorer, &rules::kTenPinNoTap);
     return scorer;
 }
 
@@ -317,7 +318,7 @@ TEST(NoTapScorerTest, should_not_count_5_then_4_as_a_spare_under_a_first_ball_ru
 
 TEST(TenPinScorerTest, should_give_a_fill_ball_a_fresh_rack_of_ten_after_one_clears_it)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollMany(&scorer, 18, 0U);
     RollAll(&scorer, {10U, 10U}); /* the first fill ball clears its rack: ten stand again */
     FrameEvents events;
@@ -328,7 +329,7 @@ TEST(TenPinScorerTest, should_give_a_fill_ball_a_fresh_rack_of_ten_after_one_cle
 
 TEST(TenPinScorerEditTest, should_accept_an_edit_that_leaves_exactly_the_most_balls_a_game_can_have)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollMany(&scorer, 18, 0U);
     RollAll(&scorer, {10U, 10U, 10U}); /* 21 balls, the most a game can have */
     const std::vector<Pins> one = {1U};
@@ -340,7 +341,7 @@ TEST(TenPinScorerEditTest, should_accept_an_edit_that_leaves_exactly_the_most_ba
 
 TEST(TenPinScorerEditTest, should_put_new_balls_where_the_edit_starts_when_it_starts_after_ball_one)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {3U, 4U, 2U, 1U});
     const std::vector<Pins> spare = {5U, 5U};
     const RollEdit edit = Replace(3U, 1U, spare); /* 3, 4 | 5, 5 | 1 */
@@ -354,7 +355,7 @@ TEST(TenPinScorerEditTest, should_put_new_balls_where_the_edit_starts_when_it_st
 
 TEST(TenPinScorerQueryTest, should_report_each_frame_as_unknown_until_it_is_complete)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {10U, 3U});
     EXPECT_EQ(2U, Scorer_FramesStarted(&scorer));
     EXPECT_FALSE(Scorer_Frame(&scorer, 0U).complete); /* the strike waits for one more ball */
@@ -366,7 +367,7 @@ TEST(TenPinScorerQueryTest, should_report_each_frame_as_unknown_until_it_is_comp
 
 TEST(TenPinScorerQueryTest, should_report_the_pins_standing_and_when_the_game_is_over)
 {
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     EXPECT_EQ(10U, Scorer_PinsStanding(&scorer));
     RollAll(&scorer, {6U});
     EXPECT_EQ(4U, Scorer_PinsStanding(&scorer));
@@ -384,7 +385,7 @@ namespace {
 
 Scorer MakeCandlepin()
 {
-    return MakeScorer(SCORER_CANDLEPIN);
+    return MakeScorer(rules::kCandlepin);
 }
 
 } // namespace
@@ -657,7 +658,7 @@ TEST(TenPinScorerQueryTest, should_report_a_frame_not_yet_started_as_not_complet
 {
     /* Defined for any frame, not only those started: no frame is read that the walk didn't
      * write. */
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {3U, 4U});
     for (uint8_t index = 1U; index < 12U; index++) {
         const ScorerFrame frame = Scorer_Frame(&scorer, index);
@@ -672,11 +673,11 @@ namespace {
 
 /* After every ball of random legal games: no frame is complete after one that isn't. */
 template <typename ReferenceLane>
-void ExpectCompleteFramesToComeFirst(ScorerVariant variant, int max_balls, unsigned seed)
+void ExpectCompleteFramesToComeFirst(const ScorerRules &rules, int max_balls, unsigned seed)
 {
     std::mt19937 random(seed);
     for (int game_number = 0; game_number < 2000; ++game_number) {
-        Scorer scorer = MakeScorer(variant);
+        Scorer scorer = MakeScorer(rules);
         ReferenceLane lane;
         for (int ball = 0; (ball < max_balls) && !lane.over; ++ball) {
             const bool clear_the_rack = std::uniform_int_distribution<int>(0, 3)(random) == 0;
@@ -701,12 +702,12 @@ void ExpectCompleteFramesToComeFirst(ScorerVariant variant, int max_balls, unsig
 
 TEST(TenPinScorerTest, should_complete_frames_oldest_first)
 {
-    ExpectCompleteFramesToComeFirst<ten_pin_reference::Lane>(SCORER_TEN_PIN, 21, 20261001U);
+    ExpectCompleteFramesToComeFirst<ten_pin_reference::Lane>(rules::kTenPin, 21, 20261001U);
 }
 
 TEST(CandlepinTest, should_complete_frames_oldest_first)
 {
-    ExpectCompleteFramesToComeFirst<candlepin_reference::Lane>(SCORER_CANDLEPIN, 30, 20261002U);
+    ExpectCompleteFramesToComeFirst<candlepin_reference::Lane>(rules::kCandlepin, 30, 20261002U);
 }
 
 /* ---- Edits ported from the Game facade's tests (correction_test.cpp) --------------------- */
@@ -714,7 +715,7 @@ TEST(CandlepinTest, should_complete_frames_oldest_first)
 TEST(TenPinScorerEditTest, should_fix_a_strike_that_was_really_9_then_1)
 {
     /* Replacing the 10 with one ball can't fix it: 9 then the 3 is too many pins. */
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollAll(&scorer, {10U, 3U, 4U}); /* 17 + 7 = 24 */
     const std::vector<Pins> really = {9U, 1U};
     const RollEdit edit = Replace(1U, 1U, really);
@@ -727,7 +728,7 @@ TEST(TenPinScorerEditTest, should_fix_a_tenth_frame_entered_with_a_ball_too_many
 {
     /* Entered as 10, 0, 0 in the tenth; really 9, 0. As one edit, the report never shows a
      * tenth frame waiting for a fill ball. */
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollMany(&scorer, 18, 0U);
     RollAll(&scorer, {10U, 0U, 0U});
     ASSERT_EQ(10U, Scorer_Score(&scorer));
@@ -744,7 +745,7 @@ TEST(TenPinScorerEditTest, should_fix_a_tenth_frame_entered_with_a_ball_too_many
 TEST(TenPinScorerEditTest, should_correct_the_first_and_last_balls_of_the_longest_game)
 {
     /* Nine open frames, then a spare and its fill ball: 21 balls. */
-    Scorer scorer = MakeScorer(SCORER_TEN_PIN);
+    Scorer scorer = MakeScorer(rules::kTenPin);
     RollMany(&scorer, 18, 1U);
     RollAll(&scorer, {5U, 5U, 5U}); /* 18 + 15 = 33 */
     ASSERT_EQ(33U, Scorer_Score(&scorer));
@@ -805,14 +806,14 @@ std::map<int, int> AfterEvents(std::map<int, int> frames, const FrameEvents &eve
  * events tell are those of a fresh game of the edited balls; rejected, nothing changes and
  * nothing is told. An edit that starts past the last ball is refused, even where a fresh game
  * would take the balls: adding balls is a roll. */
-void CheckEditsAgainstFreshGames(ScorerVariant variant, CountRule rule, unsigned seed)
+void CheckEditsAgainstFreshGames(const ScorerRules &rules, unsigned seed)
 {
     std::mt19937 random(seed);
     int accepted_count = 0;
     int rejected_count = 0;
     for (int trial = 0; trial < 3000; trial++) {
         Scorer scorer;
-        Scorer_InitWithRule(&scorer, variant, rule);
+        Scorer_Start(&scorer, &rules);
         std::vector<Pins> balls;
         const int length = 1 + static_cast<int>(random() % SCORER_MAX_BALLS);
         for (int tries = 0; (static_cast<int>(balls.size()) < length) && (tries < 200); tries++) {
@@ -837,7 +838,7 @@ void CheckEditsAgainstFreshGames(ScorerVariant variant, CountRule rule, unsigned
                             new_pins.begin(), new_pins.end());
 
         Scorer fresh;
-        Scorer_InitWithRule(&fresh, variant, rule);
+        Scorer_Start(&fresh, &rules);
         bool fresh_accepts_all = true;
         for (const Pins pins : edited_balls) {
             FrameEvents ignored;
@@ -876,15 +877,15 @@ void CheckEditsAgainstFreshGames(ScorerVariant variant, CountRule rule, unsigned
 
 TEST(TenPinScorerEditTest, should_leave_the_game_as_a_fresh_game_of_the_edited_balls_would)
 {
-    CheckEditsAgainstFreshGames(SCORER_TEN_PIN, SCORER_COUNT_PINS_DOWN, 20260928U);
+    CheckEditsAgainstFreshGames(rules::kTenPin, 20260928U);
 }
 
 TEST(NoTapScorerTest, should_leave_the_game_as_a_fresh_game_of_the_edited_balls_would)
 {
-    CheckEditsAgainstFreshGames(SCORER_TEN_PIN, SCORER_COUNT_NO_TAP, 20260929U);
+    CheckEditsAgainstFreshGames(rules::kTenPinNoTap, 20260929U);
 }
 
 TEST(CandlepinTest, should_leave_the_game_as_a_fresh_game_of_the_edited_balls_would)
 {
-    CheckEditsAgainstFreshGames(SCORER_CANDLEPIN, SCORER_COUNT_PINS_DOWN, 20260930U);
+    CheckEditsAgainstFreshGames(rules::kCandlepin, 20260930U);
 }
