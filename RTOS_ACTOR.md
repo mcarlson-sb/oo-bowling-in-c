@@ -571,3 +571,38 @@ above.
    on a target would decide it; that stage is deferred.
 3. **A23** (a frame listener hears frame 1 change from 13 to 10) is phase 2's: in the pure core
    it is already an edit's frame events, and a subscriber queue is where it becomes a listener.
+
+## Phase 2: the FreeRTOS shell
+
+### The walking skeleton
+
+FreeRTOS-Kernel V11.1.0, fetched and built on Linux (`OO_C_RTOS`, on by default there, off on
+Windows, where the POSIX port doesn't run), with static allocation only
+(`configSUPPORT_DYNAMIC_ALLOCATION 0`) and `configASSERT` routed to `Fault_Stop`. The shell is in
+`rtos/`. The integration tests are an executable of their own, `rtos_tests`: each starts the
+scheduler, which is state for the whole process, and ctest runs each in its own. The first one
+creates a static task that ends the scheduler, and `vTaskStartScheduler` returns to the test.
+
+**ThreadSanitizer and the POSIX port.** The port simulates interrupts with signals delivered
+to pthreads, and guards the kernel's data by masking them: synchronization TSan can't see, so
+it reports the kernel racing with itself (six reports for one task). `tools/tsan-freertos.supp`
+suppresses those by top frame only (`race_top`): every task's stack has the port's thread start
+at its bottom, so a plain `race:` rule would hide races in the shell's own task code too. That a
+race in our code still gets through was shown by the skeleton's first version: its task wrote a
+plain `bool` that the test read after the scheduler stopped, and TSan reported it, in the test's
+own frame. The handoff is ordered in practice, but nothing TSan can see orders it, so results
+now cross out of a task as atomics. With the suppressions the skeleton is clean under TSan in 20
+runs of 20; without them it has 5 reports.
+
+**A red run on the way.** The coverage job failed: its target built only `bowling_tests`, and
+`rtos_tests` also needs gcov's runtime at link time. The local gates hadn't caught it because
+they didn't run the coverage build; they do now. Recovered by the documented procedure: the fix
+folded into the red commit, pushed with `--force-with-lease`, and promoted; the line was red for
+5 m 13 s.
+
+### Kay-oo's full-mailbox policy is drop-newest
+
+The phase 2 brief describes today's policy as discarding the oldest roll. The code refuses the
+newest: `Pinsetter_Post` posts nothing, and counts the roll lost, when the mailbox is full
+(`include/pinsetter.h`, `src/pinsetter_ring.h`). `Pinsetter_DiscardOldest` is a scorer's command,
+to throw away a waiting roll that turned out to be a glitch; it isn't the full policy.
