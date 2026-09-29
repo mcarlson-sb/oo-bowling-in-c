@@ -682,10 +682,9 @@ places, the lane was started field by field inside the walk, and a roll's report
 report were two loops doing the same thing. Each is a named step now. The score and a frame's
 answer come from the count of complete frames, which the oldest-first test makes safe.
 
-Not done yet: the scorer's edit arithmetic (`RollEdit_*`, `Scorer_EditedBall`) is its own job and
-belongs in its own file. The legacy facade's `src/roll_edit.c` still has that name and does the
-same job over `RollLog`, so the move waits for the facade's deletion (phase 2's switch-over),
-and the scorer's version then takes the file.
+The scorer's edit arithmetic (`RollEdit_*`, and the edited ball) is its own job, and waited for
+the facade's `src/roll_edit.c`, which had the name and did the same job over `RollLog`, to go.
+It is now `src/roll_edit.c`, private to the core.
 
 ### The shell: one game task, three queues, one notification
 
@@ -728,3 +727,48 @@ which fetches the kernel. The function-pointer check was proved on `rtos/`: with
 exemption marker removed, it fails on `rtos/game_shell.c`, "address of function 'GameShell_Task'
 taken". The coverage gate measures the shell with the library: `rtos/game_shell.c` is at 100%
 of its 57 lines, from the integration tests. Fetched code, under `_deps/`, is never counted.
+
+### The switch-over: the facade and the pinsetter deleted
+
+Nothing but tests called kay-oo's `Game` facade or its pinsetter, so switching the callers meant
+switching the tests. Every test of the legacy code was sorted before anything was deleted:
+
+| Legacy tests | What pins the behavior now |
+|---|---|
+| `GameTest`: scoring, rejections, the tenth frame, fill balls, a perfect game | `TenPinScorerTest`, and the random games against the independent reference |
+| `ReferenceScorerTest`, random games, plain and no-tap | The scorer's random games against the same reference, ten-pin and candlepin |
+| `NinePinNoTapTest`, four examples | `NoTapScorerTest`, the same four |
+| `CorrectionTest`, `EditRollsTest`: an edit's checks, reopened frames, a deletion, a rejected edit telling nothing | `TenPinScorerEditTest` |
+| The same, with no core test yet: a strike really 9 then 1, a tenth frame with a ball too many, the first and last balls of the longest game, a no-tap replay | **Ported** to `TenPinScorerEditTest` and `NoTapScorerTest`; proved by mutation |
+| `CorrectionPropertyTest`, `EditRollsPropertyTest`: an edit leaves listeners as a fresh game would | **Ported** as a property over 3000 random edits for ten-pin, no-tap and candlepin, with the events checked too; proved by mutation |
+| `ScoreboardTest`, `LateListenerTest`: frames told oldest first, the tenth after its fill balls, two subscribers, room for two, a late subscriber caught up | `GameActorTest`'s subscriber tests |
+| `PinsetterTest`: hold at a rejected roll, discard, rolls after the game, a whole game held, lost rolls | `GameActorPinsetterTest`, its mirrors, and the shell's end-to-end held-roll test |
+| `PinsetterThreadTest`, and a correction while rolls wait | `GameShellTest`, on the POSIX port |
+
+What was tested because only the legacy design could get it wrong, and is gone by construction:
+
+- **Re-entry** (`GAME_ERR_BUSY`): a listener that rolls, edits, subscribes or destroys its game,
+  or drains a pinsetter from inside a drain. There are no callbacks: the actor finishes one
+  message before it takes the next.
+- **Handles**: NULL games, destroying twice or while busy, the slot pool running out, a
+  pinsetter destroyed while draining. The actor is a value the shell owns, and the shell has no
+  handles to hand out.
+- **A caller's counting function**: counting more pins than stand, a NULL rule, an impure rule
+  that makes a rejected edit impossible to undo. The rule is a closed enum, and an edit replays
+  into a copy, so a rejected one is never undone.
+- **Overlapping interrupt posts**, which could lose a roll in the one-producer mailbox. A
+  FreeRTOS `FromISR` queue takes any number of interrupt sources.
+- **Two readers of the lost count across its wrap.** The actor reports the running total as an
+  event.
+
+`GAME_ERR_NULL_GAME`, `GAME_ERR_RULE_OUT_OF_RANGE` and `GAME_ERR_BUSY` went with them.
+
+Lost on purpose, as the phase 1 report said: a caller-supplied counting rule (the one-pin-left
+rule's test), the no-tap running-average listener, and the remote scoreboard rebuilt from bytes,
+which a queue's copy of a `GameOutput` now does.
+
+The function-pointer allowlist's legacy section is empty. The only function pointer in the
+project is the game task's entry function, which FreeRTOS requires. 114 legacy tests went; 5 were
+ported, one of them a property over three variants. The interrupt side's stack tripwire was
+legacy-only, so before its file went, the shell's interrupt side moved to a file of its own, with
+its own limit.
