@@ -552,3 +552,13 @@ TEST(CandlepinTest, A18_should_a_strike_and_one_bonus_ball_total_0_with_frame_1_
     EXPECT_EQ(0U, Scorer_Score(&scorer));
     EXPECT_FALSE(Scorer_Frame(&scorer, 0U).complete);
 }
+
+TEST(CandlepinTest, A19_should_a_strike_and_both_bonus_balls_frame_1_is_known_at_17_and_the_total_is_17)
+{
+    Scorer scorer = MakeCandlepin();
+    RollAll(&scorer, {10U, 3U, 4U});
+    const ScorerFrame first = Scorer_Frame(&scorer, 0U);
+    EXPECT_TRUE(first.complete);
+    EXPECT_EQ(17U, first.score);
+    EXPECT_EQ(17U, Scorer_Score(&scorer)); /* frame 2, 3 and 4, still takes a third ball */
+}
