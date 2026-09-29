@@ -6,12 +6,15 @@
 # Feedback to correct course, run once in a while by hand; not a gate. The fast loop is atomic
 # TDD, and the gate is every test passing.
 #
-# Usage: tools/mutation.sh [debug | release | diff <ref>] [build-dir]
+# Usage: tools/mutation.sh [debug | release | diff <ref> | only <regex>] [build-dir]
 #   debug       (the default) asserts on, as the debug build runs.
 #   release     NDEBUG, as the release build runs: reaches the guards that stand behind an
 #               assert, which a debug build never gets past.
 #   diff <ref>  debug, but only the lines changed since <ref> are mutated: "did the tests keep
-#               up with these changes?", in a fraction of the time.
+#               up with these changes?", in a fraction of the time. Mull skips a file that is
+#               new since <ref> altogether, so for new code use only.
+#   only <regex> debug, mutating only the source files whose path matches <regex> (for example
+#               'src/game_actor\.c'): a new module, all of it.
 #
 # Every mutant runs the whole test binary, so the slowest tests decide how long a run takes.
 # By default the four property tests of the legacy Game facade's edits are left out: they take
@@ -25,31 +28,40 @@ set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 mode=${1:-debug}
 diff_ref=""
+only=""
 if [ "$mode" = diff ]; then
     diff_ref=${2:?"diff needs a ref: tools/mutation.sh diff <ref> [build-dir]"}
+    shift
+elif [ "$mode" = only ]; then
+    only=${2:?"only needs a path regex: tools/mutation.sh only <regex> [build-dir]"}
     shift
 fi
 build=${2:-build-mutation-$mode}
 
 case "$mode" in
-debug | diff) defines="" ;;
+debug | diff | only) defines="" ;;
 release) defines="-DNDEBUG" ;;
-*) echo "usage: $0 [debug | release | diff <ref>] [build-dir]" >&2; exit 2 ;;
+*) echo "usage: $0 [debug | release | diff <ref> | only <regex>] [build-dir]" >&2; exit 2 ;;
 esac
 
-# Both the plugin, at compile time, and the runner read it. The diff mode's copy adds the ref.
+# Both the plugin, at compile time, and the runner read it. The diff mode's copy adds the ref;
+# the only mode's narrows the files mutated.
 mkdir -p "$build"
 config="$build/mull.yml"
 cp "$root/tools/mull.yml" "$config"
 if [ -n "$diff_ref" ]; then
     printf 'gitDiffRef: %s\ngitProjectRoot: %s\n' "$diff_ref" "$root" >> "$config"
 fi
+if [ -n "$only" ]; then
+    sed -i "s#^  - \.\*/src/\.\*\$#  - .*/${only}#" "$config"
+    grep -q -- "- .*/${only}" "$config" || { echo "only: could not narrow $config" >&2; exit 2; }
+fi
 export MULL_CONFIG="$config"
 
 cmake -S "$root" -B "$build" -G Ninja -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
     -DOO_C_MUTATION=ON -DCMAKE_C_FLAGS="$defines" -DCMAKE_CXX_FLAGS="$defines"
-# The diff mode's mutants depend on the ref, not only on the sources: rebuild the library.
-if [ -n "$diff_ref" ]; then
+# The diff and only modes' mutants depend on more than the sources: rebuild the library.
+if [ -n "$diff_ref" ] || [ -n "$only" ]; then
     cmake --build "$build" --target clean > /dev/null
 fi
 cmake --build "$build" --parallel
@@ -67,5 +79,8 @@ test_args=()
 if [ -n "$filter" ]; then
     test_args=(--gtest_filter="$filter")
 fi
-mull-runner-18 "$build/bowling_tests" --reporters=IDE --reporters=Elements \
+# Few workers: with one per core (24 here) the test binaries slow each other past Mull's timeout,
+# and survivors are reported as timed out, which Mull counts as killed. MULL_WORKERS overrides.
+mull-runner-18 "$build/bowling_tests" --workers "${MULL_WORKERS:-4}" \
+    --reporters=IDE --reporters=Elements \
     --report-dir="$build/mull-report" --report-name=mutation "${test_args[@]}"
