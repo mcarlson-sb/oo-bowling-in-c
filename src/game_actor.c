@@ -8,6 +8,8 @@ void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule)
     self->subscriber_count = 0U;
     self->held_count = 0U;
     self->held_status = GAME_OK;
+    self->lost_by_pinsetter = 0U;
+    self->lost_by_actor = 0U;
 }
 
 /* ---- The outbox --------------------------------------------------------------------------- */
@@ -63,10 +65,23 @@ static void GameActor_PublishHeld(const GameActor *self, uint8_t index, GameOutb
     }
 }
 
+static void GameActor_PublishLost(const GameActor *self, GameOutbox *outbox)
+{
+    for (uint8_t s = 0U; s < self->subscriber_count; s++) {
+        GameOutbox_Next(outbox, GAME_OUT_ROLLS_LOST, self->subscribers[s])->lost =
+            (uint16_t)(self->lost_by_pinsetter + self->lost_by_actor);
+    }
+}
+
 /* ---- Held rolls --------------------------------------------------------------------------- */
 
 static void GameActor_Hold(GameActor *self, Pins pins, GameOutbox *outbox)
 {
+    if (self->held_count == SCORER_MAX_BALLS) {
+        self->lost_by_actor++; /* no room: more than a whole game is already held */
+        GameActor_PublishLost(self, outbox);
+        return;
+    }
     self->held[self->held_count] = pins;
     self->held_count++;
     GameActor_PublishHeld(self, (uint8_t)(self->held_count - 1U), outbox);
@@ -151,6 +166,14 @@ static void GameActor_DiscardHeld(GameActor *self, const GameMessage *message,
     reply->score = Scorer_Score(&self->scorer);
 }
 
+static void GameActor_RollsLost(GameActor *self, const GameMessage *message, GameOutbox *outbox)
+{
+    if (message->lost != self->lost_by_pinsetter) {
+        self->lost_by_pinsetter = message->lost;
+        GameActor_PublishLost(self, outbox);
+    }
+}
+
 /* The frames complete so far, for a subscriber that has just joined. */
 static void GameActor_CatchUp(const GameActor *self, void *subscriber, GameOutbox *outbox)
 {
@@ -191,6 +214,9 @@ void GameActor_Handle(GameActor *self, const GameMessage *message, GameOutbox *o
         break;
     case GAME_MSG_DISCARD_HELD:
         GameActor_DiscardHeld(self, message, outbox);
+        break;
+    case GAME_MSG_ROLLS_LOST:
+        GameActor_RollsLost(self, message, outbox);
         break;
     case GAME_MSG_QUERY_SCORE:
         GameOutbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));

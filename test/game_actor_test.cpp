@@ -314,3 +314,77 @@ TEST(GameActorPinsetterTest, should_let_the_scorer_discard_a_held_roll_that_real
     Send(&actor, DiscardHeldRequest(2U), &outbox);
     EXPECT_EQ(GAME_ERR_NO_SUCH_ROLL, outbox.items[0].status); /* nothing is held */
 }
+
+namespace {
+
+void BowlAGutterGame(GameActor *actor)
+{
+    GameOutbox outbox;
+    for (int i = 0; i < 20; i++) {
+        Send(actor, RollRequest(static_cast<RequestSeq>(i + 1), 0U), &outbox);
+    }
+}
+
+std::vector<int> LostEventsIn(const GameOutbox &outbox)
+{
+    std::vector<int> lost;
+    for (uint8_t i = 0U; i < outbox.count; i++) {
+        if (outbox.items[i].kind == GAME_OUT_ROLLS_LOST) {
+            lost.push_back(outbox.items[i].lost);
+        }
+    }
+    return lost;
+}
+
+GameMessage RollsLostReport(uint16_t lost_so_far)
+{
+    GameMessage message = {};
+    message.kind = GAME_MSG_ROLLS_LOST;
+    message.lost = lost_so_far;
+    return message;
+}
+
+} // namespace
+
+TEST(GameActorPinsetterTest, should_hold_pinsetter_rolls_made_after_the_game_is_over)
+{
+    /* Kay-oo drains these into the next game. Here there is one game, and they are held until
+     * the scorer discards them: the brief's messages have no "new game". */
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    BowlAGutterGame(&actor);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(21U, &s_subscriber_queue), &outbox);
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    EXPECT_EQ((std::vector<Held>{{3, 21, 1, GAME_ERR_GAME_OVER}}), HeldEventsIn(outbox));
+    EXPECT_EQ(0U, ScoreOf(&actor));
+}
+
+TEST(GameActorPinsetterTest, should_hold_a_whole_game_of_rolls_and_count_any_past_that_lost)
+{
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    BowlAGutterGame(&actor);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(21U, &s_subscriber_queue), &outbox);
+    for (int i = 0; i < 30; i++) {
+        Send(&actor, PinsetterRoll(1U), &outbox);
+        EXPECT_EQ((std::vector<int>{}), LostEventsIn(outbox)) << "roll " << (i + 1);
+    }
+    Send(&actor, PinsetterRoll(1U), &outbox); /* the 31st: no room */
+    EXPECT_EQ((std::vector<int>{1}), LostEventsIn(outbox));
+    EXPECT_EQ((std::vector<Held>{}), HeldEventsIn(outbox));
+}
+
+TEST(GameActorPinsetterTest, should_tell_the_subscribers_the_total_of_rolls_lost_everywhere)
+{
+    /* The pinsetter's queue reports its own count; the actor adds the rolls it had no room to
+     * hold, and tells the total. */
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    Send(&actor, SubscribeRequest(1U, &s_subscriber_queue), &outbox);
+    Send(&actor, RollsLostReport(2U), &outbox);
+    EXPECT_EQ((std::vector<int>{2}), LostEventsIn(outbox));
+    Send(&actor, RollsLostReport(2U), &outbox); /* nothing new */
+    EXPECT_EQ((std::vector<int>{}), LostEventsIn(outbox));
+    Send(&actor, RollsLostReport(5U), &outbox);
+    EXPECT_EQ((std::vector<int>{5}), LostEventsIn(outbox));
+}

@@ -39,7 +39,9 @@ typedef enum {
     GAME_MSG_QUERY_SCORE,
     /* Throws away the first held roll, a glitch, and lets the rest through as far as they go
      * (kay-oo's Pinsetter_DiscardOldest). GAME_ERR_NO_SUCH_ROLL if nothing is held. */
-    GAME_MSG_DISCARD_HELD
+    GAME_MSG_DISCARD_HELD,
+    /* The pinsetter's count of rolls it lost to a full queue, so far (lost). */
+    GAME_MSG_ROLLS_LOST
 } GameMessageKind;
 
 typedef struct {
@@ -51,6 +53,7 @@ typedef struct {
     uint8_t rolls_removed;
     uint8_t new_count;
     Pins new_pins[SCORER_MAX_BALLS];
+    uint16_t lost;                     /* GAME_MSG_ROLLS_LOST */
 } GameMessage;
 
 typedef enum {
@@ -58,7 +61,10 @@ typedef enum {
     GAME_OUT_FRAME_CHANGED, /* frame */
     /* A pinsetter roll was held: its pins, the ball it would be (position), how many are held
      * now, and why the first of them was rejected (status). */
-    GAME_OUT_ROLL_HELD
+    GAME_OUT_ROLL_HELD,
+    /* More pinsetter rolls were lost: lost is the total so far, to a full queue or to no room
+     * to hold them. */
+    GAME_OUT_ROLLS_LOST
 } GameOutputKind;
 
 typedef struct {
@@ -71,6 +77,7 @@ typedef struct {
     Pins pins;
     RollNumber position;
     uint8_t held;
+    uint16_t lost;
 } GameOutput;
 
 #define GAME_MAX_SUBSCRIBERS 2U
@@ -98,6 +105,8 @@ typedef struct {
     Pins held[SCORER_MAX_BALLS];
     uint8_t held_count;
     GameStatus held_status;
+    uint16_t lost_by_pinsetter; /* its queue was full */
+    uint16_t lost_by_actor;     /* no room to hold them: more than a whole game's balls */
 } GameActor;
 
 void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule);
