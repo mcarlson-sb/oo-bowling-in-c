@@ -32,12 +32,13 @@ static const VariantRules k_variant_rules[] = {
                            .max_balls = CANDLEPIN_MAX_BALLS, .bonus_balls = { 2U, 1U, 0U } },
 };
 
-/* Where a frame's balls are in the game's list, and how many bonus balls it is owed. */
+/* Where a frame's balls are in the game's list, and how many bonus balls it is owed. A closed
+ * frame takes no more balls of its own; it is complete once its bonus balls are in too. */
 typedef struct {
     uint8_t first_ball;
-    uint8_t balls;
+    uint8_t own_balls;
     uint8_t bonus_balls;
-    bool ended; /* it takes no more balls of its own */
+    bool closed;
 } FrameShape;
 
 /* What the lane takes next. The last frame's bonus balls are fill balls: they are thrown after
@@ -65,16 +66,16 @@ static const VariantRules *Scorer_Rules(const Scorer *self)
 
 static bool Lane_NeedsNewFrame(const Lane *lane)
 {
-    return (lane->frame_count == 0U) || lane->frames[lane->frame_count - 1U].ended;
+    return (lane->frame_count == 0U) || lane->frames[lane->frame_count - 1U].closed;
 }
 
 static FrameShape *Lane_StartFrame(Lane *lane, const VariantRules *rules, uint8_t ball_index)
 {
     FrameShape *frame = &lane->frames[lane->frame_count];
     frame->first_ball = ball_index;
-    frame->balls = 0U;
+    frame->own_balls = 0U;
     frame->bonus_balls = 0U;
-    frame->ended = false;
+    frame->closed = false;
     lane->frame_count++;
     lane->standing = rules->pins_per_rack;
     return frame;
@@ -107,15 +108,15 @@ static void Lane_AfterFrameEnds(Lane *lane, const VariantRules *rules, const Fra
 static void Lane_ThrowInFrame(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins pins)
 {
     FrameShape *frame = Lane_CurrentFrame(lane, rules, ball_index);
-    frame->balls++;
+    frame->own_balls++;
     lane->standing = (Pins)(lane->standing - pins);
     if (lane->standing == 0U) {
-        frame->ended = true;
-        frame->bonus_balls = rules->bonus_balls[frame->balls - 1U];
-    } else if (frame->balls == rules->balls_per_frame) {
-        frame->ended = true;
+        frame->closed = true;
+        frame->bonus_balls = rules->bonus_balls[frame->own_balls - 1U];
+    } else if (frame->own_balls == rules->balls_per_frame) {
+        frame->closed = true;
     }
-    if (frame->ended) {
+    if (frame->closed) {
         Lane_AfterFrameEnds(lane, rules, frame);
     }
 }
@@ -177,23 +178,22 @@ static Lane Scorer_Lane(const Scorer *self)
     return lane;
 }
 
-/* A frame's balls, then its bonus balls: one rule for open frames, spares and strikes. */
-static uint8_t FrameShape_BallsScored(const FrameShape *frame)
+/* Just past the last ball a frame scores: its own balls, then its bonus balls. One rule for open
+ * frames, spares and strikes. */
+static uint8_t FrameShape_EndOfScoredBalls(const FrameShape *frame)
 {
-    return (uint8_t)(frame->balls + frame->bonus_balls);
+    return (uint8_t)(frame->first_ball + frame->own_balls + frame->bonus_balls);
 }
 
-static bool Scorer_IsFrameComplete(const Scorer *self, const FrameShape *frame)
+static bool FrameShape_IsComplete(const FrameShape *frame, uint8_t ball_count)
 {
-    return frame->ended &&
-           (self->ball_count >= (uint8_t)(frame->first_ball + FrameShape_BallsScored(frame)));
+    return frame->closed && (ball_count >= FrameShape_EndOfScoredBalls(frame));
 }
 
 static Score Lane_FrameScore(const Lane *lane, const FrameShape *frame)
 {
     Score score = 0U;
-    const uint8_t end = (uint8_t)(frame->first_ball + FrameShape_BallsScored(frame));
-    for (uint8_t i = frame->first_ball; i < end; i++) {
+    for (uint8_t i = frame->first_ball; i < FrameShape_EndOfScoredBalls(frame); i++) {
         score = (Score)(score + lane->counted[i]);
     }
     return score;
@@ -218,7 +218,7 @@ static uint8_t Scorer_CompleteFrames(const Scorer *self, const Lane *lane)
 {
     uint8_t complete = 0U;
     while ((complete < lane->frame_count) &&
-           Scorer_IsFrameComplete(self, &lane->frames[complete])) {
+           FrameShape_IsComplete(&lane->frames[complete], self->ball_count)) {
         complete++;
     }
     return complete;
@@ -287,7 +287,7 @@ Score Scorer_Score(const Scorer *self)
     const Lane lane = Scorer_Lane(self);
     Score score = 0U;
     for (uint8_t i = 0U; i < lane.frame_count; i++) {
-        if (Scorer_IsFrameComplete(self, &lane.frames[i])) {
+        if (FrameShape_IsComplete(&lane.frames[i], self->ball_count)) {
             score = (Score)(score + Lane_FrameScore(&lane, &lane.frames[i]));
         }
     }
@@ -414,7 +414,7 @@ ScorerFrame Scorer_Frame(const Scorer *self, uint8_t index)
         return result; /* not started: only the frames the walk wrote are read */
     }
     const FrameShape *frame = &lane.frames[index];
-    result.complete = Scorer_IsFrameComplete(self, frame);
+    result.complete = FrameShape_IsComplete(frame, self->ball_count);
     if (result.complete) {
         result.score = Lane_FrameScore(&lane, frame);
     }
