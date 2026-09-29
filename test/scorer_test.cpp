@@ -459,3 +459,12 @@ TEST(CandlepinTest, A08_should_a_spare_in_the_tenth_takes_one_fill_ball_6_4_5_sc
     EXPECT_TRUE(Scorer_IsOver(&scorer));
     EXPECT_EQ(15U, Scorer_Score(&scorer));
 }
+
+TEST(CandlepinTest, A09_should_a_strike_in_the_tenth_then_6_4_scores_20)
+{
+    Scorer scorer = MakeCandlepin();
+    RollMany(&scorer, 27, 0U);
+    RollAll(&scorer, {10U, 6U, 4U});
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+    EXPECT_EQ(20U, Scorer_Score(&scorer));
+}
