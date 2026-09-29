@@ -107,14 +107,14 @@ static bool Lane_IsLastFrame(const Lane *lane, const VariantRules *rules)
     return lane->frames_started == rules->frames;
 }
 
-static void Lane_AfterFrameCloses(Lane *lane, const VariantRules *rules, const FrameShape *frame)
+static void Lane_ResetRack(Lane *lane, const VariantRules *rules)
 {
     lane->standing = rules->pins_per_rack;
-    if (!Lane_IsLastFrame(lane, rules)) {
-        return;
-    }
-    lane->fill_balls_left = frame->bonus_balls;
-    lane->phase = (frame->bonus_balls > 0U) ? LANE_TAKING_FILL_BALLS : LANE_OVER;
+}
+
+static bool Lane_IsRackCleared(const Lane *lane)
+{
+    return lane->standing == 0U;
 }
 
 static void Lane_KnockDown(Lane *lane, Pins pins)
@@ -122,9 +122,36 @@ static void Lane_KnockDown(Lane *lane, Pins pins)
     lane->standing = (Pins)(lane->standing - pins);
 }
 
-static void FrameShape_CloseIfDone(FrameShape *frame, const VariantRules *rules, Pins standing)
+static void Lane_StartFillBalls(Lane *lane, uint8_t fill_balls)
 {
-    if (standing == 0U) {
+    lane->fill_balls_left = fill_balls;
+    lane->phase = (fill_balls > 0U) ? LANE_TAKING_FILL_BALLS : LANE_OVER;
+}
+
+static void Lane_UseFillBall(Lane *lane)
+{
+    lane->fill_balls_left--;
+    if (lane->fill_balls_left == 0U) {
+        lane->phase = LANE_OVER;
+    }
+}
+
+static void Lane_AfterFrameCloses(Lane *lane, const VariantRules *rules, const FrameShape *frame)
+{
+    Lane_ResetRack(lane, rules);
+    if (Lane_IsLastFrame(lane, rules)) {
+        Lane_StartFillBalls(lane, frame->bonus_balls);
+    }
+}
+
+static void FrameShape_TakeBall(FrameShape *frame)
+{
+    frame->own_balls++;
+}
+
+static void FrameShape_CloseIfDone(FrameShape *frame, const VariantRules *rules, bool cleared)
+{
+    if (cleared) {
         FrameShape_CloseClearingTheRack(frame, rules);
     } else if (frame->own_balls == rules->balls_per_frame) {
         frame->closed = true;
@@ -134,9 +161,9 @@ static void FrameShape_CloseIfDone(FrameShape *frame, const VariantRules *rules,
 static void Lane_ThrowInFrame(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins pins)
 {
     FrameShape *frame = Lane_FrameTakingBall(lane, ball_index);
-    frame->own_balls++;
+    FrameShape_TakeBall(frame);
     Lane_KnockDown(lane, pins);
-    FrameShape_CloseIfDone(frame, rules, lane->standing);
+    FrameShape_CloseIfDone(frame, rules, Lane_IsRackCleared(lane));
     if (frame->closed) {
         Lane_AfterFrameCloses(lane, rules, frame);
     }
@@ -145,13 +172,10 @@ static void Lane_ThrowInFrame(Lane *lane, const VariantRules *rules, uint8_t bal
 static void Lane_ThrowFillBall(Lane *lane, const VariantRules *rules, Pins pins)
 {
     Lane_KnockDown(lane, pins);
-    if (lane->standing == 0U) {
-        lane->standing = rules->pins_per_rack;
+    if (Lane_IsRackCleared(lane)) {
+        Lane_ResetRack(lane, rules);
     }
-    lane->fill_balls_left--;
-    if (lane->fill_balls_left == 0U) {
-        lane->phase = LANE_OVER;
-    }
+    Lane_UseFillBall(lane);
 }
 
 static void Lane_Throw(Lane *lane, const VariantRules *rules, uint8_t ball_index, Pins pins)
