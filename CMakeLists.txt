@@ -40,6 +40,7 @@ add_library(bowling STATIC
     src/roll_log.c
     src/scorecard.c
     src/scorer.c
+    src/game_actor.c
     src/slot_pool.c
 )
 target_include_directories(bowling PUBLIC include PRIVATE src)
@@ -112,6 +113,7 @@ add_executable(bowling_tests
     test/pinsetter_overlap_test.cpp
     test/scorer_test.cpp
     test/fault_test.cpp
+    test/game_actor_test.cpp
 )
 find_package(Threads REQUIRED) # the pinsetter test runs a second thread
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main Threads::Threads)
