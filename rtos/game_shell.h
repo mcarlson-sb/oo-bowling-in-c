@@ -40,15 +40,16 @@ typedef enum {
     ACTOR_KIND_RUNNING_AVERAGE
 } ActorKind;
 
-/* With no game: the first NEW_GAME sent to GAME_SHELL_GAME_ID starts one. */
-void GameShell_Start(UBaseType_t priority);
+/* The game at GAME_SHELL_GAME_ID, in a task of its own at `game_priority`, with no game yet: the
+ * first NEW_GAME sent there starts one. And the task every observer will share, at
+ * `observer_priority`: above the game's, it takes each event as the game sends it. */
+void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority);
 
 /* After GameShell_Start, before the scheduler starts: a scoreboard, or a running average, at
- * `id`, hosted in a task of its own at `priority`. An observer hosted above the game's priority
- * takes each event as it is sent, so its mailbox never fills. */
-void GameShell_HostScoreboard(ActorId id, UBaseType_t priority);
+ * `id`, hosted by the observers' task. */
+void GameShell_HostScoreboard(ActorId id);
 
-void GameShell_HostRunningAverage(ActorId id, UBaseType_t priority);
+void GameShell_HostRunningAverage(ActorId id);
 
 /* After GameShell_Start, before the scheduler starts: an external actor at `id`, which reads
  * `queue`. */

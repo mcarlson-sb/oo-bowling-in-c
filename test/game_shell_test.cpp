@@ -124,15 +124,15 @@ void ClientTask(void *parameter)
  * messages before the game task runs. */
 void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
 {
-    GameShell_Start(kGamePriority);
+    GameShell_Start(kGamePriority, kObserverPriority);
     s_replies.Create();
     s_subscriber.Create(s_subscriber_queue_length);
     s_second_subscriber.Create();
     GameShell_Bind(kClient, s_replies.handle);
     if (s_subscriber_kind == ACTOR_KIND_SCOREBOARD) {
-        GameShell_HostScoreboard(kSubscriber, kObserverPriority);
+        GameShell_HostScoreboard(kSubscriber);
     } else if (s_subscriber_kind == ACTOR_KIND_RUNNING_AVERAGE) {
-        GameShell_HostRunningAverage(kSubscriber, kObserverPriority);
+        GameShell_HostRunningAverage(kSubscriber);
     } else {
         GameShell_Bind(kSubscriber, s_subscriber.handle);
     }
