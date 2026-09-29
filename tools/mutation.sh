@@ -3,6 +3,9 @@
 # once per mutant, and reports each mutant that no test killed. Linux only (Mull has no Windows
 # release); needs clang 18 and Mull 0.34.1 for LLVM 18.
 #
+# Feedback to correct course, run once in a while by hand; not a gate. A run takes minutes: the
+# fast loop is atomic TDD, and the gate is every test passing.
+#
 # Usage: tools/mutation.sh [debug|release] [build-dir]
 #   debug   (the default) asserts on, as the debug build runs.
 #   release NDEBUG, as the release build runs: reaches the guards that stand behind an assert,

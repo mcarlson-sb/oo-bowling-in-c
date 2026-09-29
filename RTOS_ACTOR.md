@@ -218,15 +218,23 @@ The rest are not test gaps:
   see them, and none runs here.
 - **Not observable (1).** `Fault_Stop` without its trailing newline still prints the reason.
 
-### How often it runs
+### What it is for: feedback, not a gate
 
-A run takes about 2.5 minutes a mode, far too slow for the commit loop. It runs at each phase's
-stop for review, and before deleting code it pins (the strangle), not on every commit or push.
+Mutation testing is occasional feedback to correct course. It is not a gate, and nothing waits
+on it.
+
+- **The main feedback loop is fast atomic TDD:** one failing test, only enough code to pass it,
+  refactor, and the debug build's tests after every step, in seconds.
+- **The main gate is every test passing,** in every build, before each commit (with the
+  brief's static checks: lizard, clang-tidy, the function-pointer check).
+- **Mutation testing runs once in a while,** by hand: when a phase stops for review, or when a
+  question comes up that it can answer, such as whether code is still reached before it is
+  deleted. A run takes minutes, far too slow for the loop. What it finds becomes a test, or a
+  recorded reason there isn't one.
 
 A nightly run was considered and skipped for now (2026-09-28). GitHub runs scheduled and
 manually dispatched workflows only from the default branch's workflow files, so a nightly for
-this branch would mean a commit to `main`, which stays untouched. The checkpoints above are the
-cadence.
+this branch would mean a commit to `main`, which stays untouched.
 
 ## The strangle: the frame classes replaced by the core
 

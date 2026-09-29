@@ -1,5 +1,5 @@
-# Mull (mutation testing) for the library's own code: mutants in src/ only, never in the tests
-# or GoogleTest. See tools/mutation.sh.
+# Mull (mutation testing) for the library's own code: occasional feedback, not a gate. Mutants in
+# src/ only, never in the tests or GoogleTest. See tools/mutation.sh.
 mutators:
   - cxx_all
 includePaths:
