@@ -85,11 +85,7 @@ typedef struct {
 
 #define GAME_MAX_SUBSCRIBERS 2U
 
-/* The most events one message can cause, for each subscriber: an edit's frames, and the frames
- * the rolls it lets through complete, and a notice or two. */
-#define GAME_EVENTS_PER_MESSAGE ((2U * SCORER_MAX_EVENTS) + 2U)
-
-/* A reply, and each subscriber's events. */
+#define GAME_EVENTS_PER_MESSAGE ((2U * SCORER_MAX_EVENTS) + 1U)
 #define GAME_OUTBOX_CAPACITY (1U + (GAME_MAX_SUBSCRIBERS * GAME_EVENTS_PER_MESSAGE))
 
 /* What one message sent: replies and events, in the order they were sent. */

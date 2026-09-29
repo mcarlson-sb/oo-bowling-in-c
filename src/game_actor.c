@@ -1,5 +1,6 @@
 #include "game_actor.h"
 
+#include <assert.h>
 #include <stddef.h>
 
 void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule)
@@ -16,6 +17,7 @@ void GameActor_Init(GameActor *self, ScorerVariant variant, CountRule rule)
 
 static GameOutput *GameOutbox_Next(GameOutbox *outbox, GameOutputKind kind, void *to)
 {
+    assert(outbox->count < GAME_OUTBOX_CAPACITY);
     GameOutput *out = &outbox->items[outbox->count];
     outbox->count++;
     out->kind = kind;

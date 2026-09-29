@@ -523,3 +523,25 @@ TEST(GameActorTest, should_refuse_unsubscribing_the_same_subscriber_twice)
     Send(&actor, UnsubscribeRequest(4U, &b), &outbox);
     EXPECT_EQ(GAME_ERR_NOT_SUBSCRIBED, outbox.items[0].status);
 }
+
+/* ---- The outbox holds the most one message can send ------------------------------------ */
+
+TEST(GameActorTest, should_fill_the_outbox_exactly_with_the_most_one_message_can_send)
+{
+    /* The worst case: an edit that reopens all ten frames, then lets through held rolls that
+     * complete all ten again, then holds the next one again, told to two subscribers. */
+    GameActor actor = MakeActor(SCORER_TEN_PIN);
+    GameOutbox outbox;
+    for (int i = 0; i < 12; i++) {
+        Send(&actor, RollRequest(static_cast<RequestSeq>(i + 1), 10U), &outbox);
+    }
+    int a = 0;
+    int b = 0;
+    Send(&actor, SubscribeRequest(20U, &a), &outbox);
+    Send(&actor, SubscribeRequest(21U, &b), &outbox);
+    for (int i = 0; i < 13; i++) {
+        Send(&actor, PinsetterRoll(10U), &outbox); /* held: the game is over */
+    }
+    Send(&actor, EditRequest(22U, 1U, 12U, {}), &outbox); /* every ball out */
+    EXPECT_EQ(GAME_OUTBOX_CAPACITY, outbox.count);
+}
