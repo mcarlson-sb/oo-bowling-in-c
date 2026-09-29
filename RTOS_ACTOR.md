@@ -1055,3 +1055,16 @@ they take the binary past Mull's timeout.
 Also, the output size above: whether to cap an edit's inline balls.
 
 **Stop.** Step 4 ends here, for your review.
+
+### Decisions after the interim review (2026-09-29)
+
+- **An edit's inline balls stay uncapped.** The 24 bytes more per reply or event are the price
+  of one protocol. Revisit only if a target's RAM forces it.
+- **One actor per task, to start.** Step 5 measures what a task costs (its static TCB, its
+  stack, its mailbox's storage) before anything changes that.
+- **The new kinds drop the newest on a full queue, and count it,** as the game does.
+- **Before any new kind, the shell becomes an actor host.** A route binds an id to a kind, an
+  instance and a mailbox, and the one dispatch switch reaches any kind's receive function.
+- **Each kind gets its own selector table,** named as that kind's protocol (Smalltalk's
+  `respondsTo:`). If a kind doesn't need one, the report says so, and says whether the game's
+  table earned its keep or only moved a branch out of the complexity count.
