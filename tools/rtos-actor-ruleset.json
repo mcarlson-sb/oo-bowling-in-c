@@ -1,0 +1,75 @@
+{
+  "name": "rtos-actor is always releasable",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/rtos-actor"
+      ],
+      "exclude": []
+    }
+  },
+  "bypass_actors": [],
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "build-debug",
+            "integration_id": 15368
+          },
+          {
+            "context": "build-release",
+            "integration_id": 15368
+          },
+          {
+            "context": "build-ubsan",
+            "integration_id": 15368
+          },
+          {
+            "context": "tsan",
+            "integration_id": 15368
+          },
+          {
+            "context": "coverage",
+            "integration_id": 15368
+          },
+          {
+            "context": "lizard",
+            "integration_id": 15368
+          },
+          {
+            "context": "cognitive-complexity",
+            "integration_id": 15368
+          },
+          {
+            "context": "stack-usage-debug",
+            "integration_id": 15368
+          },
+          {
+            "context": "stack-usage-release",
+            "integration_id": 15368
+          },
+          {
+            "context": "function-pointers",
+            "integration_id": 15368
+          },
+          {
+            "context": "every-commit",
+            "integration_id": 15368
+          }
+        ]
+      }
+    }
+  ]
+}
