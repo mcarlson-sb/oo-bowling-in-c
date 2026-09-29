@@ -17,6 +17,9 @@ void GameShell_Start(ScorerVariant variant, CountRule rule, UBaseType_t priority
 
 BaseType_t GameShell_Send(const GameMessage *message, TickType_t wait);
 
+/* From the pinsetter's interrupt: a roll it counted. */
+void GameShell_PinsetterCountedFromIsr(Pins pins);
+
 #ifdef __cplusplus
 }
 #endif

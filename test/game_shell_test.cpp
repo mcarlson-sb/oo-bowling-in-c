@@ -7,6 +7,8 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <initializer_list>
+#include <vector>
 
 extern "C" {
 #include "FreeRTOS.h"
@@ -20,6 +22,7 @@ namespace {
 
 constexpr UBaseType_t kClientPriority = tskIDLE_PRIORITY + 1U;
 constexpr UBaseType_t kGamePriority = tskIDLE_PRIORITY + 2U;
+constexpr UBaseType_t kInterruptPriority = configMAX_PRIORITIES - 1U;
 constexpr TickType_t kPatience = pdMS_TO_TICKS(1000);
 
 /* A caller's own queue of outputs, for replies or as a subscriber. */
@@ -36,6 +39,33 @@ struct OutputQueue {
 };
 
 OutputQueue s_replies;
+OutputQueue s_subscriber;
+
+/* The pinsetter's interrupt, simulated by the highest-priority task: when fired, it counts its
+ * rolls one after another, as back-to-back interrupts would, and nothing lower runs until it's
+ * done. Unlike a real interrupt, it runs only when the kernel schedules it, never in the middle
+ * of another task's instruction. */
+StaticTask_t s_interrupt_task;
+StackType_t s_interrupt_stack[configMINIMAL_STACK_SIZE];
+TaskHandle_t s_interrupt;
+std::vector<Pins> s_interrupt_rolls;
+
+void InterruptTask(void *parameter)
+{
+    (void)parameter;
+    for (;;) {
+        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        for (const Pins pins : s_interrupt_rolls) {
+            GameShell_PinsetterCountedFromIsr(pins);
+        }
+    }
+}
+
+void FirePinsetter(std::initializer_list<Pins> rolls)
+{
+    s_interrupt_rolls = rolls;
+    xTaskNotifyGive(s_interrupt);
+}
 
 StaticTask_t s_client_task;
 StackType_t s_client_stack[configMINIMAL_STACK_SIZE];
@@ -58,6 +88,11 @@ void RunClient(void (*body)())
 {
     GameShell_Start(SCORER_TEN_PIN, SCORER_COUNT_PINS_DOWN, kGamePriority);
     s_replies.Create();
+    s_subscriber.Create();
+    s_interrupt = xTaskCreateStatic(&InterruptTask, "interrupt", configMINIMAL_STACK_SIZE,
+                                    nullptr, kInterruptPriority, s_interrupt_stack,
+                                    &s_interrupt_task);
+    ASSERT_NE(nullptr, s_interrupt);
     s_client_body = body;
     ASSERT_NE(nullptr, xTaskCreateStatic(&ClientTask, "client", configMINIMAL_STACK_SIZE,
                                          nullptr, kClientPriority, s_client_stack,
@@ -73,6 +108,15 @@ GameMessage RollRequest(RequestSeq seq, Pins pins)
     message.seq = seq;
     message.reply_to = s_replies.handle;
     message.pins = pins;
+    return message;
+}
+
+GameMessage SubscribeRequest(RequestSeq seq)
+{
+    GameMessage message = {};
+    message.kind = GAME_MSG_SUBSCRIBE;
+    message.seq = seq;
+    message.reply_to = s_subscriber.handle;
     return message;
 }
 
@@ -94,4 +138,28 @@ TEST(GameShellTest, should_reply_on_the_callers_queue_to_a_roll_sent_to_the_game
     EXPECT_EQ(GAME_OUT_REPLY, s_reply.kind);
     EXPECT_EQ(7U, s_reply.seq);
     EXPECT_EQ(GAME_OK, s_reply.status);
+}
+
+namespace {
+
+GameOutput s_event;
+
+} // namespace
+
+TEST(GameShellTest, should_tell_a_subscriber_the_frame_the_pinsetters_rolls_complete)
+{
+    RunClient([] {
+        const GameMessage subscribe = SubscribeRequest(1U);
+        s_sent = GameShell_Send(&subscribe, 0U);
+        GameOutput reply;
+        (void)xQueueReceive(s_subscriber.handle, &reply, kPatience);
+        FirePinsetter({3U, 4U});
+        s_received = xQueueReceive(s_subscriber.handle, &s_event, kPatience);
+    });
+    ASSERT_EQ(pdPASS, s_sent);
+    ASSERT_EQ(pdPASS, s_received);
+    EXPECT_EQ(GAME_OUT_FRAME_CHANGED, s_event.kind);
+    EXPECT_EQ(1U, s_event.frame.frame_number);
+    EXPECT_EQ(7U, s_event.frame.frame_score);
+    EXPECT_TRUE(s_event.frame.frame_complete);
 }
