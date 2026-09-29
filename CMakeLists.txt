@@ -85,6 +85,7 @@ add_executable(bowling_tests
     test/game_actor_test.cpp
     test/scoreboard_actor_test.cpp
     test/running_average_test.cpp
+    test/outbox_test.cpp
 )
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
 # The actors' state headers, in src/: the tests see inside, as the shell does.
