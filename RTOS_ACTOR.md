@@ -361,6 +361,9 @@ Checked against the practices in <https://martinfowler.com/articles/continuousIn
 
 ### The gap: Test in a Clone of the Production Environment (a plan, not built)
 
+**Deferred (2026-09-28): skipped for now, by decision.** The plan below stands for when it is
+picked up; nothing of it is built.
+
 Fowler: "we want to set up our test environment to be as exact a mimic of our production
 environment as possible." Production here is a Cortex-M microcontroller. Every gate runs on a
 64-bit Linux host with glibc: `int` is 32 bits on both, but pointers, alignment, the C library,
