@@ -414,3 +414,12 @@ TEST(CandlepinTest, A03_should_every_frame_3_3_4_scores_100_ten_ten_boxes)
     EXPECT_TRUE(Scorer_IsOver(&scorer));
     EXPECT_EQ(100U, Scorer_Score(&scorer));
 }
+
+TEST(CandlepinTest, A04_should_a_spare_in_two_balls_then_3_4_2_scores_22)
+{
+    Scorer scorer = MakeCandlepin();
+    RollAll(&scorer, {5U, 5U, 3U, 4U, 2U});
+    RollMany(&scorer, 24, 0U);
+    EXPECT_TRUE(Scorer_IsOver(&scorer));
+    EXPECT_EQ(22U, Scorer_Score(&scorer)); /* (10 + 3) + (3 + 4 + 2) */
+}
