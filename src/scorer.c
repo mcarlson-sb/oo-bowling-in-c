@@ -154,7 +154,6 @@ static void Lane_Throw(Lane *lane, const ScorerRules *rules, uint8_t ball_index,
         Lane_ThrowFillBall(lane, rules, pins);
         break;
     case LANE_OVER:
-    default:
         assert(false && "Lane_CheckBall refuses a ball once the lane is over");
         break;
     }
