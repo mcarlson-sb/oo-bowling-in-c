@@ -13,7 +13,6 @@ void GameActor_Init(GameActor *self, ActorId id)
     Subscribers_Init(&self->subscribers);
     HeldRolls_Init(&self->held);
     self->lost_to_full_queue = 0U;
-    self->lost_to_full_held_list = 0U;
     self->not_understood = 0U;
 }
 
@@ -57,28 +56,16 @@ static void GameActor_PublishLost(const GameActor *self, Outbox *outbox)
         const ActorId subscriber = Subscribers_At(&self->subscribers, s);
         Message *out = Outbox_Next(outbox, Envelope_Event(MSG_ROLLS_LOST, self->id, subscriber));
         out->payload.rolls_lost.lost =
-            (uint16_t)(self->lost_to_full_queue + self->lost_to_full_held_list);
+            (uint16_t)(self->lost_to_full_queue + HeldRolls_Lost(&self->held));
     }
-}
-
-static void GameActor_Hold(GameActor *self, Pins pins, Outbox *outbox)
-{
-    HeldRolls_Push(&self->held, pins);
-    GameActor_PublishHeld(self, HeldRolls_Newest(&self->held), outbox);
-}
-
-static void GameActor_Lose(GameActor *self, Outbox *outbox)
-{
-    self->lost_to_full_held_list++;
-    GameActor_PublishLost(self, outbox);
 }
 
 static void GameActor_HoldOrLose(GameActor *self, Pins pins, Outbox *outbox)
 {
-    if (HeldRolls_IsFull(&self->held)) {
-        GameActor_Lose(self, outbox);
+    if (HeldRolls_Hold(&self->held, pins)) {
+        GameActor_PublishHeld(self, HeldRolls_Newest(&self->held), outbox);
     } else {
-        GameActor_Hold(self, pins, outbox);
+        GameActor_PublishLost(self, outbox);
     }
 }
 
@@ -185,7 +172,7 @@ static void GameActor_AnswerStats(const GameActor *self, const Message *message,
 {
     StatsPayload *stats = Outbox_BeginStats(outbox, message);
     stats->not_understood = self->not_understood;
-    stats->rolls_lost = (uint16_t)(self->lost_to_full_queue + self->lost_to_full_held_list);
+    stats->rolls_lost = (uint16_t)(self->lost_to_full_queue + HeldRolls_Lost(&self->held));
     stats->rolls_held = HeldRolls_Count(&self->held);
     stats->complete_frames = GameActor_CompleteFrames(self);
     stats->total = Scorer_Score(&self->scorer);
