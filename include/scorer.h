@@ -47,6 +47,13 @@ GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events);
  * GAME_ERR_NO_SUCH_ROLL or GAME_ERR_TOO_MANY_ROLLS. */
 GameStatus Scorer_Edit(Scorer *self, const RollEdit *edit, FrameEvents *events);
 
+/* Every complete frame as it stands, in order: what a subscriber joining now is caught up on. */
+void Scorer_ReportCompleteFrames(const Scorer *self, FrameEvents *events);
+
+/* Every complete frame as reopened, not complete and 0: what starting a new game does to a
+ * subscriber's view of this one. */
+void Scorer_ReportReopened(const Scorer *self, FrameEvents *events);
+
 /* The total of the complete frames. */
 Score Scorer_Score(const Scorer *self);
 

@@ -162,15 +162,6 @@ static void GameActor_RollsLost(GameActor *self, const Message *message, Outbox 
     }
 }
 
-static uint8_t GameActor_CompleteFrames(const GameActor *self)
-{
-    uint8_t complete = 0U;
-    for (uint8_t i = 0U; i < SCORER_MAX_FRAMES; i++) {
-        complete = (uint8_t)(complete + (Scorer_Frame(&self->scorer, i).complete ? 1U : 0U));
-    }
-    return complete;
-}
-
 static void GameActor_AnswerStats(const GameActor *self, const Message *message, Outbox *outbox)
 {
     StatsPayload *stats = Outbox_BeginStats(outbox, message);
@@ -178,7 +169,9 @@ static void GameActor_AnswerStats(const GameActor *self, const Message *message,
     stats->rolls_lost = (uint16_t)(self->lost_to_full_queue + HeldRolls_Lost(&self->held));
     stats->rolls_held = HeldRolls_Count(&self->held);
     if (self->lifecycle == GAME_IN_PLAY) { /* before a game, the scorer holds no game at all */
-        stats->complete_frames = GameActor_CompleteFrames(self);
+        FrameEvents complete;
+        Scorer_ReportCompleteFrames(&self->scorer, &complete);
+        stats->complete_frames = complete.count;
         stats->total = Scorer_Score(&self->scorer);
     }
 }
@@ -196,13 +189,10 @@ static void GameActor_Answer(const GameActor *self, const Message *message, Outb
 static void GameActor_SendCompleteFrames(const GameActor *self, ActorId subscriber,
                                         Outbox *outbox)
 {
-    for (uint8_t i = 0U; i < Scorer_FramesStarted(&self->scorer); i++) {
-        const ScorerFrame frame = Scorer_Frame(&self->scorer, i);
-        if (!frame.complete) {
-            return;
-        }
-        const FrameEvent event = { (FrameNumber)(i + 1U), frame.score, true };
-        GameOutbox_FrameChanged(outbox, self->id, subscriber, &event);
+    FrameEvents complete;
+    Scorer_ReportCompleteFrames(&self->scorer, &complete);
+    for (uint8_t e = 0U; e < complete.count; e++) {
+        GameOutbox_FrameChanged(outbox, self->id, subscriber, &complete.events[e]);
     }
 }
 
@@ -275,17 +265,11 @@ static bool GameActor_IsPlayingAGame(const GameActor *self)
  * a subscriber's view. None before the first game. */
 static void GameActor_ReopenEveryFrame(const GameActor *self, FrameEvents *reopened)
 {
-    reopened->count = 0U;
     if (self->lifecycle != GAME_IN_PLAY) {
+        reopened->count = 0U;
         return;
     }
-    for (uint8_t i = 0U; i < SCORER_MAX_FRAMES; i++) {
-        if (Scorer_Frame(&self->scorer, i).complete) {
-            const FrameEvent event = { (FrameNumber)(i + 1U), 0U, false };
-            reopened->events[reopened->count] = event;
-            reopened->count++;
-        }
-    }
+    Scorer_ReportReopened(&self->scorer, reopened);
 }
 
 static void GameActor_NewGame(GameActor *self, const Message *message, Outbox *outbox)

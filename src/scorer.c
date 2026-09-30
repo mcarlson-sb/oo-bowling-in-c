@@ -315,6 +315,19 @@ GameStatus Scorer_Roll(Scorer *self, Pins pins, FrameEvents *events)
     return GAME_OK;
 }
 
+void Scorer_ReportCompleteFrames(const Scorer *self, FrameEvents *events)
+{
+    FrameEvents_Clear(events);
+    const Lane lane = Scorer_Lane(self);
+    Lane_ReportComplete(&lane, 0U, Lane_CountCompleteFrames(&lane, self->ball_count), events);
+}
+
+void Scorer_ReportReopened(const Scorer *self, FrameEvents *events)
+{
+    FrameEvents_Clear(events);
+    FrameEvents_AddReopened(events, 0U, Scorer_CountCompleteFrames(self));
+}
+
 static Score Lane_TotalOfFirstFrames(const Lane *lane, uint8_t frames)
 {
     Score total = 0U;
