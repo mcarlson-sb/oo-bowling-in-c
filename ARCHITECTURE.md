@@ -23,9 +23,12 @@ reasons, with the measurements, are in [RTOS_ACTOR.md](RTOS_ACTOR.md).
  |      |                         |                         |                        |
  |      |  Scorer (a value)       |  FrameBoard (a value)   |  FrameBoard            |
  |      |  roll_edit              |                         |                        |
+ |      |  HeldRolls, Subscribers |                         |                        |
+ |      |  (values)               |                         |                        |
  |  outbox: replies, NOT_UNDERSTOOD, shared by every kind                            |
  +------------------------------------------------------------------------------------+
- include/  the protocol (message.h, outbox.h), the scorer, each actor's functions
+ include/  the vocabulary (rules.h), the protocol (message.h, outbox.h), the scorer, each actor's
+           functions: the protocol and the observers depend on the vocabulary, not the scorer
 ```
 
 The core knows nothing of FreeRTOS. It takes a message and an outbox, and writes what it sends
@@ -86,7 +89,7 @@ can see it; everywhere else it is an incomplete type.
 
 | Actor | Its state | Bytes |
 |---|---|---|
-| Game | Its id; its lifecycle (awaiting rules, or in play); a `Scorer` value (the rules, the longest game, the balls); its subscribers' ids; the held rolls and why the first was refused; lost counts; a not-understood count | 96 |
+| Game | Its id; its lifecycle (awaiting rules, or in play); a `Scorer` value (the rules, the longest game, the balls); its subscribers' ids (a `Subscribers` value); the held rolls and why the first was refused (a `HeldRolls` value); lost counts; a not-understood count | 96 |
 | Scoreboard | Its id, a `FrameBoard` (each frame's score and whether it is complete), a not-understood count | 34 |
 | Running average | The same as a scoreboard; only its answer differs | 34 |
 
@@ -135,3 +138,5 @@ switch on the kind. A painted stack cross-checks the budget, measuring 1583 byte
 | `scoreboard_actor_test.cpp`, `running_average_test.cpp` | The two observer kinds, by messages alone |
 | `game_shell_test.cpp` | On the POSIX port: the queues, the interrupt, lost and dropped messages, ordering, the painted stack, and the rebinding proof (the same game and sender, with a scoreboard, an average or a recording double at the id) |
 | `actor_state_is_hidden` | A compile that must fail: allocating an actor with only `include/` on the path |
+| `protocol_is_free_of_the_scorer` | A compile that must fail: naming the scorer's type with only the protocol's and the observers' headers included |
+| `protocol_test.cpp` | What the protocol promises of every kind: each answers QUERY_STATS, in any state |
