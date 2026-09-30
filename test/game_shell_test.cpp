@@ -563,3 +563,11 @@ TEST(GameShellObserverTest, should_drop_nothing_of_the_games_worst_burst_to_two_
     ASSERT_EQ(pdPASS, s_received);
     EXPECT_EQ(0U, s_dropped_after);
 }
+
+TEST(GameShellObserverDeathTest, should_refuse_to_start_observers_that_do_not_outrank_the_game)
+{
+    /* The observers' mailbox of 4 takes a game's bursts only because they preempt the game after
+     * every post (the test above). Level with it or below it, their backlog is bounded only by how
+     * long the game runs, so the shell stops rather than start that way. */
+    EXPECT_DEATH(GameShell_Start(kGamePriority, kGamePriority), "must outrank every game");
+}

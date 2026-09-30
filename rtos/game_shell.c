@@ -4,6 +4,8 @@
 
 #include "task.h"
 
+#include "fault.h"
+
 #include "game_shell_ports.h"
 #include "posix_stack.h"
 #include "game_actor_state.h"
@@ -244,8 +246,23 @@ static void GameShell_StartTheObserversTask(GameShell *self, UBaseType_t priorit
                         GAME_SHELL_OBSERVER_MOST_SENT, priority);
 }
 
+/* The observers share one mailbox of GAME_SHELL_MAILBOX, and a game sends up to
+ * GAME_OUTBOX_CAPACITY for one message, with no wait. Above every game, the observers' task
+ * preempts it after each post, so the mailbox never holds more than one of its events. Level
+ * with a game or below it, it would hold everything the game sends until the game blocks, which
+ * only a busy period bounds. The price is deadline order: an observer's work delays a game. */
+static void GameShell_RequireObserversOutrank(UBaseType_t game_priority,
+                                              UBaseType_t observer_priority)
+{
+    if (observer_priority <= game_priority) {
+        Fault_Stop("GameShell: the observers' task must outrank every game's, or a game's burst "
+                   "overflows their mailbox");
+    }
+}
+
 void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
 {
+    GameShell_RequireObserversOutrank(game_priority, observer_priority);
     GameShell *self = &s_shell;
     for (uint8_t id = 0U; id < GAME_SHELL_ACTORS; id++) {
         self->routes[id] = s_no_route;
