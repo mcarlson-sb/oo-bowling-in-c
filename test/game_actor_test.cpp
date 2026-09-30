@@ -998,3 +998,12 @@ TEST(GameActorPracticeTest, should_tell_no_loss_when_a_practice_starts_with_noth
     Send(&actor, PracticeGameRequest(2U, rules::kTenPin), &outbox);
     EXPECT_EQ((std::vector<int>{}), LostEventsIn(outbox));
 }
+
+TEST(GameActorPracticeTest, should_refuse_to_end_a_practice_that_isnt_going_on)
+{
+    GameActor actor = MakeActor(rules::kTenPin); /* in play, no practice */
+    TestOutbox outbox;
+    Send(&actor, EndPracticeRequest(1U), &outbox);
+    EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
+    EXPECT_EQ(GAME_ERR_NOT_IN_PRACTICE, outbox.items[0].payload.reply.status);
+}
