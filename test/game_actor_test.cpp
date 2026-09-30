@@ -7,6 +7,7 @@
 #include "test_outbox.h"
 
 #include <algorithm>
+#include <cstring>
 #include <initializer_list>
 #include <vector>
 
@@ -869,4 +870,16 @@ TEST(GameActorTest, should_count_in_its_statistics_the_rolls_lost_to_the_pinsett
     Send(&actor, StatsQuery(9U), &outbox);
     EXPECT_EQ(3U, outbox.items[0].payload.stats.rolls_lost);
     EXPECT_EQ(30U, outbox.items[0].payload.stats.rolls_held);
+}
+
+TEST(GameActorLifecycleTest, should_answer_no_frames_and_no_total_before_a_game_whatever_memory_it_starts_in)
+{
+    /* Before its first NEW_GAME, the scorer has never been started: nothing in it is a game. */
+    GameActor actor;
+    std::memset(&actor, 0xFF, sizeof(actor));
+    GameActor_Init(&actor, kGame);
+    TestOutbox outbox;
+    Send(&actor, StatsQuery(1U), &outbox);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.complete_frames);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.total);
 }

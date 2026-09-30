@@ -177,8 +177,10 @@ static void GameActor_AnswerStats(const GameActor *self, const Message *message,
     stats->not_understood = self->not_understood;
     stats->rolls_lost = (uint16_t)(self->lost_to_full_queue + HeldRolls_Lost(&self->held));
     stats->rolls_held = HeldRolls_Count(&self->held);
-    stats->complete_frames = GameActor_CompleteFrames(self);
-    stats->total = Scorer_Score(&self->scorer);
+    if (self->lifecycle == GAME_IN_PLAY) { /* before a game, the scorer holds no game at all */
+        stats->complete_frames = GameActor_CompleteFrames(self);
+        stats->total = Scorer_Score(&self->scorer);
+    }
 }
 
 /* A question about the game: its score, or its statistics. */
