@@ -22,14 +22,21 @@ static void GameOutbox_FrameChanged(Outbox *outbox, ActorId from, ActorId to,
     Outbox_Next(outbox, Envelope_Event(MSG_FRAME_CHANGED, from, to))->payload.frame = *frame;
 }
 
+/* An event from the game, for its subscribers to be told. */
+static Message GameActor_Event(const GameActor *self, Selector selector)
+{
+    Message event;
+    event.envelope = Envelope_Event(selector, self->id, ACTOR_ID_NONE);
+    return event;
+}
+
 static void GameActor_Publish(const GameActor *self, const FrameEvents *events,
                               Outbox *outbox)
 {
-    for (uint8_t s = 0U; s < Subscribers_Count(&self->subscribers); s++) {
-        for (uint8_t e = 0U; e < events->count; e++) {
-            GameOutbox_FrameChanged(outbox, self->id, Subscribers_At(&self->subscribers, s),
-                                    &events->events[e]);
-        }
+    for (uint8_t e = 0U; e < events->count; e++) {
+        Message event = GameActor_Event(self, MSG_FRAME_CHANGED);
+        event.payload.frame = events->events[e];
+        Subscribers_Tell(&self->subscribers, outbox, &event);
     }
 }
 
@@ -40,24 +47,20 @@ static RollNumber GameActor_HeldBallNumber(const GameActor *self, uint8_t index)
 
 static void GameActor_PublishHeld(const GameActor *self, uint8_t index, Outbox *outbox)
 {
-    for (uint8_t s = 0U; s < Subscribers_Count(&self->subscribers); s++) {
-        const ActorId subscriber = Subscribers_At(&self->subscribers, s);
-        Message *out = Outbox_Next(outbox, Envelope_Event(MSG_ROLL_HELD, self->id, subscriber));
-        out->payload.roll_held.pins = HeldRolls_PinsAt(&self->held, index);
-        out->payload.roll_held.position = GameActor_HeldBallNumber(self, index);
-        out->payload.roll_held.held = HeldRolls_Count(&self->held);
-        out->payload.roll_held.status = HeldRolls_WhyFirstRefused(&self->held);
-    }
+    Message event = GameActor_Event(self, MSG_ROLL_HELD);
+    event.payload.roll_held.pins = HeldRolls_PinsAt(&self->held, index);
+    event.payload.roll_held.position = GameActor_HeldBallNumber(self, index);
+    event.payload.roll_held.held = HeldRolls_Count(&self->held);
+    event.payload.roll_held.status = HeldRolls_WhyFirstRefused(&self->held);
+    Subscribers_Tell(&self->subscribers, outbox, &event);
 }
 
 static void GameActor_PublishLost(const GameActor *self, Outbox *outbox)
 {
-    for (uint8_t s = 0U; s < Subscribers_Count(&self->subscribers); s++) {
-        const ActorId subscriber = Subscribers_At(&self->subscribers, s);
-        Message *out = Outbox_Next(outbox, Envelope_Event(MSG_ROLLS_LOST, self->id, subscriber));
-        out->payload.rolls_lost.lost =
-            (uint16_t)(self->lost_to_full_queue + HeldRolls_Lost(&self->held));
-    }
+    Message event = GameActor_Event(self, MSG_ROLLS_LOST);
+    event.payload.rolls_lost.lost =
+        (uint16_t)(self->lost_to_full_queue + HeldRolls_Lost(&self->held));
+    Subscribers_Tell(&self->subscribers, outbox, &event);
 }
 
 static void GameActor_HoldOrLose(GameActor *self, Pins pins, Outbox *outbox)

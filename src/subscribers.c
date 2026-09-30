@@ -10,14 +10,13 @@ bool Subscribers_IsFull(const Subscribers *self)
     return self->count == GAME_MAX_SUBSCRIBERS;
 }
 
-uint8_t Subscribers_Count(const Subscribers *self)
+void Subscribers_Tell(const Subscribers *self, Outbox *outbox, const Message *event)
 {
-    return self->count;
-}
-
-ActorId Subscribers_At(const Subscribers *self, uint8_t index)
-{
-    return self->ids[index];
+    for (uint8_t i = 0U; i < self->count; i++) {
+        Envelope envelope = event->envelope;
+        envelope.to = self->ids[i];
+        Outbox_Next(outbox, envelope)->payload = event->payload;
+    }
 }
 
 void Subscribers_Add(Subscribers *self, ActorId id)

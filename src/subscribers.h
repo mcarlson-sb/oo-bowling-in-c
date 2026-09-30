@@ -9,6 +9,7 @@
 
 #include "actor_id.h"
 #include "game_actor.h"
+#include "outbox.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,12 +24,10 @@ void Subscribers_Init(Subscribers *self);
 
 bool Subscribers_IsFull(const Subscribers *self);
 
-uint8_t Subscribers_Count(const Subscribers *self);
-
-/* A subscriber's id, by index, 0 up to the count. */
-ActorId Subscribers_At(const Subscribers *self, uint8_t index);
-
 void Subscribers_Add(Subscribers *self, ActorId id);
+
+/* A copy of `event` to each subscriber, addressed to it. */
+void Subscribers_Tell(const Subscribers *self, Outbox *outbox, const Message *event);
 
 /* False, changing nothing, if id isn't one of them. */
 bool Subscribers_Remove(Subscribers *self, ActorId id);
