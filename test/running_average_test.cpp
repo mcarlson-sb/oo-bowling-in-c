@@ -137,3 +137,19 @@ TEST(RunningAverageTest, should_take_the_rest_of_what_a_game_tells_subscribers_i
     EXPECT_EQ(0U, outbox.count);
     EXPECT_EQ(0U, average.not_understood);
 }
+
+TEST(RunningAverageTest, should_answer_its_statistics_with_the_facts_behind_its_average)
+{
+    /* 19 over 2 frames: the answer rounds to 9, the facts don't. */
+    Message ask = Query(4U);
+    ask.envelope.selector = MSG_QUERY_STATS;
+    RunningAverage average = MakeAverage();
+    const TestOutbox outbox =
+        Send(&average, {FrameChanged(1, 7, true), FrameChanged(2, 12, true), ask});
+    ASSERT_EQ(1U, outbox.count);
+    EXPECT_EQ(MSG_STATS, outbox.items[0].envelope.selector);
+    EXPECT_EQ(4U, outbox.items[0].envelope.seq);
+    EXPECT_EQ(19U, outbox.items[0].payload.stats.total);
+    EXPECT_EQ(2U, outbox.items[0].payload.stats.complete_frames);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.not_understood);
+}
