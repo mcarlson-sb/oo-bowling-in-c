@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <initializer_list>
+#include <utility>
 #include <vector>
 
 extern "C" {
@@ -58,6 +59,8 @@ UBaseType_t s_subscriber_queue_length = OutputQueue::kMaxLength;
  * hosts a kind there. */
 ActorKind s_subscriber_kind = ACTOR_KIND_EXTERNAL;
 ActorKind s_second_subscriber_kind = ACTOR_KIND_EXTERNAL;
+/* More hosted observers, for the tests that ask for them: an id and its kind each. */
+std::vector<std::pair<ActorId, ActorKind>> s_more_observers;
 UBaseType_t s_observer_priority = kObserverPriority;
 
 void BindOrHost(ActorId id, ActorKind kind, QueueHandle_t queue)
@@ -151,6 +154,9 @@ void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
     }
     BindOrHost(kSubscriber, s_subscriber_kind, s_subscriber.handle);
     BindOrHost(kSecondSubscriber, s_second_subscriber_kind, s_second_subscriber.handle);
+    for (const auto &observer : s_more_observers) {
+        BindOrHost(observer.first, observer.second, nullptr);
+    }
     s_interrupt = xTaskCreateStatic(&InterruptTask, "interrupt", configMINIMAL_STACK_SIZE,
                                     nullptr, kInterruptPriority, s_interrupt_stack,
                                     &s_interrupt_task);
@@ -642,4 +648,66 @@ TEST(GameShellObserverDeathTest, should_refuse_a_second_lane_the_observers_do_no
             GameShell_HostGame(kSecondLane, kObserverPriority);
         },
         "must outrank every game");
+}
+
+namespace {
+
+Message SubscribeTo(ActorId lane, ActorId subscriber, RequestSeq seq)
+{
+    Message message = {};
+    message.envelope.selector = MSG_SUBSCRIBE;
+    message.envelope.from = subscriber;
+    message.envelope.to = lane;
+    message.envelope.seq = seq;
+    return message;
+}
+
+/* Lane 2's own scoreboard and running average. */
+constexpr ActorId kSecondLaneBoard = 7U;
+constexpr ActorId kSecondLaneAverage = 8U;
+
+Message s_lane_answers[4];
+
+/* A scoreboard and a running average per lane, each subscribed to its own: lane 1's 3, 4 then
+ * 5, 2 (7 and 7), and lane 2's 3, 3, 3 (9). Each observer is then asked QUERY_SCORE. */
+void AScoreboardAndAnAveragePerLane()
+{
+    RequestSeq seq = 1U;
+    (void)Ask(NewGameAt(kSecondLane, seq++, rules::kCandlepin));
+    const Message subscriptions[] = {SubscribeTo(GAME_SHELL_GAME_ID, kSubscriber, seq++),
+                                     SubscribeTo(GAME_SHELL_GAME_ID, kSecondSubscriber, seq++),
+                                     SubscribeTo(kSecondLane, kSecondLaneBoard, seq++),
+                                     SubscribeTo(kSecondLane, kSecondLaneAverage, seq++)};
+    for (const Message &subscription : subscriptions) {
+        (void)GameShell_Send(&subscription, kPatience);
+    }
+    for (const Pins pins : std::initializer_list<Pins>{3U, 4U, 5U, 2U}) {
+        (void)Ask(RollRequest(seq++, pins));
+    }
+    for (int ball = 0; ball < 3; ball++) {
+        (void)Ask(ToLane(kSecondLane, RollRequest(seq++, 3U)));
+    }
+    const ActorId observers[] = {kSubscriber, kSecondSubscriber, kSecondLaneBoard,
+                                 kSecondLaneAverage};
+    for (int i = 0; i < 4; i++) {
+        s_lane_answers[i] = Ask(QueryTo(observers[i], seq++));
+    }
+}
+
+} // namespace
+
+TEST(GameShellLanesTest, should_keep_each_lanes_frames_apart_with_an_observer_instance_per_lane)
+{
+    /* One scoreboard of both lanes answered 9, not 16: lane 2's frame 1 overwrote lane 1's,
+     * as predicted. An instance per lane keeps them apart, and the observers are unchanged. */
+    s_second_lane = true;
+    s_subscriber_kind = ACTOR_KIND_SCOREBOARD;
+    s_second_subscriber_kind = ACTOR_KIND_RUNNING_AVERAGE;
+    s_more_observers = {{kSecondLaneBoard, ACTOR_KIND_SCOREBOARD},
+                        {kSecondLaneAverage, ACTOR_KIND_RUNNING_AVERAGE}};
+    RunClient(&AScoreboardAndAnAveragePerLane);
+    EXPECT_EQ(14U, s_lane_answers[0].payload.reply.score); /* lane 1's total: 7 + 7 */
+    EXPECT_EQ(7U, s_lane_answers[1].payload.reply.score);  /* lane 1's average */
+    EXPECT_EQ(9U, s_lane_answers[2].payload.reply.score);  /* lane 2's total */
+    EXPECT_EQ(9U, s_lane_answers[3].payload.reply.score);  /* lane 2's average */
 }

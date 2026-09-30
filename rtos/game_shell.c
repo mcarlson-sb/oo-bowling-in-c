@@ -19,8 +19,8 @@
 /* The instances of each kind the shell can host. Each game has a task of its own; the observers
  * share one. */
 #define GAME_SHELL_GAMES 2U
-#define GAME_SHELL_SCOREBOARDS 1U
-#define GAME_SHELL_RUNNING_AVERAGES 1U
+#define GAME_SHELL_SCOREBOARDS 2U
+#define GAME_SHELL_RUNNING_AVERAGES 2U
 
 /* The most one message makes an observer send: the observers' task's outbox holds that. */
 #define GAME_SHELL_OBSERVER_MOST_SENT 1U
