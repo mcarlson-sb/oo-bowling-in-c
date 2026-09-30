@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "bowling_types.h"
+#include "scorer.h"
 
 bool RollEdit_IsWithinBalls(const RollEdit *edit, uint8_t ball_count);
 
