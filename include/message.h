@@ -145,8 +145,8 @@ Envelope Envelope_ReplyTo(const Envelope *request, Selector selector);
  * who can't hear it, nor if it is a NOT_UNDERSTOOD itself, which two kinds would echo. */
 bool Envelope_WantsNotUnderstood(const Envelope *request);
 
-/* A selector is an enum any sender can fill in: only one of the protocol's indexes a kind's
- * protocol table. */
+/* Checks a selector before it indexes a kind's protocol table: a sender can fill the enum with
+ * any value, and only the protocol's own are in the table. */
 static inline bool Selector_IsInProtocol(Selector selector)
 {
     return (unsigned)selector < MSG_SELECTOR_COUNT;

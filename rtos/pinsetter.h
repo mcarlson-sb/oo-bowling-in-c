@@ -36,8 +36,8 @@ typedef struct {
 /* Before the scheduler starts: feeding the game at `game`, hosted by `task`, with nothing lost. */
 void Pinsetter_Start(Pinsetter *self, ActorId game, TaskHandle_t task);
 
-/* For `task`, if it hosts the pinsetter's game: a roll, else the count of those lost, as a message
- * to the game. False if nothing waits, or for any other task. */
+/* Gives `task`, if it hosts the pinsetter's game, the next roll, or else the count of those lost,
+ * as a message to the game. Returns false if neither waits, or for any other task. */
 bool Pinsetter_Take(Pinsetter *self, TaskHandle_t task, Message *message);
 
 /* From the interrupt: a roll counted. The newest is the one lost to a full queue. */

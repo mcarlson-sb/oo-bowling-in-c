@@ -26,10 +26,10 @@ bool Subscribers_IsFull(const Subscribers *self);
 
 void Subscribers_Add(Subscribers *self, ActorId id);
 
-/* A copy of `event` to each subscriber, addressed to it. */
+/* Sends a copy of `event` to each subscriber, addressed to it. */
 void Subscribers_Tell(const Subscribers *self, Outbox *outbox, const Message *event);
 
-/* False, changing nothing, if id isn't one of them. */
+/* Removes `id`, or returns false, changing nothing, if it isn't one of them. */
 bool Subscribers_Remove(Subscribers *self, ActorId id);
 
 #ifdef __cplusplus

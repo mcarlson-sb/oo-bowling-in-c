@@ -20,7 +20,7 @@ typedef struct {
 
 void FrameBoard_Init(FrameBoard *self);
 
-/* A frame's news. A frame number outside those kept is ignored. */
+/* Takes in a frame's news, and ignores a frame number outside those kept. */
 void FrameBoard_Hear(FrameBoard *self, const FrameEvent *frame);
 
 /* The total of the complete frames. */

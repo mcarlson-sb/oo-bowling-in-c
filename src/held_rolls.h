@@ -33,13 +33,14 @@ Pins HeldRolls_Oldest(const HeldRolls *self);
 
 uint8_t HeldRolls_NewestIndex(const HeldRolls *self);
 
-/* The roll at `index`, from the oldest, 0, as its subscribers hear of it: its pins, the ball it
- * would be, counting the oldest as `first_ball_number`, how many are held, and why the oldest was
- * refused. */
+/* Describes the roll at `index`, the oldest being 0, as its subscribers hear of it: its pins, the
+ * ball it would be when the oldest would be `first_ball_number`, how many are held, and why the
+ * oldest was refused. */
 RollHeldPayload HeldRolls_Report(const HeldRolls *self, uint8_t index,
                                  RollNumber first_ball_number);
 
-/* Holds the roll, newest, or counts it lost if there's no room: false then. */
+/* Holds the roll as the newest, and returns true; with no room, counts it lost and returns
+ * false. */
 bool HeldRolls_Hold(HeldRolls *self, Pins pins);
 
 /* The rolls there was no room to hold, so far. */
