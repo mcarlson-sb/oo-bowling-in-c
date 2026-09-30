@@ -971,3 +971,20 @@ TEST(GameActorPracticeTest, should_count_the_pinsetters_rolls_in_practice_and_ne
     EXPECT_EQ(0U, outbox.items[0].payload.stats.total);
     EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
 }
+
+TEST(GameActorPracticeTest, should_count_the_rolls_held_before_a_practice_lost_as_rolls_on_a_dead_lane)
+{
+    /* Rolls between games are someone rolling on a dead lane: a practice doesn't play them. */
+    GameActor actor = MakeActor(rules::kTenPin);
+    TestOutbox outbox;
+    Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
+    BowlAGutterGame(&actor);
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    Send(&actor, PinsetterRoll(4U), &outbox); /* both held: the game is over */
+    Send(&actor, PracticeGameRequest(2U, rules::kTenPin), &outbox);
+    EXPECT_EQ((std::vector<int>{2}), LostEventsIn(outbox));
+    Send(&actor, StatsQuery(3U), &outbox);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
+    EXPECT_EQ(2U, outbox.items[0].payload.stats.rolls_lost);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.total);
+}

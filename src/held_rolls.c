@@ -55,6 +55,12 @@ void HeldRolls_RefuseFirst(HeldRolls *self, GameStatus why)
     self->first_refused_for = why;
 }
 
+void HeldRolls_LoseAll(HeldRolls *self)
+{
+    self->lost = (uint16_t)(self->lost + self->count);
+    self->count = 0U;
+}
+
 void HeldRolls_DropFirst(HeldRolls *self)
 {
     self->count--;

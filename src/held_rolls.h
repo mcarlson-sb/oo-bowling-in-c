@@ -50,6 +50,9 @@ void HeldRolls_RefuseFirst(HeldRolls *self, GameStatus why);
 
 void HeldRolls_DropFirst(HeldRolls *self);
 
+/* Drops every held roll, and counts them lost. */
+void HeldRolls_LoseAll(HeldRolls *self);
+
 #ifdef __cplusplus
 }
 #endif

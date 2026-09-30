@@ -225,6 +225,14 @@ static void GameActor_ReopenTheOldGamesFrames(const GameActor *self, FrameEvents
     Scorer_ReportReopened(&self->scorer, reopened);
 }
 
+/* The rolls held since the last game were someone rolling on a dead lane: a practice doesn't
+ * play them. */
+static void GameActor_LoseTheRollsOnADeadLane(GameActor *self, Outbox *outbox)
+{
+    HeldRolls_LoseAll(&self->held);
+    GameActor_PublishLost(self, outbox);
+}
+
 /* Refused, changing nothing, if the scorer can't play the rules. */
 static GameStatus GameActor_StartNextGame(GameActor *self, const NewGamePayload *new_game,
                                           Outbox *outbox)
@@ -238,7 +246,11 @@ static GameStatus GameActor_StartNextGame(GameActor *self, const NewGamePayload 
     self->lifecycle = new_game->practice ? GAME_PRACTICE : GAME_IN_PLAY;
     self->practice_balls = 0U;
     GameActor_Publish(self, &reopened, outbox);
-    GameActor_LetHeldRollsThrough(self, outbox);
+    if (new_game->practice) {
+        GameActor_LoseTheRollsOnADeadLane(self, outbox);
+    } else {
+        GameActor_LetHeldRollsThrough(self, outbox);
+    }
     return GAME_OK;
 }
 
