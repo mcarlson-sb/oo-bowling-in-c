@@ -126,7 +126,7 @@ if(OO_C_RTOS)
     # so it builds without the library's warnings.
     FetchContent_Declare(
         freertos_kernel
-        URL https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/V11.1.0.tar.gz
+        URL https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/V11.2.0.tar.gz
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         SOURCE_SUBDIR not-its-cmake
     )

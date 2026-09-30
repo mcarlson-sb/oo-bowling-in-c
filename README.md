@@ -28,7 +28,7 @@ on the `kay-oo` and `main` branches.
 ## Build and test
 
 Needs GCC, CMake 3.20 or later, and Ninja. CMake downloads GoogleTest, and FreeRTOS-Kernel
-V11.1.0, on the first configure.
+V11.2.0, on the first configure.
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++

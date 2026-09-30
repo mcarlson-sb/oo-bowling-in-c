@@ -1440,3 +1440,43 @@ way.
 compile-time count of each kind (`GAME_SHELL_SCOREBOARDS`, `GAME_SHELL_RUNNING_AVERAGES`).
 Beyond it, hosting another is refused. Raising the count costs each extra instance's state,
 statically, whether it's used or not.
+
+### A hang in the kernel's POSIX port, and FreeRTOS V11.2.0
+
+A gate run for phase 4's two lanes hung in `build-debug`, `build-release` and `every-commit`,
+and was cancelled.
+
+**What it was.** Pinned to one CPU, 6 to 8 of the 20 RTOS tests hung in every run, and different
+ones each time, on any commit. That includes `0dad2b9`, which CI had promoted. A backtrace (gdb,
+in a run started under it) showed where:
+
+`vTaskEndScheduler → vTaskDelete → vPortCancelThread → event_signal → pthread_mutex_lock`
+
+In V11.1.0's POSIX port, `vPortCancelThread` cancels a task's thread while it waits in
+`pthread_cond_wait` on its event. A thread cancelled there takes the mutex back as it goes, and
+the port has no cleanup handler to release it. So the thread exits holding the mutex, and
+`event_signal` then waits on it forever.
+
+It's a race. Many cores make it rare; one core makes it all but certain. Phase 4 made it likelier
+by adding tasks, the observers' task and a second lane, since each is another thread to cancel.
+
+**The fix.** V11.2.0 makes each event's mutex robust (`PTHREAD_MUTEX_ROBUST`), and handles
+`EOWNERDEAD` when locking it, so the next lock recovers the mutex instead of blocking.
+- **Verified:** four runs of all 20 RTOS tests on one CPU pass, where V11.1.0 hung 6 to 8 each
+  time. The full suite passes.
+- **Stale objects, once more:** a build directory that had built V11.1.0 kept its kernel objects
+  after the upgrade. The fetched sources carry file times older than those objects, so ninja saw
+  nothing to rebuild, and the one-CPU check still hung, on V11.1.0's code. A clean build of the
+  kernel passes. CI always builds from nothing.
+- **The regression check:** CI's `build-debug` now also runs the RTOS tests pinned to one CPU,
+  and fails if the race returns.
+- **Every ctest run in CI now has a timeout per test,** so a hang fails in minutes, not after
+  ctest's default of 1500 s.
+
+**The recovery,** as CLAUDE.md prescribes: `every-commit` tests every commit since the last
+promotion, and each of them carried V11.1.0. So the line was rewritten. It was reset to the
+promoted `0dad2b9`, the upgrade was committed there, the phase 4 commits after it were
+cherry-picked on top, and the result was pushed with `--force-with-lease` against the red tip.
+
+**Host only:** this was the POSIX port's own shutdown, which a target doesn't run. But a test that
+ends the scheduler exercises it every time, which is why it surfaced here.

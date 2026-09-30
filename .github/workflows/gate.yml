@@ -38,8 +38,15 @@ jobs:
         run: cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ${{ matrix.flags }}
       - name: Build
         run: cmake --build build --parallel
+      # A timeout per test, so a hang fails in minutes, not after ctest's default of 1500 s.
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 120
+      # FreeRTOS V11.1.0's POSIX port could deadlock ending the scheduler: a task's thread
+      # cancelled in pthread_cond_wait exited holding its event's mutex. On one CPU that race is
+      # all but certain, so the RTOS tests run there too, and fail if it comes back.
+      - name: The RTOS tests on one CPU
+        if: matrix.config == 'debug'
+        run: taskset -c 0 ctest --test-dir build -R 'GameShell|Rtos' --output-on-failure --timeout 60
       # The release build's library and headers, handed to promote: the artifact it publishes is
       # the library this gate built and tested, not a rebuild.
       - name: Keep the gated release library
@@ -67,7 +74,7 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 120
 
   # The library's line coverage in a release build, at least 95%.
   coverage:
@@ -199,7 +206,7 @@ jobs:
             if ! cmake --build build --parallel; then
               echo "::error::$subject does not build"; exit 1
             fi
-            if ! ctest --test-dir build --output-on-failure; then
+            if ! ctest --test-dir build --output-on-failure --timeout 120; then
               echo "::error::$subject fails its tests"; exit 1
             fi
             echo "::endgroup::"
