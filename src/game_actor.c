@@ -236,6 +236,7 @@ static GameStatus GameActor_StartNextGame(GameActor *self, const NewGamePayload 
         return status;
     }
     self->lifecycle = new_game->practice ? GAME_PRACTICE : GAME_IN_PLAY;
+    self->practice_balls = 0U;
     GameActor_Publish(self, &reopened, outbox);
     GameActor_LetHeldRollsThrough(self, outbox);
     return GAME_OK;

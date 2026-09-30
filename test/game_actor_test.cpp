@@ -945,3 +945,16 @@ TEST(GameActorPracticeTest, should_score_the_balls_after_practice_ends_and_none_
     Send(&actor, RollRequest(4U, 4U), &outbox);
     EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
 }
+
+TEST(GameActorPracticeTest, should_start_each_new_games_practice_count_at_zero)
+{
+    GameActor actor = MakePracticingActor();
+    TestOutbox outbox;
+    Send(&actor, RollRequest(1U, 3U), &outbox);
+    Send(&actor, RollRequest(2U, 4U), &outbox);
+    Send(&actor, EndPracticeRequest(3U), &outbox);
+    BowlAGutterGame(&actor);
+    Send(&actor, PracticeGameRequest(4U, rules::kTenPin), &outbox);
+    Send(&actor, StatsQuery(5U), &outbox);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.practice_balls);
+}
