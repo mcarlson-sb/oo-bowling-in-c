@@ -176,18 +176,30 @@ static void GameShell_RequireObserversOutrankEveryGame(const GameShell *self)
     }
 }
 
-void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
+/* Every id unbound, and no instance of any kind started. */
+static void GameShell_Reset(GameShell *self)
 {
-    GameShell *self = &s_shell;
     Router_Reset(&self->router);
     self->game_count = 0U;
     self->scoreboard_count = 0U;
     self->running_average_count = 0U;
+}
+
+/* Feeding the game at GAME_SHELL_GAME_ID, woken in the task that hosts it. */
+static void GameShell_StartThePinsetter(GameShell *self)
+{
+    Pinsetter_Start(&self->pinsetter, GAME_SHELL_GAME_ID,
+                    Router_RouteTo(&self->router, GAME_SHELL_GAME_ID)->task);
+}
+
+void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
+{
+    GameShell *self = &s_shell;
+    GameShell_Reset(self);
     GameShell_StartAGame(self, GAME_SHELL_GAME_ID, game_priority);
     GameShell_StartTheObserversTask(self, observer_priority);
     GameShell_RequireObserversOutrankEveryGame(self);
-    Pinsetter_Start(&self->pinsetter, GAME_SHELL_GAME_ID,
-                    Router_RouteTo(&self->router, GAME_SHELL_GAME_ID)->task);
+    GameShell_StartThePinsetter(self);
 }
 
 static uint8_t GameShell_StartScoreboard(GameShell *self, ActorId id)
