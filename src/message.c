@@ -22,6 +22,7 @@ static const bool k_is_an_answer[MSG_SELECTOR_COUNT] = {
     [MSG_ROLLS_LOST] = true,
     [MSG_NOT_UNDERSTOOD] = true,
     [MSG_STATS] = true,
+    [MSG_CERTIFIED] = true,
 };
 
 bool Selector_IsARequest(Selector selector)

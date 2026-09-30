@@ -74,6 +74,11 @@ typedef enum {
      * until MSG_PINSETTER_UP. Manual rolls and edits still work. */
     MSG_PINSETTER_DOWN,
     MSG_PINSETTER_UP,
+    /* Locks a game the scorer says is over, with nothing held: a decision, not a fact. Once
+     * certified, changes to its balls are refused, and questions are still answered. */
+    MSG_CERTIFY,
+    /* A game was certified: to its subscribers. */
+    MSG_CERTIFIED,
     MSG_SELECTOR_COUNT
 } Selector;
 

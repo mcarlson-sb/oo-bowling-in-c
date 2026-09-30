@@ -125,8 +125,9 @@ TEST(ProtocolTest, should_have_a_game_awaiting_rules_answer_no_answer_with_no_ga
 
 TEST(ProtocolTest, should_class_every_selector_as_a_request_or_an_answer)
 {
-    const std::vector<Selector> answers = {MSG_REPLY,          MSG_FRAME_CHANGED, MSG_ROLL_HELD,
-                                           MSG_ROLLS_LOST,     MSG_NOT_UNDERSTOOD, MSG_STATS};
+    const std::vector<Selector> answers = {MSG_REPLY,      MSG_FRAME_CHANGED,  MSG_ROLL_HELD,
+                                           MSG_ROLLS_LOST, MSG_NOT_UNDERSTOOD, MSG_STATS,
+                                           MSG_CERTIFIED};
     for (int value = 0; value < static_cast<int>(MSG_SELECTOR_COUNT); value++) {
         const Selector selector = static_cast<Selector>(value);
         const bool is_an_answer =
