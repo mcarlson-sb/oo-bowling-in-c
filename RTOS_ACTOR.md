@@ -2001,3 +2001,286 @@ below.
    the pinsetter's and the manual ones. Say if you meant only the pinsetter's.
 
 **Stop.** Steps 1 and 2 end here, for your review.
+
+### Decisions at the interim stop (2026-09-30)
+
+1. **Fix the class, not only the case: the protocol never answers an answer.** Each selector is
+   classified once, in `message.c`, as a request or an answer (a reply, an event, a
+   NOT_UNDERSTOOD, statistics). Only requests are answered, by any kind in any state. A selector
+   past the protocol's end is a request.
+2. **Pinsetter down is the game's for this phase, as a flag orthogonal to the lifecycle,** not a
+   lifecycle state. It affects only the pinsetter's rolls. Resume clears it, whatever the
+   lifecycle.
+3. **Store decisions, derive facts.** Holding is a fact, so it is derived, as "over" already is.
+4. **No certification is required before the next NEW_GAME.** Certification is published to
+   subscribers as an event.
+5. **The pinsetter can go down during practice,** and resume returns to practice.
+6. **The lifecycle stays in the game through step 5.** The `become:` spike measures the other
+   shape.
+7. **The protocol's own OK status,** as a `[make-easy]`, before step 3.
+8. **Practice counts manual rolls too.**
+
+Two more, asked during step 3: **a NEW_GAME asks for practice** (a field), and **a practice
+discards the rolls held before it, counting them lost**, since "rolls outside a game or a
+practice are someone rolling on a dead lane".
+
+## Phase 5 report: a league night
+
+**What changed.**
+1. **A protocol table per state** (`k_game_protocols[state][selector]`). Every pair is written
+   out, with a row for a selector outside the protocol. An entry names an answer, a play and a
+   move, and a refusal's reason:
+   - an answer leaves the game as it is;
+   - a play changes the game's balls or counts;
+   - a move changes its lifecycle.
+2. **Store decisions, derive facts.** The lifecycle stores only decisions: awaiting rules,
+   practice, in play and certified. The table is read in a state `GameActor_State` derives, and
+   holding is one of those facts: in play, with rolls held. Whether a game is over stays the
+   scorer's to say. The pinsetter's being down is a decision too, but orthogonal: a flag that
+   changes the one meaning it affects, before the state's row is read.
+3. **The protocol never answers an answer.** `message.c` classifies each selector once, and
+   `Envelope_WantsAnAnswer`, a request from someone, is the check that NOT_UNDERSTOOD and every
+   refusal go through. The kinds need no id of their own any more: an answer is addressed from
+   the message it answers.
+4. **The protocol's own OK.** A reply's status is a `ReplyStatus`: `REPLY_OK`, every kind's
+   "done", or a game's reason for refusing.
+5. **Practice.** A NEW_GAME can ask for it. Balls in practice, manual or the pinsetter's, are
+   counted and not scored, and QUERY_STATS reports them. END_PRACTICE starts the scoring. The
+   rolls held before a practice are lost, as rolls on a dead lane.
+6. **The pinsetter down.** MSG_PINSETTER_DOWN and MSG_PINSETTER_UP, in every state. While it's
+   down, its rolls are refused and counted, and manual rolls and edits still score.
+7. **Certified.** Once the scorer says the game is over and nothing is held, MSG_CERTIFY locks
+   it. Changes to its balls are refused, the pinsetter's rolls are refused and counted, and
+   questions are still answered. The subscribers hear MSG_CERTIFIED, which every subscriber kind
+   takes in silence.
+8. **The clean-up decisions,** before the phase: a pinsetter per lane, and the renames.
+
+**The hypotheses, tested.** These were said before step 1 (see the phase 5 section above):
+
+| Prediction | Evidence | Held? |
+|---|---|---|
+| A protocol table per state replaces the lifecycle's conditionals | No function in the game asks the lifecycle what to do with a message. The one read of it is `GameActor_State`, and the conditionals left ask facts: is the game over, is anything held, did the new game ask for practice. Five states and a flag, and not one switch on the lifecycle | **Held** |
+| Every (state, selector) pair gets an explicit answer | 5 states of 23 rows, and one entry for the flag. Writing every pair out found the hazard below, which no metric shows | **Held** |
+| The largest game function's complexity falls, even with four or five states | 10, then 9 at step 1, then 10 again at step 5, `GameActor_MakeThePlay`. It stays within the limit only because the dispatch split in three, and each switch grows with the plays and moves, not with the states | **Held for the states, not for the function.** Five states cost nothing in complexity; the plays they need cost the usual one case each |
+| Tables pay off where one selector means different things in three or more states | The pinsetter's roll means five things in five states, and a sixth while the machine is down. CERTIFY answers five ways, DISCARD_HELD four, ROLL four. Each new state was a row, with its meanings named, not a new branch in every handler | **Held** (see the threshold below) |
+| `become:` pays only if states need different data | The spike, below: it doesn't pay here, and the reason is static allocation, not the data | **Held**, with the reason sharpened |
+| Expected to fail: pinsetter-down and holding stay separate states | Neither is a lifecycle state now. Holding is derived, and down is an orthogonal flag, so there was no pair of states to merge | **Moot, by your decisions 2 and 3.** Their data never overlapped: the held list is the game's, and "down" is the lane's |
+
+**The state machine, as a table.** The states run down the side, and the requests across the
+top. Every answer (a reply, an event, NOT_UNDERSTOOD, statistics, MSG_CERTIFIED) is counted as
+not understood, and never answered, in every state but one. That one is before a game, where the
+table's rows say "no game" and the class rule silences them (see below).
+
+| | NEW_GAME | ROLL | PINSETTER_ROLL | EDIT | DISCARD_HELD | END_PRACTICE | CERTIFY |
+|---|---|---|---|---|---|---|---|
+| **Awaiting rules** | start | no game | held for the game | no game | no game | no game | no game |
+| **Practice** | refused, in progress | practice ball | practice ball | edit (no balls: no such roll) | nothing held | play starts | not over |
+| **In play** | refused, in progress (a new game once over) | scored | scored, or held if refused | edit, then let held rolls through | nothing held | not in practice | certified if over, else not over |
+| **Holding** (derived) | refused, in progress (a new game once over) | scored | held behind the others | edit, then let held rolls through | discard, then let through | not in practice | rolls held |
+| **Certified** | start the next game | refused, certified | refused and counted | refused, certified | refused, certified | not in practice | refused, certified |
+| **Pinsetter down** (a flag, in any state) | as the state | as the state | refused and counted | as the state | as the state | as the state | as the state |
+
+In every state: QUERY_FIGURE and QUERY_STATS are answered, except the figure before a game, which
+is "no game". SUBSCRIBE and UNSUBSCRIBE work once there's a game. ROLLS_LOST is heard.
+PINSETTER_DOWN and PINSETTER_UP set the flag.
+
+**Whether the threshold held.** It did. The case against tables was a switch per handler on the
+state. That holds while a selector means one or two things, and the lifecycle had two states
+before this phase. The pinsetter's roll now means six things. As a switch, that would be one
+switch in the pinsetter handler, and one in ROLL's, EDIT's, DISCARD's and CERTIFY's: five switches
+on the same state, the Duplicate Switch Case the constitution flags. Every new state would be one
+more case in each. As a table, each state is one row that names what each selector means there,
+and certified was 23 entries and two plays. The evidence apart from the metrics is the hazard: the
+table put "no game" next to REPLY and NOT_UNDERSTOOD, where a reader could see it. In the old
+chain it was an `else`.
+
+**Whether the split into answers, plays and moves follows command and query.** Only partly, and
+the complexity limit drew the first line. One switch over every request would have had 13 cases
+at step 1, past ENG-3.1's 10. The answers came out first, because they leave the game as it is:
+the figure, the statistics, the refusals and NOT_UNDERSTOOD, which are queries. But the answers
+also include SUBSCRIBE and UNSUBSCRIBE, which are commands on the subscriber list. And the plays
+include HEAR_LOST_REPORT and the practice count, which are commands on counters, not on balls.
+The third split, the moves, did follow a real line: everything that changes the lifecycle,
+NEW_GAME, END_PRACTICE, CERTIFY, and the pinsetter's down and up. A split by command and query
+would put the subscription with the plays, and make the answers pure queries and refusals. It
+would cost nothing today, and is recorded, not done.
+
+**Found by writing every pair out: two games could answer each other forever.** Before its first
+game, a game answered replies, events and NOT_UNDERSTOOD with "no game". So a stray reply between
+it and a game in play started an exchange of answers with no end. No metric showed it. Writing the
+awaiting-rules row out, one selector at a time, did. It was fixed as a class (decision 1). A
+two-game test exchanges the stray reply and ends, and a game awaiting rules answers no answer.
+
+**Whether `become:` paid: no.** The spike made the certified game a kind of its own. It was a
+read-only record at the game's id, which the game became on CERTIFY and which became the game again
+on the next NEW_GAME. It worked end to end: certify, a refused roll, the figure answered, a new
+game started. Measured against step 5, then reverted:
+
+| | Step 5 | The spike |
+|---|---|---|
+| NLOC | 2,141 | 2,357 (+216) |
+| Functions | 192 | 207 |
+| Highest cyclomatic complexity (limit 10) | 10 | 11, `CertifiedGame_Perform`: over the limit, a split away from passing |
+| `game_actor.c`, NLOC / `case` labels | 546 / 22 | 559 / 23: it grew, handing the record over and taking it back |
+| The shell's dispatch cases | 5 | 6 |
+| RAM, the shell's (two lanes) | 56,128 | 56,160: the game's 104 bytes stay allocated while it's certified |
+| Tables, ROM | 1,680 bytes | 1,656 |
+| Tests of the certified behavior | 8, of the game alone | none of one actor: becoming happens in the host, so they need the shell, or a split into "asks to become" and the new kind |
+
+Why it lost:
+- **Static allocation keeps the data it meant to shed.** The certified record is 16 bytes. But
+  the game's instance, 104 bytes with its scorer, must stay: the next NEW_GAME becomes the game
+  again, and a static pool is sized for every lane in play at once. Different data per state
+  saves RAM only with a heap, or a pool shared across lanes and sized below the worst case. Power
+  of Ten rules out the one, and worst-case sizing the other.
+- **`become:` is live rebinding.** Phase 4 deferred that, because a sender in another task reads
+  the route without a lock. The spike rebinds the kind and the instance as two writes, so a
+  concurrent sender can read the new kind with the old instance. Making it safe means packing both
+  into one atomic word, or routing every send through one task. That is phase 4's open question,
+  back again.
+- **The handover is the cost.** The record copies the statistics, the subscribers and the flag
+  out, and back again when it becomes a game. `Subscribers_Count` and `Subscribers_At`, which the
+  clean-up pass deleted, had to come back for it. Subscribing while certified needs a second copy
+  of the subscriber logic.
+- **The complexity doesn't go away, it moves.** The certified kind needs its own table and
+  switch, 10 cases, and the game keeps the certify move plus a new take-back.
+
+**When it would pay:** with a heap, or with a pool of records shared across many lanes. Or with a
+state whose data is truly disjoint from the game's and never comes back: a record kept forever,
+not a game that returns. A certified game archived to a league's records is that case. It is a new
+kind composing by message, the center-wide figure's shape from phase 4, not `become:`.
+
+**Metrics** (the baseline is 27b7567, before phase 5; phase 4 is at 77db082):
+
+| | Phase 4 | Baseline | Interim (step 2) | Phase 5 |
+|---|---|---|---|---|
+| Tests | 149 | 152 | 152 | 179 |
+| NLOC, `src/`, `include/`, `rtos/` | 1,792 | 1,876 | 1,940 | 2,141 |
+| Functions | 165 | 182 | 184 | 192 |
+| Highest cyclomatic complexity (limit 10) | 10 | 10 | 9 | 10, `GameActor_MakeThePlay` |
+| Highest cognitive complexity (limit 7) | 5 | 5 | 5 | 5 |
+| `game_actor.c`: NLOC / functions | 385 / – | 323 / 33 | 385 / 35 | 546 / 41 |
+| `game_actor.c`: `case` labels / `if`s | – | 11 / 17 | 16 / 10 | 22 / 17 |
+| States / tables' ROM | 2 / 60 bytes | 2 / 60 | 3 / 384 | 5 and a flag / 1,680 |
+| The shell's dispatch cases | 5 | 5 | 5 | 5 |
+| Stack contract, game task, release / debug (budget 4608) | 3984 / 4320 | 4048 / 4320 | 4048 / 4336 | 4064 / 4336 |
+| The game's state / an observer's | 96 / 34 | 96 / 34 | 96 / 34 | 104 / 32 |
+| The shell's static RAM, two lanes | 55,760 | 56,120 | 56,120 | 56,128 |
+| Release line coverage | 99.1% | 99.0% | 99.0% | 99.1% |
+
+The `if`s came back to 17 with the features, but they ask different questions. At the baseline,
+five of them asked the lifecycle. Now none do: they ask whether the game is over, whether anything
+is held, whether a practice was asked for, and whether the flag is down.
+
+Phase 5 took 40 commits, this report's included: 20 `[make-change]`, 8 `[make-easy]` and 12
+`[clean-up]`. The clean-up decisions before it took 6 more.
+
+**What the change lost.**
+- **Rows are paid whether they mean anything or not.** Five states of 23 rows is 115 entries and
+  1,680 bytes of ROM, and each new selector adds five entries. Most rows repeat the one above.
+- **Three switches where there was one.** The dispatch reads cleanly, but the limit put
+  SUBSCRIBE among the answers, which a reader has to learn is not a query.
+- **A few conditionals the table can't hold.** Certify asks the scorer whether the game is over,
+  and a new game asks whether a practice was wanted. Both are facts, so it's right that they are
+  asked, but the table doesn't show them.
+- **The game's state grew by 8 bytes,** for the practice count, the flag and the refused count.
+- **Before a game, the table's rows for answers say "no game",** and the class rule silences
+  them. So they aren't counted, where every other state counts an answer it doesn't listen to.
+  The table and the behavior disagree there (below).
+
+**Surprises.**
+1. **Writing every pair found a hazard,** the echo, which the old chain's `else` hid.
+2. **The split was the complexity limit's, not the design's,** for the first cut. It took the
+   third, the moves, to find a line that meant something.
+3. **A test with no teeth.** The first practice test rolled one 7 and expected no score. One ball
+   completes no frame, so it passed without practice. A frame of 3 and 4 made it fail.
+4. **An untested reset slipped in,** the practice count set to 0 at each new game, ahead of its
+   test. It was taken out, and brought back behind a test of its own.
+5. **Holding stored went stale in one's head, not in the code.** Step 2 stored it, correctly, at
+   three places. Your rule, decisions stored and facts derived, deleted all three, and made the
+   invariant impossible to break.
+6. **The observers lost their ids.** Once addressing was entirely `message.c`'s, the only use of
+   an observer's own id went, and with it 2 bytes of each observer's state and a parameter of its
+   `Init`.
+7. **The gates build only with GCC, and clang saw what GCC didn't.** `ReplyStatus` let a
+   `GameStatus` variable convert to it implicitly. GCC's `-Wconversion` accepts that, and
+   clang's refuses it. The only clang build is mutation testing's, so the gates stayed green for
+   the 29 commits from f5e6f7d on, while mutation testing couldn't build. The first run at this
+   stop read phase 4's old report, and would have reported phase 4's score as this phase's, but
+   it had taken 13 seconds. The conversion is explicit again (7eecfe6).
+
+**Mutation feedback at the phase stop.** Debug had 490 mutants: 471 killed and 19 survived, a
+score of 96.1%, in 14 m 41 s. Release had the same 490 and the same 19, in 14 m 52 s. Phase 4 had
+96.6%. The survivors:
+- **Known classes, unchanged,** at shifted lines: `Fault_Stop`'s two, the frame board's three, the
+  held list's shift and its first refusal, and the scorer's two.
+- **Equivalent:**
+  - 42 stored in the pinsetter flag, a `bool`, reads back as false under clang, as recorded in phase
+    3;
+  - the reopened frames' count before a game, when no one can have subscribed to hear them;
+  - an out-of-range lifecycle at the end of practice, which `GameActor_State` reads as in play;
+  - `>` to `>=` in the rules' longest last frame, a `max`.
+- **Uninitialized memory only a memory sanitizer would see:** the scorer's two new reports' clears
+  of their buffer. Every caller passes a fresh local.
+- **Four real gaps, now pinned.** Three of this phase's tests read `outbox.items[0]` without
+  asserting a reply came back, and a fresh outbox's zeros read as `REPLY_OK`. So removing the reply
+  to a practice ball, an END_PRACTICE, or the pinsetter's down and up survived. The fourth was a
+  fresh game's practice count before any game. Each new assertion fails against its mutant, made by
+  hand. Three of those first failed to compile, which proved nothing, until they were rewritten to
+  compile, as phase 3 learned.
+
+**Host only; this would change on a target.** As phase 4 recorded: the stack and RAM figures, the
+control blocks, and "nothing dropped" under simulated preemption. Not host-only: the tables, the
+states, the classification, and every test of the pure core, which is all of this phase's
+behavior.
+
+**Recorded, not built.**
+- **The pinsetter owns up and down itself,** the alternative to decision 2. With a pinsetter per
+  lane, it could refuse and count at the source, and the game would need no flag. But it would
+  need an id, a mailbox and a way to answer QUERY_STATS, which reopens the held-roll question:
+  the pinsetter as an actor that sends ROLL, hears the REPLY and holds a refused roll itself.
+- **A command/query split of the dispatch:** the subscription with the plays, and the answers as
+  pure queries and refusals.
+- **The certified game as a record kept by a league,** composing by message, not `become:`.
+
+**Brought to you, with a recommendation each.**
+1. **The awaiting-rules rows for answers.** They say "no game", and the class rule silences them,
+   uncounted. I'd make them "not understood", as in every other state: counted, never answered. It's
+   a `[make-change]` of one count, and the table would then say what happens.
+2. **Rolls held before any new game, not only a practice.** Your dead-lane framing ("rolls outside
+   of a game or practice are someone rolling on a dead lane") reads as a rule for every NEW_GAME.
+   Today only a practice discards them, and a NEW_GAME without practice still plays them into
+   itself, as phase 3 decided and three tests pin. I'd make it the rule for every new game: one
+   branch goes, and the three tests change. Your call, since it reverses a decision.
+3. **A disputed ball, awaiting a manager's approval, as the next state.** This phase argues it's
+   cheap: a row of 23 entries, a move to enter it, and a move for each outcome. The table has
+   shown it can take a state. I'd take it on if a league night needs it, and not otherwise.
+4. **A clang build in the gate.** Clang caught a narrowing conversion that every gated build
+   missed, and only mutation testing, which is not a gate, builds with it. I'd add a clang debug
+   build and its tests as a gate job beside GCC's: minutes of CI, and one compiler's blind spots
+   covered by the other's.
+5. **The lifecycle in the game, or in a lane actor.** `become:` lost for reasons that apply to a
+   lane actor too. A lane actor that owns the game and forwards to it would copy messages across a
+   boundary, or share the game's memory. I'd keep the lifecycle in the game, and give a lane actor
+   only what is the lane's alone, if a feature ever brings any: a league's schedule, or a
+   center's figures.
+
+### Kay's three properties, scored again
+
+| Property | Enforced by the structure | Still convention | Overridden by Power of Ten |
+|---|---|---|---|
+| **Messaging** | As in phase 4. Now an answer is never answered, by the classification, so no two actors can trade messages without a request between them | The tests call a kind's receive function directly, standing in for the host | The scorer is a value inside the game, called |
+| **Local, protected state** | As in phase 4. An actor doesn't know its own id: the routing table does, and an answer is addressed from the message it answers | The tests include the state headers, to allocate an actor | Static allocation: the host must know each actor's size |
+| **Extreme late binding** | What a message means is the bound kind's, and now also its state's: the table is data, and a state is a row | Bindings are made at startup only. `become:`, a state as a kind at the id, needs live rebinding, which stays deferred | The kinds are a closed enum and one switch. `become:` lost to static allocation: a state's data can't be shed without a heap |
+
+**Decisions for phase 6: the QEMU target.**
+- **The figures real:** the stack contract without the host's allowances, the control blocks, and
+  the RAM of two lanes, with this phase's design.
+- **Deadline order:** an observer's worst-case handling time against the game's, on real
+  preemption. That decides whether the observers can stay above the games.
+- **The tables' ROM,** 1,680 bytes, on a target's flash, against a switch per handler, if flash
+  turns out to be the tighter budget.
+- **The burst tests,** where preemption is real.
+- **CI:** the target stage as a gate.
+
+**Stop.** Phase 5 ends here, as the brief asks.
