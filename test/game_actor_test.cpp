@@ -1251,3 +1251,18 @@ TEST(GameActorLifecycleTest, should_count_no_practice_balls_before_a_game_whatev
     Send(&actor, StatsQuery(1U), &outbox);
     EXPECT_EQ(0U, outbox.items[0].payload.stats.practice_balls);
 }
+
+TEST(GameActorLifecycleTest, should_count_an_answer_before_a_game_as_not_understood_and_never_answer_it)
+{
+    /* As in every other state: the table says so, and the class rule sees it's never answered. */
+    GameActor actor;
+    GameActor_Init(&actor, kGame);
+    TestOutbox outbox;
+    for (const Selector answer : {MSG_REPLY, MSG_FRAME_CHANGED, MSG_ROLL_HELD, MSG_NOT_UNDERSTOOD, MSG_STATS}) {
+        Message message = RollRequest(1U, 0U);
+        message.envelope.selector = answer;
+        Send(&actor, message, &outbox);
+        EXPECT_EQ(0U, outbox.count) << "selector " << answer;
+    }
+    EXPECT_EQ(5U, NotUnderstoodCount(&actor));
+}
