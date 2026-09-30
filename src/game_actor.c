@@ -13,6 +13,7 @@ void GameActor_Init(GameActor *self, ActorId id)
     HeldRolls_Init(&self->held);
     self->lost_to_full_queue = 0U;
     self->not_understood = 0U;
+    self->practice_balls = 0U;
 }
 
 static void GameOutbox_FrameChanged(Outbox *outbox, ActorId from, ActorId to,
@@ -160,6 +161,7 @@ static void GameActor_AnswerStats(const GameActor *self, const Message *message,
     stats->not_understood = self->not_understood;
     stats->rolls_lost = GameActor_RollsLostEverywhere(self);
     stats->rolls_held = HeldRolls_Count(&self->held);
+    stats->practice_balls = self->practice_balls;
     if (GameActor_HasHadAGame(self)) {
         FrameEvents complete;
         Scorer_ReportCompleteFrames(&self->scorer, &complete);
@@ -265,8 +267,9 @@ static void GameActor_AnswerNothingHeld(const Message *message, Outbox *outbox)
 }
 
 /* A ball in practice: counted, not scored. */
-static void GameActor_CountPracticeBall(const Message *message, Outbox *outbox)
+static void GameActor_CountPracticeBall(GameActor *self, const Message *message, Outbox *outbox)
 {
+    self->practice_balls++;
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
 }
 
@@ -477,7 +480,7 @@ static void GameActor_MakeThePlay(GameActor *self, GamePlay play, const Message 
         GameActor_HearLostReport(self, message, outbox);
         break;
     case GAME_COUNT_PRACTICE_BALL:
-        GameActor_CountPracticeBall(message, outbox);
+        GameActor_CountPracticeBall(self, message, outbox);
         break;
     }
 }

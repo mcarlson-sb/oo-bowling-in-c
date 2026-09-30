@@ -31,6 +31,7 @@ struct GameActor {
     HeldRolls held;
     uint16_t lost_to_full_queue;
     uint16_t not_understood;
+    uint16_t practice_balls; /* this game's */
 };
 
 #ifdef __cplusplus

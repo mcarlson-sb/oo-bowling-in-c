@@ -912,3 +912,13 @@ TEST(GameActorPracticeTest, should_not_score_a_roll_in_practice)
     EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
     EXPECT_EQ(0U, ScoreOf(&actor));
 }
+
+TEST(GameActorPracticeTest, should_count_its_practice_balls_in_its_statistics)
+{
+    GameActor actor = MakePracticingActor();
+    TestOutbox outbox;
+    Send(&actor, RollRequest(1U, 3U), &outbox);
+    Send(&actor, RollRequest(2U, 4U), &outbox);
+    Send(&actor, StatsQuery(3U), &outbox);
+    EXPECT_EQ(2U, outbox.items[0].payload.stats.practice_balls);
+}
