@@ -14,7 +14,7 @@ reasons, with the measurements, are in [RTOS_ACTOR.md](RTOS_ACTOR.md).
  |  bound to a game's id:   mailbox, task          | a game's     | | observers'   | |
  |  rolls, lost report -->                         | own task     | | shared task  | |
  |                          GameShell_Post         | mailbox      | | mailbox      | |
- |                          GameShell_Dispatch     | outbox (43)  | | outbox (1)   | |
+ |                          GameShell_Dispatch     | outbox (41)  | | outbox (1)   | |
  |                                                 +------+-------+ +------+-------+ |
  +-----------------------------------------------------|-----------------|-----------+
                                     one switch on the kind at "to"
@@ -88,7 +88,7 @@ Bindings are made at startup, before the scheduler runs:
 
 **The hosting tasks, and why the observers outrank every game.** Each game has a task of its
 own, and every observer shares one task, with one mailbox of 4. For one message, a game can send
-up to 43, with no wait. With the observers' task above every game, it preempts the game after
+up to 41, with no wait. With the observers' task above every game, it preempts the game after
 each post, so its mailbox never holds more than one of the game's events. Level with a game, or
 below it, the mailbox would hold everything the game sends until the game blocks, which only a
 busy period bounds. So `GameShell_Start` stops if the observers don't outrank every game. The

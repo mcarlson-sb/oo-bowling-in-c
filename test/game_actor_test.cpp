@@ -591,7 +591,7 @@ TEST(GameActorTest, should_fill_the_outbox_exactly_with_the_most_one_message_can
         Send(&actor, PinsetterRoll(10U), &outbox); /* held: too many pins, then behind it */
     }
     Send(&actor, EditRequest(22U, 1U, 11U, {}), &outbox); /* every ball out */
-    EXPECT_EQ(41U, outbox.count);
+    EXPECT_EQ(GAME_OUTBOX_CAPACITY, outbox.count);
 }
 
 /* ---- Pinned at the phase 2 stop, from mutation testing and coverage --------------------- */

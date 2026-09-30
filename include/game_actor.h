@@ -20,7 +20,10 @@ extern "C" {
 
 #define GAME_MAX_SUBSCRIBERS 2U
 
-#define GAME_EVENTS_PER_MESSAGE ((2U * SCORER_MAX_EVENTS) + 1U)
+/* The most events one message makes the game tell a subscriber: an edit mid-game, when rolls can
+ * be held, reopens at most the nine complete frames, then lets held rolls through that complete
+ * all ten, and holds or loses the one after. */
+#define GAME_EVENTS_PER_MESSAGE ((SCORER_MAX_EVENTS - 1U) + SCORER_MAX_EVENTS + 1U)
 #define GAME_OUTBOX_CAPACITY (1U + (GAME_MAX_SUBSCRIBERS * GAME_EVENTS_PER_MESSAGE))
 
 

@@ -13,7 +13,7 @@ extern "C" {
 }
 
 struct TestOutbox : Outbox {
-    static constexpr uint8_t kMostAnyKindSends = 43U;
+    static constexpr uint8_t kMostAnyKindSends = 41U;
     Message storage[kMostAnyKindSends];
 
     explicit TestOutbox(uint8_t most = kMostAnyKindSends) : Outbox(), storage()
