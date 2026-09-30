@@ -1109,3 +1109,42 @@ TEST(GameActorPinsetterDownTest, should_refuse_the_pinsetters_rolls_while_it_is_
     EXPECT_EQ(1U, outbox.items[0].payload.stats.rolls_refused);
     EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
 }
+
+/* ---- A league night: certified -------------------------------------------------------------- */
+
+namespace {
+
+Message CertifyRequest(RequestSeq seq)
+{
+    Message message = RollRequest(seq, 0U);
+    message.envelope.selector = MSG_CERTIFY;
+    return message;
+}
+
+Message EditRequest(RequestSeq seq, RollNumber first_roll, Pins pins)
+{
+    Message message = RollRequest(seq, 0U);
+    message.envelope.selector = MSG_EDIT;
+    message.payload.edit.first_roll = first_roll;
+    message.payload.edit.rolls_removed = 1U;
+    message.payload.edit.new_count = 1U;
+    message.payload.edit.new_pins[0] = pins;
+    return message;
+}
+
+} // namespace
+
+TEST(GameActorCertifiedTest, should_refuse_every_change_to_a_certified_game)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    BowlAGutterGame(&actor);
+    TestOutbox outbox;
+    Send(&actor, CertifyRequest(1U), &outbox);
+    EXPECT_EQ(REPLY_OK, outbox.items[0].payload.reply.status);
+    for (const Message &change : {EditRequest(2U, 1U, 5U), RollRequest(3U, 5U), DiscardHeldRequest(4U)}) {
+        Send(&actor, change, &outbox);
+        EXPECT_EQ(GAME_ERR_CERTIFIED, outbox.items[0].payload.reply.status)
+            << "selector " << change.envelope.selector;
+    }
+    EXPECT_EQ(0U, ScoreOf(&actor));
+}

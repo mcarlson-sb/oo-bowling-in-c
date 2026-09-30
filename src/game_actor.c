@@ -297,6 +297,7 @@ typedef enum {
     GAME_STATE_PRACTICE,
     GAME_STATE_IN_PLAY,
     GAME_STATE_HOLDING, /* in play, with rolls held */
+    GAME_STATE_CERTIFIED,
     GAME_STATES
 } GameState;
 
@@ -307,6 +308,9 @@ static GameState GameActor_State(const GameActor *self)
     }
     if (self->lifecycle == GAME_PRACTICE) {
         return GAME_STATE_PRACTICE;
+    }
+    if (self->lifecycle == GAME_CERTIFIED) {
+        return GAME_STATE_CERTIFIED;
     }
     return HeldRolls_IsEmpty(&self->held) ? GAME_STATE_IN_PLAY : GAME_STATE_HOLDING;
 }
@@ -342,7 +346,8 @@ typedef enum {
     GAME_NEW_GAME,
     GAME_END_PRACTICE,
     GAME_PINSETTER_DOWN,
-    GAME_PINSETTER_UP
+    GAME_PINSETTER_UP,
+    GAME_CERTIFY
 } GameMove;
 
 typedef struct {
@@ -411,6 +416,29 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_PLAY_OR_HOLD, GAME_NO_MOVE, GAME_OK },
         [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_DISCARD_HELD] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NO_SUCH_ROLL },
+        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
+        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NOT_IN_PRACTICE },
+        [MSG_PINSETTER_DOWN] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_DOWN, GAME_OK },
+        [MSG_PINSETTER_UP] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_UP, GAME_OK },
+        [MSG_CERTIFY] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_CERTIFY, GAME_OK },
+        [MSG_CERTIFIED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+    },
+    [GAME_STATE_CERTIFIED] = {
+        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME, GAME_OK },
+        [MSG_ROLL] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_CERTIFIED },
+        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_EDIT] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_CERTIFIED },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_PLAY_OR_HOLD, GAME_NO_MOVE, GAME_OK },
+        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_DISCARD_HELD] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_CERTIFIED },
         [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
         [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
@@ -540,6 +568,12 @@ static void GameActor_SetThePinsetter(GameActor *self, bool down, const Message 
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
 }
 
+static void GameActor_Certify(GameActor *self, const Message *message, Outbox *outbox)
+{
+    self->lifecycle = GAME_CERTIFIED;
+    Outbox_Reply(outbox, message, REPLY_OK, 0U);
+}
+
 static void GameActor_MakeTheMove(GameActor *self, GameMove move, const Message *message,
                                   Outbox *outbox)
 {
@@ -557,6 +591,9 @@ static void GameActor_MakeTheMove(GameActor *self, GameMove move, const Message 
         break;
     case GAME_PINSETTER_UP:
         GameActor_SetThePinsetter(self, false, message, outbox);
+        break;
+    case GAME_CERTIFY:
+        GameActor_Certify(self, message, outbox);
         break;
     }
 }

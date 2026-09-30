@@ -20,7 +20,8 @@ extern "C" {
 typedef enum {
     GAME_AWAITING_RULES,
     GAME_PRACTICE, /* a new game asked for it: balls are counted, not scored, until it ends */
-    GAME_IN_PLAY
+    GAME_IN_PLAY,
+    GAME_CERTIFIED /* a manager locked the game: the scorer can't say this, so it is stored */
 } GameLifecycle;
 
 struct GameActor {
