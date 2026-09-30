@@ -385,20 +385,20 @@ size_t s_stack_used;
 TEST(GameShellStackTest, should_keep_the_game_task_within_its_stack_budget_through_the_worst_case)
 {
     /* The painted stack, the cross-check on the static call graph: the outbox's worst case, an
-     * edit that reopens every frame and lets through held rolls that complete them all again,
-     * told to two subscribers. */
+     * edit mid-game that reopens the nine complete frames and lets through held rolls that
+     * complete all ten, told to two subscribers. */
     RunClient([] {
-        for (int i = 0; i < 12; i++) {
-            const Message strike = RollRequest(static_cast<RequestSeq>(i + 1), 10U);
-            (void)GameShell_Send(&strike, kPatience);
+        for (int i = 0; i < 11; i++) {
+            const Message ball = RollRequest(static_cast<RequestSeq>(i + 1), i < 10 ? 10U : 7U);
+            (void)GameShell_Send(&ball, kPatience);
             (void)xQueueReceive(s_replies.handle, &s_reply, kPatience);
         }
         Message subscribe = SubscribeRequest(20U);
         (void)GameShell_Send(&subscribe, kPatience);
         subscribe.envelope.from = kSecondSubscriber;
         (void)GameShell_Send(&subscribe, kPatience);
-        FirePinsetter(13, 10U); /* held: the game is over */
-        const Message every_ball_out = EditRequest(21U, 1U, 12U, {});
+        FirePinsetter(13, 10U); /* held: 3 standing, too many pins, and then behind it */
+        const Message every_ball_out = EditRequest(21U, 1U, 11U, {});
         (void)GameShell_Send(&every_ball_out, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
         s_stack_used = GameShell_TaskStackUsed();
@@ -544,21 +544,21 @@ TEST(GameShellRebindingTest, should_reach_a_recording_double_that_sits_there_wit
 
 namespace {
 
-/* The game's worst case, as the stack test plays it: 43 messages sent for one edit, 21 of them to
+/* The game's worst case, as the stack test plays it: 41 messages sent for one edit, 20 of them to
  * each subscriber, with no wait. */
 void PlayTheGamesWorstBurst()
 {
-    for (int i = 0; i < 12; i++) {
-        const Message strike = RollRequest(static_cast<RequestSeq>(i + 1), 10U);
-        (void)GameShell_Send(&strike, kPatience);
+    for (int i = 0; i < 11; i++) {
+        const Message ball = RollRequest(static_cast<RequestSeq>(i + 1), i < 10 ? 10U : 7U);
+        (void)GameShell_Send(&ball, kPatience);
         (void)xQueueReceive(s_replies.handle, &s_reply, kPatience);
     }
     Message subscribe = SubscribeRequest(20U);
     (void)GameShell_Send(&subscribe, kPatience);
     subscribe.envelope.from = kSecondSubscriber;
     (void)GameShell_Send(&subscribe, kPatience);
-    FirePinsetter(13, 10U);
-    const Message every_ball_out = EditRequest(21U, 1U, 12U, {});
+    FirePinsetter(13, 10U); /* held: 3 standing, too many pins, and then behind it */
+    const Message every_ball_out = EditRequest(21U, 1U, 11U, {});
     (void)GameShell_Send(&every_ball_out, kPatience);
     s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
     s_dropped_after = GameShell_OutputsDropped();
@@ -823,17 +823,19 @@ namespace {
 
 Message s_lane_edit_replies[2];
 
-/* Both lanes' worst bursts at once. Each lane is a perfect ten-pin game with a scoreboard and a
- * running average subscribed; lane 1 also holds 13 of the pinsetter's strikes. The client, above
- * both games, sends each lane an edit taking every ball out before either game runs, so the two
- * games' bursts (43 and 21 sent) interleave into the four observers' one mailbox. */
+/* Both lanes' worst bursts at once. Each lane is ten strikes and a 7, with a scoreboard and a
+ * running average subscribed; lane 1 also holds 13 of the pinsetter's strikes, 3 standing. The
+ * client, above both games, sends each lane an edit taking every ball out before either game
+ * runs, so the two games' bursts (41 and 19 sent) interleave into the four observers' one
+ * mailbox. */
 void BothLanesWorstBurstsAtOnce()
 {
     RequestSeq seq = 1U;
     (void)Ask(NewGameAt(kSecondLane, seq++, rules::kTenPin));
-    for (int i = 0; i < 12; i++) {
-        (void)Ask(RollRequest(seq++, 10U));
-        (void)Ask(ToLane(kSecondLane, RollRequest(seq++, 10U)));
+    for (int i = 0; i < 11; i++) {
+        const Pins pins = (i < 10) ? 10U : 7U;
+        (void)Ask(RollRequest(seq++, pins));
+        (void)Ask(ToLane(kSecondLane, RollRequest(seq++, pins)));
     }
     const Message subscriptions[] = {SubscribeTo(GAME_SHELL_GAME_ID, kSubscriber, seq++),
                                      SubscribeTo(GAME_SHELL_GAME_ID, kSecondSubscriber, seq++),
@@ -843,8 +845,8 @@ void BothLanesWorstBurstsAtOnce()
         (void)GameShell_Send(&subscription, kPatience);
     }
     FirePinsetter(13, 10U);
-    const Message edits[] = {EditRequest(seq++, 1U, 12U, {}),
-                             ToLane(kSecondLane, EditRequest(seq++, 1U, 12U, {}))};
+    const Message edits[] = {EditRequest(seq++, 1U, 11U, {}),
+                             ToLane(kSecondLane, EditRequest(seq++, 1U, 11U, {}))};
     for (const Message &edit : edits) {
         (void)GameShell_Send(&edit, kPatience);
     }

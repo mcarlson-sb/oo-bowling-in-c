@@ -285,6 +285,13 @@ Message FigureQuery(RequestSeq seq)
     return message;
 }
 
+Message StatsQuery(RequestSeq seq)
+{
+    Message message = FigureQuery(seq);
+    message.envelope.selector = MSG_QUERY_STATS;
+    return message;
+}
+
 Score ScoreOf(GameActor *actor)
 {
     TestOutbox outbox;
@@ -377,30 +384,32 @@ Message RollsLostReport(uint16_t lost_so_far)
 
 } // namespace
 
-TEST(GameActorPinsetterTest, should_hold_pinsetter_rolls_made_after_the_game_is_over)
+TEST(GameActorPinsetterTest, should_refuse_and_count_the_pinsetters_rolls_after_the_game_is_over)
 {
-    /* Kay-oo drains these into the next game. Here there is one game, and they are held until
-     * the scorer discards them: the brief's messages have no "new game". */
+    /* The dead-lane rule: a roll outside a game is refused and counted, never held. It reverses
+     * afd0e41, which held them for the next game. */
     GameActor actor = MakeActor(rules::kTenPin);
     BowlAGutterGame(&actor);
     TestOutbox outbox;
     Send(&actor, SubscribeRequest(21U, kSubscriber), &outbox);
     Send(&actor, PinsetterRoll(3U), &outbox);
-    EXPECT_EQ((std::vector<Held>{{3, 21, 1, GAME_ERR_GAME_OVER}}), HeldEventsIn(outbox));
-    EXPECT_EQ(0U, ScoreOf(&actor));
+    EXPECT_EQ((std::vector<Held>{}), HeldEventsIn(outbox));
+    Send(&actor, StatsQuery(22U), &outbox);
+    EXPECT_EQ(1U, outbox.items[0].payload.stats.rolls_refused);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
 }
 
 TEST(GameActorPinsetterTest, should_hold_a_whole_game_of_rolls_and_count_any_past_that_lost)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    BowlAGutterGame(&actor);
     TestOutbox outbox;
     Send(&actor, SubscribeRequest(21U, kSubscriber), &outbox);
+    Send(&actor, RollRequest(22U, 7U), &outbox); /* 3 standing */
     for (int i = 0; i < 30; i++) {
-        Send(&actor, PinsetterRoll(1U), &outbox);
+        Send(&actor, PinsetterRoll(10U), &outbox);
         EXPECT_EQ((std::vector<int>{}), LostEventsIn(outbox)) << "roll " << (i + 1);
     }
-    Send(&actor, PinsetterRoll(1U), &outbox); /* the 31st: no room */
+    Send(&actor, PinsetterRoll(10U), &outbox); /* the 31st: no room */
     EXPECT_EQ((std::vector<int>{1}), LostEventsIn(outbox));
     EXPECT_EQ((std::vector<Held>{}), HeldEventsIn(outbox));
 }
@@ -533,14 +542,18 @@ TEST(GameActorPinsetterTest, should_hold_again_at_the_next_held_roll_the_game_re
 TEST(GameActorPinsetterTest, should_let_the_rest_through_after_discarding_from_a_full_held_list)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    BowlAGutterGame(&actor);
     TestOutbox outbox;
-    for (int i = 0; i < 30; i++) {
-        Send(&actor, PinsetterRoll(1U), &outbox); /* a full held list, all after the game */
+    Send(&actor, RollRequest(1U, 7U), &outbox); /* 3 standing */
+    Send(&actor, PinsetterRoll(10U), &outbox);  /* held: too many pins */
+    for (int i = 0; i < 29; i++) {
+        Send(&actor, PinsetterRoll(0U), &outbox); /* a full held list */
     }
     Send(&actor, DiscardHeldRequest(21U), &outbox);
-    /* the game is still over: 29 remain held */
+    /* the 19 zeros that finish the game through, and the 10 past its end lost */
     EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
+    Send(&actor, StatsQuery(22U), &outbox);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
+    EXPECT_EQ(10U, outbox.items[0].payload.stats.rolls_lost);
 }
 
 TEST(GameActorTest, should_refuse_unsubscribing_the_same_subscriber_twice)
@@ -560,39 +573,28 @@ TEST(GameActorTest, should_refuse_unsubscribing_the_same_subscriber_twice)
 
 TEST(GameActorTest, should_fill_the_outbox_exactly_with_the_most_one_message_can_send)
 {
-    /* The worst case: an edit that reopens all ten frames, then lets through held rolls that
-     * complete all ten again, then holds the next one again, told to two subscribers. */
+    /* The worst case: mid-game, an edit that reopens the nine complete frames, then lets through
+     * held rolls that complete all ten, and loses the one past the end, told to two subscribers.
+     * Only mid-game can rolls be held, so no edit that lets them through finds ten frames
+     * complete. */
     GameActor actor = MakeActor(rules::kTenPin);
     TestOutbox outbox;
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 10; i++) {
         Send(&actor, RollRequest(static_cast<RequestSeq>(i + 1), 10U), &outbox);
     }
+    Send(&actor, RollRequest(11U, 7U), &outbox); /* the tenth's fill: 3 standing */
     const ActorId a = 10U;
     const ActorId b = 11U;
     Send(&actor, SubscribeRequest(20U, a), &outbox);
     Send(&actor, SubscribeRequest(21U, b), &outbox);
     for (int i = 0; i < 13; i++) {
-        Send(&actor, PinsetterRoll(10U), &outbox); /* held: the game is over */
+        Send(&actor, PinsetterRoll(10U), &outbox); /* held: too many pins, then behind it */
     }
-    Send(&actor, EditRequest(22U, 1U, 12U, {}), &outbox); /* every ball out */
-    EXPECT_EQ(GAME_OUTBOX_CAPACITY, outbox.count);
+    Send(&actor, EditRequest(22U, 1U, 11U, {}), &outbox); /* every ball out */
+    EXPECT_EQ(41U, outbox.count);
 }
 
 /* ---- Pinned at the phase 2 stop, from mutation testing and coverage --------------------- */
-
-TEST(GameActorPinsetterTest, should_tell_the_new_reason_when_a_held_roll_is_refused_for_another)
-{
-    /* Held because the game was over; an edit reopens the tenth frame, and the replay then
-     * refuses the second 6 for too many pins: the subscribers hear the new reason. */
-    GameActor actor = MakeActor(rules::kTenPin);
-    BowlAGutterGame(&actor);
-    TestOutbox outbox;
-    Send(&actor, SubscribeRequest(21U, kSubscriber), &outbox);
-    Send(&actor, PinsetterRoll(6U), &outbox);
-    Send(&actor, PinsetterRoll(6U), &outbox);
-    Send(&actor, EditRequest(22U, 19U, 2U, {}), &outbox); /* balls 19 and 20 out */
-    EXPECT_EQ((std::vector<Held>{{6, 20, 1, GAME_ERR_INVALID_PINS}}), HeldEventsIn(outbox));
-}
 
 TEST(GameActorTest, should_start_a_fresh_game_with_nothing_held_when_initialized_again)
 {
@@ -738,34 +740,37 @@ TEST(GameActorLifecycleTest, should_start_a_new_game_after_one_ends)
     EXPECT_EQ(9U, outbox.items[0].payload.reply.score); /* candlepin's three balls a frame */
 }
 
-TEST(GameActorLifecycleTest, should_play_the_rolls_held_after_a_game_into_the_new_one)
+TEST(GameActorLifecycleTest, should_refuse_and_count_the_pinsetters_rolls_between_games)
 {
-    /* The pinsetter counted the next game's first frame before anyone started it. */
+    /* The dead-lane rule: someone rolling between games. It reverses afd0e41, which played them
+     * into the next game. */
     GameActor actor = MakeActor(rules::kTenPin);
     BowlAGutterGame(&actor);
     TestOutbox outbox;
-    Send(&actor, SubscribeRequest(21U, kSubscriber), &outbox);
     Send(&actor, PinsetterRoll(3U), &outbox);
-    Send(&actor, PinsetterRoll(4U), &outbox); /* both held: the game is over */
+    Send(&actor, PinsetterRoll(4U), &outbox);
     Send(&actor, NewGameRequest(22U, rules::kTenPin), &outbox);
     EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
-    EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
-    const Sent frame_1 = {MSG_FRAME_CHANGED, kSubscriber, 1, 7, true};
-    const std::vector<Sent> heard = FrameEventsIn(outbox);
-    EXPECT_NE(heard.end(), std::find(heard.begin(), heard.end(), frame_1));
+    EXPECT_EQ(0U, outbox.items[0].payload.reply.score); /* the new game is empty */
+    Send(&actor, StatsQuery(23U), &outbox);
+    EXPECT_EQ(2U, outbox.items[0].payload.stats.rolls_refused);
 }
 
-TEST(GameActorLifecycleTest, should_hold_the_pinsetters_rolls_before_any_game_and_play_them_into_it)
+TEST(GameActorLifecycleTest, should_refuse_and_count_the_pinsetters_rolls_before_any_game)
 {
+    /* The dead-lane rule: a ball thrown before the console is set up is lost, counted and
+     * reported. It reverses c895fec, which held them for the first game. */
     GameActor actor;
     GameActor_Init(&actor, kGame);
     TestOutbox outbox;
     Send(&actor, PinsetterRoll(3U), &outbox);
-    EXPECT_EQ(0U, outbox.count); /* from no one: no reply, and no one subscribed yet */
+    EXPECT_EQ(0U, outbox.count); /* from no one: no reply */
     Send(&actor, PinsetterRoll(4U), &outbox);
     Send(&actor, NewGameRequest(1U, rules::kTenPin), &outbox);
     EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
-    EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
+    EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
+    Send(&actor, StatsQuery(2U), &outbox);
+    EXPECT_EQ(2U, outbox.items[0].payload.stats.rolls_refused);
 }
 
 TEST(GameActorLifecycleTest, should_tell_subscribers_every_frame_of_the_old_game_reopened)
@@ -816,23 +821,15 @@ TEST(GameActorLifecycleTest, should_keep_the_pinsetters_lost_count_from_before_a
 
 /* ---- Its statistics: counters and facts, asked for, not read from its state -------------------- */
 
-namespace {
-
-Message StatsQuery(RequestSeq seq)
-{
-    Message message = FigureQuery(seq);
-    message.envelope.selector = MSG_QUERY_STATS;
-    return message;
-}
-
-} // namespace
 
 TEST(GameActorTest, should_answer_its_statistics_with_its_counters_and_facts)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    BowlAGutterGame(&actor);
     TestOutbox outbox;
-    Send(&actor, PinsetterRoll(3U), &outbox);  /* held: the game is over */
+    Send(&actor, RollRequest(1U, 3U), &outbox);
+    Send(&actor, RollRequest(2U, 4U), &outbox); /* frame 1: 7 */
+    Send(&actor, RollRequest(3U, 7U), &outbox); /* 3 standing */
+    Send(&actor, PinsetterRoll(10U), &outbox);  /* held: too many pins */
     Send(&actor, RollsLostReport(2U), &outbox); /* the pinsetter lost two */
     Message frame_changed = {};
     frame_changed.envelope.selector = MSG_FRAME_CHANGED;
@@ -846,8 +843,8 @@ TEST(GameActorTest, should_answer_its_statistics_with_its_counters_and_facts)
     EXPECT_EQ(1U, stats.payload.stats.not_understood);
     EXPECT_EQ(2U, stats.payload.stats.rolls_lost);
     EXPECT_EQ(1U, stats.payload.stats.rolls_held);
-    EXPECT_EQ(10U, stats.payload.stats.complete_frames);
-    EXPECT_EQ(0U, stats.payload.stats.total);
+    EXPECT_EQ(1U, stats.payload.stats.complete_frames);
+    EXPECT_EQ(7U, stats.payload.stats.total);
 }
 
 TEST(GameActorTest, should_count_in_its_statistics_the_rolls_lost_to_the_pinsetter_and_to_a_full_held_list)
@@ -855,10 +852,10 @@ TEST(GameActorTest, should_count_in_its_statistics_the_rolls_lost_to_the_pinsett
     /* Pinned at the phase 4 stop, from mutation testing: with losses of one kind only, the sum
      * reads the same as the difference. */
     GameActor actor = MakeActor(rules::kTenPin);
-    BowlAGutterGame(&actor);
     TestOutbox outbox;
+    Send(&actor, RollRequest(1U, 7U), &outbox); /* 3 standing */
     for (int i = 0; i < 31; i++) {
-        Send(&actor, PinsetterRoll(1U), &outbox); /* 30 held, and the 31st lost: no room */
+        Send(&actor, PinsetterRoll(10U), &outbox); /* 30 held, and the 31st lost: no room */
     }
     Send(&actor, RollsLostReport(2U), &outbox); /* and two lost to the pinsetter's queue */
     Send(&actor, StatsQuery(9U), &outbox);
@@ -980,21 +977,21 @@ TEST(GameActorPracticeTest, should_count_the_pinsetters_rolls_in_practice_and_ne
     EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
 }
 
-TEST(GameActorPracticeTest, should_count_the_rolls_held_before_a_practice_lost_as_rolls_on_a_dead_lane)
+TEST(GameActorPracticeTest, should_find_no_rolls_held_when_a_practice_starts)
 {
-    /* Rolls between games are someone rolling on a dead lane: a practice doesn't play them. */
+    /* The dead-lane rule refuses a roll between games as it's counted, so a practice finds none
+     * held to lose. */
     GameActor actor = MakeActor(rules::kTenPin);
     TestOutbox outbox;
     Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
     BowlAGutterGame(&actor);
     Send(&actor, PinsetterRoll(3U), &outbox);
-    Send(&actor, PinsetterRoll(4U), &outbox); /* both held: the game is over */
+    Send(&actor, PinsetterRoll(4U), &outbox); /* refused: the game is over */
     Send(&actor, PracticeGameRequest(2U, rules::kTenPin), &outbox);
-    EXPECT_EQ((std::vector<int>{2}), LostEventsIn(outbox));
+    EXPECT_EQ((std::vector<int>{}), LostEventsIn(outbox));
     Send(&actor, StatsQuery(3U), &outbox);
     EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
-    EXPECT_EQ(2U, outbox.items[0].payload.stats.rolls_lost);
-    EXPECT_EQ(0U, outbox.items[0].payload.stats.total);
+    EXPECT_EQ(2U, outbox.items[0].payload.stats.rolls_refused);
 }
 
 TEST(GameActorPracticeTest, should_tell_no_loss_when_a_practice_starts_with_nothing_held)
@@ -1171,10 +1168,10 @@ TEST(GameActorCertifiedTest, should_refuse_to_certify_a_game_that_isnt_over)
 TEST(GameActorCertifiedTest, should_refuse_to_certify_a_game_with_rolls_held)
 {
     GameActor actor = MakeActor(rules::kTenPin);
-    BowlAGutterGame(&actor);
     TestOutbox outbox;
-    Send(&actor, PinsetterRoll(3U), &outbox); /* held: the game is over */
-    Send(&actor, CertifyRequest(1U), &outbox);
+    Send(&actor, RollRequest(1U, 7U), &outbox); /* 3 standing */
+    Send(&actor, PinsetterRoll(10U), &outbox);  /* held: too many pins */
+    Send(&actor, CertifyRequest(2U), &outbox);
     EXPECT_EQ(GAME_ERR_ROLLS_HELD, outbox.items[0].payload.reply.status);
 }
 
@@ -1265,4 +1262,23 @@ TEST(GameActorLifecycleTest, should_count_an_answer_before_a_game_as_not_underst
         EXPECT_EQ(0U, outbox.count) << "selector " << answer;
     }
     EXPECT_EQ(5U, NotUnderstoodCount(&actor));
+}
+
+TEST(GameActorPinsetterTest, should_lose_the_held_rolls_a_correction_leaves_past_the_games_end)
+{
+    /* Held mid-game, a disagreement with the machine; a correction that finishes the game leaves
+     * them outside it, rolls on a dead lane. */
+    GameActor actor = MakeActor(rules::kTenPin);
+    TestOutbox outbox;
+    for (int i = 0; i < 19; i++) {
+        Send(&actor, RollRequest(static_cast<RequestSeq>(i + 1), 0U), &outbox);
+    }
+    Send(&actor, SubscribeRequest(20U, kSubscriber), &outbox);
+    Send(&actor, PinsetterRoll(11U), &outbox); /* held: too many pins */
+    Send(&actor, PinsetterRoll(0U), &outbox);
+    Send(&actor, EditRequest(21U, 1U, 0U, {0U}), &outbox); /* a 0 inserted: 20 balls, over */
+    EXPECT_EQ((std::vector<int>{2}), LostEventsIn(outbox));
+    Send(&actor, StatsQuery(22U), &outbox);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
+    EXPECT_EQ(2U, outbox.items[0].payload.stats.rolls_lost);
 }

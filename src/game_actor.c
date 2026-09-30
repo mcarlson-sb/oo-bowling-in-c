@@ -88,10 +88,22 @@ static GameStatus GameActor_Play(GameActor *self, Pins pins, Outbox *outbox)
     return status;
 }
 
+/* Rolls held mid-game that a correction leaves past the game's end are rolls on a dead lane:
+ * lost, and counted. */
+static void GameActor_LoseTheRollsOnADeadLane(GameActor *self, Outbox *outbox)
+{
+    HeldRolls_LoseAll(&self->held);
+    GameActor_PublishLost(self, outbox);
+}
+
 static void GameActor_LetHeldRollsThrough(GameActor *self, Outbox *outbox)
 {
     while (!HeldRolls_IsEmpty(&self->held)) {
         const GameStatus status = GameActor_Play(self, HeldRolls_Oldest(&self->held), outbox);
+        if (status == GAME_ERR_GAME_OVER) {
+            GameActor_LoseTheRollsOnADeadLane(self, outbox);
+            return;
+        }
         if (status != GAME_OK) {
             HeldRolls_RefuseFirst(&self->held, status);
             GameActor_PublishHeld(self, 0U, outbox);
@@ -228,17 +240,6 @@ static void GameActor_ReopenTheOldGamesFrames(const GameActor *self, FrameEvents
     Scorer_ReportReopened(&self->scorer, reopened);
 }
 
-/* The rolls held since the last game were someone rolling on a dead lane: a practice doesn't
- * play them. */
-static void GameActor_LoseTheRollsOnADeadLane(GameActor *self, Outbox *outbox)
-{
-    if (HeldRolls_IsEmpty(&self->held)) {
-        return;
-    }
-    HeldRolls_LoseAll(&self->held);
-    GameActor_PublishLost(self, outbox);
-}
-
 /* Refused, changing nothing, if the scorer can't play the rules. */
 static GameStatus GameActor_StartNextGame(GameActor *self, const NewGamePayload *new_game,
                                           Outbox *outbox)
@@ -252,11 +253,6 @@ static GameStatus GameActor_StartNextGame(GameActor *self, const NewGamePayload 
     self->lifecycle = new_game->practice ? GAME_PRACTICE : GAME_IN_PLAY;
     self->practice_balls = 0U;
     GameActor_Publish(self, &reopened, outbox);
-    if (new_game->practice) {
-        GameActor_LoseTheRollsOnADeadLane(self, outbox);
-    } else {
-        GameActor_LetHeldRollsThrough(self, outbox);
-    }
     return GAME_OK;
 }
 
@@ -372,7 +368,8 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_SUBSCRIBE] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NO_GAME },
         [MSG_UNSUBSCRIBE] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NO_GAME },
         [MSG_EDIT] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NO_GAME },
-        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_HOLD_THE_ROLL, GAME_NO_MOVE, GAME_OK },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_REFUSE_THE_PINSETTERS_ROLL, GAME_NO_MOVE,
+                                 GAME_OK },
         [MSG_QUERY_FIGURE] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NO_GAME },
         [MSG_DISCARD_HELD] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NO_GAME },
         [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
@@ -441,7 +438,8 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_EDIT] = { GAME_NO_ANSWER, GAME_EDIT, GAME_NO_MOVE, GAME_OK },
-        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_PLAY_OR_HOLD, GAME_NO_MOVE, GAME_OK },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_REFUSE_THE_PINSETTERS_ROLL, GAME_NO_MOVE,
+                                 GAME_OK },
         [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_DISCARD_HELD] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NO_SUCH_ROLL },
         [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
