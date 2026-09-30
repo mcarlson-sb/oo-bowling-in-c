@@ -1042,3 +1042,21 @@ TEST(GameActorPinsetterDownTest, should_refuse_and_count_the_pinsetters_rolls_wh
     EXPECT_EQ(0U, outbox.items[0].payload.stats.total);
     EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
 }
+
+TEST(GameActorPinsetterDownTest, should_still_score_manual_rolls_and_edits_while_the_pinsetter_is_down)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    TestOutbox outbox;
+    Send(&actor, PinsetterDown(1U), &outbox);
+    Send(&actor, RollRequest(2U, 3U), &outbox);
+    Send(&actor, RollRequest(3U, 4U), &outbox);
+    EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
+    Message edit = RollRequest(4U, 0U);
+    edit.envelope.selector = MSG_EDIT;
+    edit.payload.edit.first_roll = 2U; /* the 4 becomes a 5: 3, 5 */
+    edit.payload.edit.rolls_removed = 1U;
+    edit.payload.edit.new_count = 1U;
+    edit.payload.edit.new_pins[0] = 5U;
+    Send(&actor, edit, &outbox);
+    EXPECT_EQ(8U, outbox.items[0].payload.reply.score);
+}
