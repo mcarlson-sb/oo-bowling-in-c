@@ -958,3 +958,16 @@ TEST(GameActorPracticeTest, should_start_each_new_games_practice_count_at_zero)
     Send(&actor, StatsQuery(5U), &outbox);
     EXPECT_EQ(0U, outbox.items[0].payload.stats.practice_balls);
 }
+
+TEST(GameActorPracticeTest, should_count_the_pinsetters_rolls_in_practice_and_neither_score_nor_hold_them)
+{
+    GameActor actor = MakePracticingActor();
+    TestOutbox outbox;
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    EXPECT_EQ(0U, outbox.count); /* from no one: no reply */
+    Send(&actor, PinsetterRoll(4U), &outbox);
+    Send(&actor, StatsQuery(1U), &outbox);
+    EXPECT_EQ(2U, outbox.items[0].payload.stats.practice_balls);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.total);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
+}
