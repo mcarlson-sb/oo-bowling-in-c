@@ -29,8 +29,7 @@ typedef enum {
      * frame change. */
     MSG_SUBSCRIBE,
     MSG_UNSUBSCRIBE, /* from is the subscriber, which gets the reply */
-    /* An edit (see RollEdit), with its new balls carried in the message: a queue copies the
-     * message, so nothing in it may point back into the sender's memory. A correction is an
+    /* An edit (see RollEdit), with its new balls carried in the message. A correction is an
      * edit of one ball out and one in. */
     MSG_EDIT,
     /* A roll the pinsetter counted, from its interrupt: from no one, and no reply. One the

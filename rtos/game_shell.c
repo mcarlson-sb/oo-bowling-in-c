@@ -179,11 +179,7 @@ static void GameShell_StartTheObserversTask(GameShell *self, UBaseType_t priorit
                         GAME_SHELL_OBSERVER_MOST_SENT, priority);
 }
 
-/* The observers share one mailbox of GAME_SHELL_MAILBOX, and each game sends up to
- * GAME_OUTBOX_CAPACITY for one message, with no wait. Above every game, the observers' task
- * preempts it after each post, so the mailbox never holds more than one of its events. Level
- * with a game or below it, it would hold everything the game sends until the game blocks, which
- * only a busy period bounds. The price is deadline order: an observer's work delays a game. */
+/* Why the observers must outrank every game is in ARCHITECTURE.md, section 3. */
 static void GameShell_RequireObserversOutrankEveryGame(const GameShell *self)
 {
     for (uint8_t i = 0U; i < self->game_count; i++) {

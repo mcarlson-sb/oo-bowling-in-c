@@ -64,8 +64,9 @@ typedef struct {
 
 ## 3. Routing and dispatch
 
-The shell owns the routing table. Each row is the kind bound at an id, which instance of that
-kind, its mailbox, and the task to wake.
+The router (`rtos/router.c`) holds the routing table, and the shell wires it. Each row is the
+kind bound at an id, which instance of that kind, the mailbox of the task that hosts it, and that
+task, to wake.
 
 - **Posting** looks up the row at the message's `to`, puts the message in that mailbox with no
   wait, and wakes the task. It's a table lookup with no switch. An id with no row, one past the
@@ -82,6 +83,19 @@ Bindings are made at startup, before the scheduler runs:
 - **`GameShell_HostScoreboard` and `GameShell_HostRunningAverage`** host observers.
 - **`GameShell_Bind`** binds an external actor: a queue the actor reads itself, as a test's
   client or a recording double does.
+
+**The hosting tasks, and why the observers outrank every game.** Each game has a task of its
+own, and every observer shares one task, with one mailbox of 4. For one message, a game can send
+up to 43, with no wait. With the observers' task above every game, it preempts the game after
+each post, so its mailbox never holds more than one of the game's events. Level with a game, or
+below it, the mailbox would hold everything the game sends until the game blocks, which only a
+busy period bounds. So `GameShell_Start` stops if the observers don't outrank every game. The
+price is deadline order: an observer's work delays a game, which is why an observer kind's
+handling must be short and bounded.
+
+**Messages are copied, so nothing in one points anywhere.** A queue copies a message into the
+receiver's mailbox, so a pointer into the sender's memory could outlive what it points to. An
+edit's new balls are carried inline for that reason.
 
 ## 4. The state each actor keeps
 
