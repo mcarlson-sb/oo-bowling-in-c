@@ -26,7 +26,6 @@ typedef uint8_t ReplyStatus;
 
 #define REPLY_OK ((ReplyStatus)0U)
 
-
 typedef enum {
     /* A new game, by the rules it carries. Refused with GAME_ERR_INVALID_RULES, changing
      * nothing, if the scorer can't play them. */
@@ -69,6 +68,8 @@ typedef enum {
     MSG_QUERY_STATS,
     /* To a MSG_QUERY_STATS's from, with its seq. A field a kind has nothing for is 0. */
     MSG_STATS,
+    /* Ends a game's practice: the balls after it are scored. */
+    MSG_END_PRACTICE,
     MSG_SELECTOR_COUNT
 } Selector;
 
@@ -82,6 +83,7 @@ typedef struct {
 
 typedef struct {
     ScorerRules rules;
+    bool practice; /* balls are counted, not scored, until MSG_END_PRACTICE */
 } NewGamePayload;
 
 typedef struct {
@@ -123,6 +125,7 @@ typedef struct {
     uint8_t rolls_held;     /* a game's, now */
     uint8_t complete_frames;
     Score total;            /* of the complete frames */
+    uint16_t practice_balls; /* a game's, in its practice */
 } StatsPayload;
 
 /* An envelope, and the fields of its selector only. */

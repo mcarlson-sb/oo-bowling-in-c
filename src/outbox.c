@@ -40,7 +40,7 @@ void Outbox_Reply(Outbox *self, const Message *request, ReplyStatus status, Scor
 StatsPayload *Outbox_BeginStats(Outbox *self, const Message *request)
 {
     Message *stats = Outbox_Next(self, Envelope_ReplyTo(&request->envelope, MSG_STATS));
-    const StatsPayload none = { 0U, 0U, 0U, 0U, 0U };
+    const StatsPayload none = { 0U, 0U, 0U, 0U, 0U, 0U };
     stats->payload.stats = none;
     return &stats->payload.stats;
 }
