@@ -14,11 +14,13 @@
 extern "C" {
 #endif
 
-/* Where the game's lifecycle is: which messages mean something now. Whether a game in play is
- * over is the scorer's to say. */
+/* Where the game's lifecycle is: which messages mean something now. Holding is in play with a
+ * pinsetter roll refused and held, and every one after it, until a correction lets them through.
+ * Whether a game in play is over is the scorer's to say. */
 typedef enum {
     GAME_AWAITING_RULES,
     GAME_IN_PLAY,
+    GAME_HOLDING,
     GAME_LIFECYCLE_STATES /* how many there are */
 } GameLifecycle;
 

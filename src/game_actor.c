@@ -23,7 +23,7 @@ static void GameOutbox_FrameChanged(Outbox *outbox, ActorId from, ActorId to,
 
 static bool GameActor_HasHadAGame(const GameActor *self)
 {
-    return self->lifecycle == GAME_IN_PLAY;
+    return self->lifecycle != GAME_AWAITING_RULES;
 }
 
 static Message GameActor_EventForItsSubscribers(const GameActor *self, Selector selector)
@@ -92,10 +92,12 @@ static void GameActor_LetHeldRollsThrough(GameActor *self, Outbox *outbox)
         if (status != GAME_OK) {
             HeldRolls_RefuseFirst(&self->held, status);
             GameActor_PublishHeld(self, 0U, outbox);
+            self->lifecycle = GAME_HOLDING;
             return;
         }
         HeldRolls_DropFirst(&self->held);
     }
+    self->lifecycle = GAME_IN_PLAY;
 }
 
 static void GameActor_Roll(GameActor *self, const Message *message, Outbox *outbox)
@@ -105,22 +107,15 @@ static void GameActor_Roll(GameActor *self, const Message *message, Outbox *outb
     Outbox_FinishReply(reply, status, Scorer_Score(&self->scorer));
 }
 
-static void GameActor_PlayOrHold(GameActor *self, Pins pins, Outbox *outbox)
+/* In play, nothing is held: the first roll the scorer refuses starts the holding. */
+static void GameActor_PlayOrHold(GameActor *self, const Message *message, Outbox *outbox)
 {
+    const Pins pins = message->payload.roll.pins;
     const GameStatus status = GameActor_Play(self, pins, outbox);
     if (status != GAME_OK) {
         HeldRolls_RefuseFirst(&self->held, status);
         GameActor_HoldOrLose(self, pins, outbox);
-    }
-}
-
-static void GameActor_PinsetterRoll(GameActor *self, const Message *message,
-                                    Outbox *outbox)
-{
-    if (HeldRolls_IsEmpty(&self->held)) {
-        GameActor_PlayOrHold(self, message->payload.roll.pins, outbox);
-    } else {
-        GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
+        self->lifecycle = GAME_HOLDING;
     }
 }
 
@@ -148,10 +143,6 @@ static void GameActor_Edit(GameActor *self, const Message *message, Outbox *outb
 static void GameActor_DiscardHeld(GameActor *self, const Message *message,
                                   Outbox *outbox)
 {
-    if (HeldRolls_IsEmpty(&self->held)) {
-        Outbox_Reply(outbox, message, GAME_ERR_NO_SUCH_ROLL, 0U);
-        return;
-    }
     Message *reply = Outbox_BeginReply(outbox, message);
     HeldRolls_DropFirst(&self->held);
     GameActor_LetHeldRollsThrough(self, outbox);
@@ -270,6 +261,12 @@ static void GameActor_AnswerNoGame(const Message *message, Outbox *outbox)
     Outbox_Reply(outbox, message, GAME_ERR_NO_GAME, 0U);
 }
 
+/* In play, with nothing held, there's nothing to discard. */
+static void GameActor_AnswerNothingHeld(const Message *message, Outbox *outbox)
+{
+    Outbox_Reply(outbox, message, GAME_ERR_NO_SUCH_ROLL, 0U);
+}
+
 static void GameActor_HoldTheRoll(GameActor *self, const Message *message, Outbox *outbox)
 {
     GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
@@ -283,6 +280,7 @@ typedef enum {
     GAME_DOES_NOT_UNDERSTAND = 0, /* what a missing entry reads as */
     GAME_NO_ANSWER,
     GAME_ANSWER_NO_GAME,
+    GAME_ANSWER_NOTHING_HELD,
     GAME_ANSWER_FIGURE,
     GAME_ANSWER_STATS,
     GAME_SUBSCRIBE,
@@ -293,7 +291,7 @@ typedef enum {
     GAME_NO_PLAY = 0,
     GAME_NEW_GAME,
     GAME_ROLL,
-    GAME_PINSETTER_ROLL,
+    GAME_PLAY_OR_HOLD,
     GAME_HOLD_THE_ROLL,
     GAME_EDIT,
     GAME_DISCARD_HELD,
@@ -333,7 +331,26 @@ static const GameMeaning k_game_protocols[GAME_LIFECYCLE_STATES][GAME_PROTOCOL_R
         [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY },
         [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY },
         [MSG_EDIT] = { GAME_NO_ANSWER, GAME_EDIT },
-        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_PINSETTER_ROLL },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_PLAY_OR_HOLD },
+        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY },
+        [MSG_DISCARD_HELD] = { GAME_ANSWER_NOTHING_HELD, GAME_NO_PLAY },
+        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT },
+        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY },
+        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+    },
+
+    [GAME_HOLDING] = {
+        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NEW_GAME },
+        [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL },
+        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY },
+        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY },
+        [MSG_EDIT] = { GAME_NO_ANSWER, GAME_EDIT },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_HOLD_THE_ROLL },
         [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY },
         [MSG_DISCARD_HELD] = { GAME_NO_ANSWER, GAME_DISCARD_HELD },
         [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT },
@@ -366,6 +383,9 @@ static void GameActor_Answer(GameActor *self, GameAnswer answer, const Message *
     case GAME_ANSWER_NO_GAME:
         GameActor_AnswerNoGame(message, outbox);
         break;
+    case GAME_ANSWER_NOTHING_HELD:
+        GameActor_AnswerNothingHeld(message, outbox);
+        break;
     case GAME_ANSWER_FIGURE:
         GameActor_AnswerItsTotalAsItsFigure(self, message, outbox);
         break;
@@ -393,8 +413,8 @@ static void GameActor_MakeThePlay(GameActor *self, GamePlay play, const Message 
     case GAME_ROLL:
         GameActor_Roll(self, message, outbox);
         break;
-    case GAME_PINSETTER_ROLL:
-        GameActor_PinsetterRoll(self, message, outbox);
+    case GAME_PLAY_OR_HOLD:
+        GameActor_PlayOrHold(self, message, outbox);
         break;
     case GAME_HOLD_THE_ROLL:
         GameActor_HoldTheRoll(self, message, outbox);
