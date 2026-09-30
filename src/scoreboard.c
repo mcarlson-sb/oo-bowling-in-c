@@ -7,13 +7,16 @@ typedef enum {
     SCOREBOARD_DOES_NOT_UNDERSTAND = 0,
     SCOREBOARD_FRAME_CHANGED,
     SCOREBOARD_QUERY_SCORE,
-    SCOREBOARD_REPLY
+    SCOREBOARD_NOTHING_TO_DO
 } ScoreboardRequest;
 
 static const ScoreboardRequest k_scoreboard_protocol[MSG_SELECTOR_COUNT] = {
     [MSG_FRAME_CHANGED] = SCOREBOARD_FRAME_CHANGED,
     [MSG_QUERY_SCORE] = SCOREBOARD_QUERY_SCORE,
-    [MSG_REPLY] = SCOREBOARD_REPLY,
+    /* What a game tells every subscriber: heard, and nothing to do. */
+    [MSG_REPLY] = SCOREBOARD_NOTHING_TO_DO,
+    [MSG_ROLL_HELD] = SCOREBOARD_NOTHING_TO_DO,
+    [MSG_ROLLS_LOST] = SCOREBOARD_NOTHING_TO_DO,
 };
 
 void Scoreboard_Init(Scoreboard *self, ActorId id)
@@ -41,8 +44,8 @@ void Scoreboard_Handle(Scoreboard *self, const Message *message, Outbox *outbox)
     case SCOREBOARD_QUERY_SCORE:
         Outbox_Reply(outbox, message, GAME_OK, FrameBoard_Total(&self->board));
         break;
-    case SCOREBOARD_REPLY:
-        break; /* to its subscription: nothing to do */
+    case SCOREBOARD_NOTHING_TO_DO:
+        break;
     case SCOREBOARD_DOES_NOT_UNDERSTAND:
         self->not_understood++;
         Outbox_NotUnderstood(outbox, self->id, message);

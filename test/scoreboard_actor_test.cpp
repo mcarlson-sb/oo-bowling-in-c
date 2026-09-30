@@ -151,3 +151,19 @@ TEST(ScoreboardTest, should_say_not_understood_from_its_own_id)
     const TestOutbox outbox = Send(&board, {roll});
     EXPECT_EQ(kBoard, outbox.items[0].envelope.from);
 }
+
+TEST(ScoreboardTest, should_take_the_rest_of_what_a_game_tells_subscribers_in_silence)
+{
+    /* A game tells every subscriber of rolls held and lost too. Answered NOT_UNDERSTOOD, a burst
+     * of held rolls became a burst of NOT_UNDERSTOODs into the game's own mailbox. */
+    Scoreboard board = MakeBoard();
+    Message held = {};
+    held.envelope.selector = MSG_ROLL_HELD;
+    held.envelope.from = kGame;
+    held.envelope.to = kBoard;
+    Message lost = held;
+    lost.envelope.selector = MSG_ROLLS_LOST;
+    const TestOutbox outbox = Send(&board, {held, lost});
+    EXPECT_EQ(0U, outbox.count);
+    EXPECT_EQ(0U, board.not_understood);
+}
