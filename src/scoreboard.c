@@ -19,6 +19,7 @@ static const ScoreboardRequest k_scoreboard_protocol[MSG_SELECTOR_COUNT] = {
     [MSG_REPLY] = SCOREBOARD_NOTHING_TO_DO,
     [MSG_ROLL_HELD] = SCOREBOARD_NOTHING_TO_DO,
     [MSG_ROLLS_LOST] = SCOREBOARD_NOTHING_TO_DO,
+    [MSG_CERTIFIED] = SCOREBOARD_NOTHING_TO_DO,
 };
 
 void Scoreboard_Init(Scoreboard *self)

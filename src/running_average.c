@@ -19,6 +19,7 @@ static const AverageRequest k_average_protocol[MSG_SELECTOR_COUNT] = {
     [MSG_REPLY] = AVERAGE_NOTHING_TO_DO,
     [MSG_ROLL_HELD] = AVERAGE_NOTHING_TO_DO,
     [MSG_ROLLS_LOST] = AVERAGE_NOTHING_TO_DO,
+    [MSG_CERTIFIED] = AVERAGE_NOTHING_TO_DO,
 };
 
 void RunningAverage_Init(RunningAverage *self)

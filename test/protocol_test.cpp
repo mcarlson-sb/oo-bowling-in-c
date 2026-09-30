@@ -170,3 +170,25 @@ TEST(ProtocolTest, should_address_a_not_understood_to_the_request_it_answers)
     EXPECT_EQ(5U, answer.envelope.seq);
     EXPECT_EQ(MSG_ROLL, answer.payload.not_understood.selector);
 }
+
+TEST(ProtocolTest, should_have_every_subscriber_kind_take_a_certification_in_silence)
+{
+    /* Every subscriber hears the whole of what a game tells, or counts it not understood. */
+    Message certified = {};
+    certified.envelope = Envelope_Event(MSG_CERTIFIED, kAsker, kKind);
+    const Message stats = StatsQuery(1U);
+    Scoreboard board;
+    Scoreboard_Init(&board);
+    TestOutbox to_the_board;
+    Scoreboard_Handle(&board, &certified, &to_the_board);
+    EXPECT_EQ(0U, to_the_board.count);
+    Scoreboard_Handle(&board, &stats, &to_the_board);
+    EXPECT_EQ(0U, to_the_board.items[0].payload.stats.not_understood) << "a scoreboard";
+    RunningAverage average;
+    RunningAverage_Init(&average);
+    TestOutbox to_the_average;
+    RunningAverage_Handle(&average, &certified, &to_the_average);
+    EXPECT_EQ(0U, to_the_average.count);
+    RunningAverage_Handle(&average, &stats, &to_the_average);
+    EXPECT_EQ(0U, to_the_average.items[0].payload.stats.not_understood) << "a running average";
+}
