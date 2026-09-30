@@ -711,3 +711,48 @@ TEST(GameShellLanesTest, should_keep_each_lanes_frames_apart_with_an_observer_in
     EXPECT_EQ(9U, s_lane_answers[2].payload.reply.score);  /* lane 2's total */
     EXPECT_EQ(9U, s_lane_answers[3].payload.reply.score);  /* lane 2's average */
 }
+
+namespace {
+
+Message s_lane_stats[2];
+
+/* Each lane's running average asked for its statistics, after the same play. */
+void EachLanesAverageAskedForItsStatistics()
+{
+    AScoreboardAndAnAveragePerLane();
+    RequestSeq seq = 100U;
+    const ActorId averages[] = {kSecondSubscriber, kSecondLaneAverage};
+    for (int i = 0; i < 2; i++) {
+        Message ask = QueryTo(averages[i], seq++);
+        ask.envelope.selector = MSG_QUERY_STATS;
+        s_lane_stats[i] = Ask(ask);
+    }
+}
+
+} // namespace
+
+TEST(GameShellLanesTest, should_combine_two_lanes_statistics_into_the_exact_average_of_both)
+{
+    /* Per lane, the averages round: 7 and 9, whose own average would be 8. From the facts
+     * behind them, both lanes' totals and complete frames, the average of both is exact and rounds
+     * once: 23 over 3 frames, 7. */
+    s_second_lane = true;
+    s_subscriber_kind = ACTOR_KIND_SCOREBOARD;
+    s_second_subscriber_kind = ACTOR_KIND_RUNNING_AVERAGE;
+    s_more_observers = {{kSecondLaneBoard, ACTOR_KIND_SCOREBOARD},
+                        {kSecondLaneAverage, ACTOR_KIND_RUNNING_AVERAGE}};
+    RunClient(&EachLanesAverageAskedForItsStatistics);
+    const StatsPayload &lane1 = s_lane_stats[0].payload.stats;
+    const StatsPayload &lane2 = s_lane_stats[1].payload.stats;
+    ASSERT_EQ(MSG_STATS, s_lane_stats[0].envelope.selector);
+    ASSERT_EQ(MSG_STATS, s_lane_stats[1].envelope.selector);
+    EXPECT_EQ(14U, lane1.total);
+    EXPECT_EQ(2U, lane1.complete_frames);
+    EXPECT_EQ(9U, lane2.total);
+    EXPECT_EQ(1U, lane2.complete_frames);
+    const unsigned total = static_cast<unsigned>(lane1.total) + lane2.total;
+    const unsigned frames = static_cast<unsigned>(lane1.complete_frames) + lane2.complete_frames;
+    const unsigned both = total / frames;
+    EXPECT_EQ(7U, both);
+    EXPECT_NE(both, (7U + 9U) / 2U); /* not the average of the rounded averages */
+}
