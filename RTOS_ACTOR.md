@@ -1480,3 +1480,215 @@ cherry-picked on top, and the result was pushed with `--force-with-lease` agains
 
 **Host only:** this was the POSIX port's own shutdown, which a target doesn't run. But a test that
 ends the scheduler exercises it every time, which is why it surfaced here.
+
+### The design review, applied before the stop
+
+A review scored the code on Kay, SOLID, coupling, cohesion, GRASP, complexity and readability,
+and named three changes that would lift the scores most. All three are made, with a fourth that
+the third implied:
+
+1. **The protocol no longer depends on the scorer** (D, and the coupling hub). `message.h`
+   included `scorer.h` for `ScorerRules`, `FrameEvent` and the limits, so the observers pulled in
+   the scorer through the protocol. They are in `include/rules.h` now, which the scorer, the
+   protocol and the frame board include. A compile probe, `protocol_is_free_of_the_scorer`, fails
+   if the scorer's type is visible through the protocol's or the observers' headers. It failed
+   before the move.
+2. **The held rolls and the subscribers are values** (cohesion), in `src/held_rolls.{h,c}` and
+   `src/subscribers.{h,c}`, with accessors, as `FrameBoard` is. `game_actor.c` went from 449
+   lines to 385. What it doesn't do: `GameActor_Receive` is still at complexity 10, since its
+   switch is unchanged.
+3. **QUERY_SCORE is QUERY_FIGURE, with its contract on the selector** (Kay against LSP, decided
+   rather than left to drift). The three answers stay: they are the experiment's clearest result.
+   What was missing was the contract a client substitutes against, and substitutability is judged
+   against what the protocol promises, not against what "score" suggests. It now promises that
+   each kind answers with the one figure it reports, and that the figure means what the kind
+   says, as every Smalltalk object answers `printString` its own way. "Score" promised a total,
+   which made an average look like a broken substitution; "figure" promises only what the
+   contract does.
+4. **Every kind answers QUERY_STATS, in any state.** The typed facts are where LSP is served, so
+   a client must always be able to ask for them without knowing what is bound at an id. A
+   protocol test asks each kind, freshly started. It found a gap: a game awaiting its rules
+   answered "no game". It answers with its counters now. The lifecycle test that said "anything
+   but a new game" gets "no game" was renamed to include the stats query; its assertions are
+   unchanged.
+
+The review's interface-segregation point is left alone, as it advised. One `Message` union is the
+price of one protocol, and that price was chosen in phase 3.
+
+## Phase 4 report: actors are not tasks, and two lanes
+
+**What changed.**
+1. **Actors are not tasks.** A route binds an id to a kind, an instance, a mailbox and a hosting
+   task. Each game has a task of its own, and every observer shares the observers' task,
+   dispatched by `to` as before.
+2. **The outbox belongs to the task,** sized for the largest burst of the kinds it hosts: 43
+   messages for a game's task, 1 for the observers'. Each observer kind declares its largest
+   burst, and the shell static-asserts the observers' outbox against it.
+3. **The observers outrank every game,** and `GameShell_Start` stops with the reason if they
+   don't. The condition that goes with it: an observer kind's handling must be short and bounded.
+4. **Two lanes.** A second game at an id of its own, in a task of its own, playing its own rules,
+   and a scoreboard and a running average per lane. The routing table went from 8 routes to 16.
+5. **Counters are queries.** QUERY_STATS, which every kind answers with its counters and the facts
+   behind its answers. The tests ask for them instead of reading an actor's state.
+6. **FreeRTOS V11.2.0,** for a deadlock in V11.1.0's POSIX port, with a one-CPU regression check
+   and a per-test timeout in CI.
+7. **The design review's changes,** in the section above.
+
+**The hypotheses, tested.** Each was said before its test was written (see the decisions from the
+phase 3 review):
+
+| Prediction | Evidence | Held? |
+|---|---|---|
+| Sharing a task changes the shell only | The split's diff touches `rtos/`, the outbox's storage and each observer's declared burst. The rebinding tests pass unchanged | **Held** |
+| An observer costs far less than a task | The shell's static RAM with a game and two observers fell from 57,184 bytes to 36,552. A further observer costs 32 bytes, up to each kind's compile-time count | **Held**, with that limit |
+| A second game needs no game code | Neither the second lane nor the observer per lane changed a line of `src/` or `include/`. Both lanes play their own rules in their own tasks | **Held** |
+| An observer of two games mixes their frames | One scoreboard subscribed to both lanes answered 9, not 16: lane 2's frame 1 overwrote lane 1's, since a `FrameBoard` is keyed by frame number | **Failed, as predicted**, the one prediction made to fail |
+| The statistics selector hides state from the tests too | No test reads an actor's fields. The tests still include the state headers, to allocate an actor | **Held** |
+
+**The mixed frames: predicted, and why the fix went into the message, not the topology.** The
+prediction came from reading the protocol: a FRAME_CHANGED says which frame, but only its
+envelope's `from` says which game. There were two ways out:
+- **Change the topology: an observer of many games.** Every observer kind would key its frames by
+  `from`, with a compile-time count of games per observer, and would change to do it. And its one
+  figure would have to decide what "a figure over several games" means.
+- **Keep the topology, and put what crosses lanes into a message.** This is what's built. An
+  observer is an instance per game, which the kinds already allowed, so the fix changed no
+  observer code. What a lane knows crosses as facts, not as a rounded answer: QUERY_STATS' reply
+  carries each observer's total and its complete frames. The test combines two lanes exactly: 14
+  over 2 frames and 9 over 1 give 23 over 3, which is 7. The average of the rounded averages, 7
+  and 9, would be 8.
+
+So a center-wide figure is **a new kind that composes by message**: it asks each lane's observers
+for their stats and combines them. It is recorded, not built. It is Kay's answer, a new object
+rather than a wider old one, and the stats' facts are what make it exact.
+
+**Metrics** (the baseline is kay-oo at ad857ff; phase 2 is at 194fb52; phase 3 at 79cd042):
+
+| | Baseline | Phase 2 | Phase 3 | Phase 4 |
+|---|---|---|---|---|
+| Tests, host / with the POSIX port | 114 / – | 82 / 90 | 115 / 128 | 129 / 149 |
+| Functions (lizard) | 143 | 111 | 149 | 165 |
+| NLOC, `src/`, `include/`, `rtos/` | 1,283 | 1,079 | 1,602 | 1,792 |
+| Highest cyclomatic complexity (limit 10) | 5 | 9 | 10 | 10, `GameActor_Receive` |
+| Highest cognitive complexity (limit 7) | 4 | 5 | 5 | 5 |
+| Function pointers | 6 | 1 | 1 | 1, the task entry |
+| Release line coverage | 99.8% | 99.6% | 99.1% | 99.1% |
+| Stack contract, game task, release / debug (budget 4608) | – | 3952 / 4224 | 3968 / 4320 | 3984 / 4320 |
+| A request / a reply or event, bytes | – | 56 / 40 | 44 / 44 | 44 / 44 |
+| Actor state: game / scoreboard / average, bytes | – | 104 (game) | 96 / 34 / 34 | 96 / 34 / 34 |
+| The shell's static RAM, this host | – | – | 57,184: a game and two observers | 36,552 for the same; 55,760 for two lanes and four observers |
+| Each further observer | – | – | about 18.8 KB | 32 bytes, up to the compile-time count |
+
+Functions average 7.7 lines and a cyclomatic complexity of 1.9. Phase 4 took 29 commits, this
+report's included: 11 `[make-change]`, 4 `[make-easy]` and 14 `[clean-up]`.
+
+**RAM, as the lanes were added** (the shell's `s_shell`, release):
+
+| Step | Bytes | The difference |
+|---|---|---|
+| A game and two observers, a task each (phase 3) | 57,184 | |
+| The same, the observers sharing a task | 36,552 | −20,632 |
+| Two lanes, with lane 1's observers only | 55,504 | +18,952: the second game's task |
+| The routing table, 8 routes to 16 | 55,696 | +192: 8 routes of 24 bytes, bound or not |
+| An observer instance per lane | 55,760 | +64: two more observers' state |
+
+**What the change lost.**
+- **Deadline order.** The observers outrank the games, so an observer's work delays a game, and
+  the game drains the pinsetter. The delay is bounded only by the condition on observer kinds:
+  short, bounded handling. An observer that does I/O breaks it, and needs a task of its own below
+  the games.
+- **"32 bytes an observer" has a ceiling.** Instances are arrays sized at compile time. Raising a
+  kind's count costs each extra instance's state whether it's used or not, and every route costs
+  24 bytes, bound or not.
+- **The lifecycle has one more exception.** A game awaiting its rules answers "no game" to
+  everything but NEW_GAME, the pinsetter's rolls and losses, and now QUERY_STATS: one more branch
+  outside the lifecycle's switch, for a promise the protocol makes of every kind.
+- **The vocabulary keeps the scorer's names.** `rules.h` still says `ScorerRules` and
+  `SCORER_MAX_BALLS`. Renaming them would touch every file for no change in dependency, so it's
+  left, and recorded.
+- **16 bytes of release stack,** from the new values' accessors becoming calls into other files.
+- **Each lane is its own world.** Nothing combines lanes yet but a test. The kind that would is
+  recorded, not built.
+
+**Surprises.**
+1. **A kernel bug hung CI.** V11.1.0's POSIX port can end a cancelled thread holding its event's
+   mutex. It's a race: rare on many cores, all but certain on one, and made likelier by phase 4's
+   extra tasks. It was diagnosed with gdb, fixed by V11.2.0, and is now checked on one CPU in CI.
+   Recovering meant rewriting the integration line, as CLAUDE.md prescribes.
+2. **Stale objects, three times.** A file edited and restored from Windows within a second or two
+   kept its old object across the WSL file bridge, twice. After the kernel upgrade, the fetched
+   sources were older than the objects, so the one-CPU check still ran V11.1.0's code, and still
+   hung. The local scripts now delete the project's objects before every build, and every build
+   directory's kernel objects were deleted once. CI builds from nothing.
+3. **Getting the backtrace was its own problem.** The hang didn't happen under gdb, and gdb run
+   over many tests in one process produced a different failure: a scheduler restarted on the last
+   test's task lists, which ctest never does, since it runs each test in a process of its own.
+   With `ptrace_scope` at 1 and no sudo, the answer was a preloaded library that lets any process
+   trace the test, so gdb could attach to a hung one from outside.
+4. **An event answered with NOT_UNDERSTOOD turns a burst around.** The burst test's first run
+   dropped 22 messages: the observers didn't list ROLL_HELD, and answered 26 NOT_UNDERSTOODs into
+   the busy game's mailbox of 4. Every subscriber now lists the whole subscriber protocol.
+5. **A fresh game didn't answer its statistics.** The protocol test the review asked for was the
+   first to ask a game before its first NEW_GAME.
+6. **The game and the shell both empty the outbox:** the game on entry, the shell after posting.
+   The observers rely on the shell's. It's harmless, and uneven.
+7. **Process:** `git stash pop` applied an old stash of kay-oo's work, because nothing had been
+   stashed first. It was undone, and the stash kept intact. Staging is by path now, never
+   `git add -u` or a stash.
+
+**Mutation feedback at the phase stop.** Debug had 495 mutants: 478 killed and 17 survived, a
+score of 96.6%, in 15 m 9 s. Release had the same 495 and the same 17 survivors, 96.6%, in 13 m
+22 s. Phase 3 had 94.2% and 95.8%. The survivors:
+- **Known classes, unchanged:** `Fault_Stop`'s two, the frame board's three, `NULL` against the
+  message's own array for no new balls, the held list's shift reading one past a full list (now in
+  `held_rolls.c`), the event's deliberately unpinned `seq`, and the scorer's three.
+- **Equivalent, new with the statistics:** three loop bounds, `<` to `<=` in the complete-frame
+  count and in the reopening, and `<=` or 42 frames in the catch-up. Each reads a frame past the
+  last, which `Scorer_Frame` answers "not complete, 0", as it has since phase 2's fix.
+- **Equivalent, new with the extraction:** `HeldRolls_Init`'s first refusal. Before a game no one
+  can subscribe to hear it, and once a game starts, a refusal writes it before it's read.
+- **A real gap, now pinned:** the `rolls_lost` in a game's statistics survived `+` to `-`, since
+  the only test had losses of one kind. The new test has losses of both, and fails against that
+  mutant made by hand.
+
+**Host only; this would change on a target.**
+- **The stack figures and the RAM.** Every task's 16 KB stack is the POSIX port's minimum, not the
+  contract. On a target, an observer's saving is about 3.5 KB, not 18.8 KB, though the same
+  fraction. The control blocks' sizes are this port's.
+- **"Nothing dropped" in the burst tests.** Preemption on the POSIX port is simulated with
+  signals, so the burst tests are good evidence on this host, not proof.
+- **The kernel bug.** It was in the POSIX port's shutdown, which a target doesn't run.
+- **Deadline order's cost.** An observer's worst-case handling time against the game's latency
+  budget can only be measured on the target.
+- **Not host-only:** the protocol, the routing, the lifecycle, the statistics, the call graph's
+  shape, and every test of the pure core.
+
+**Recorded, not built.**
+- **A center-wide figure:** a new kind that composes the lanes' stats by message.
+- **A stack per task role,** if a target's RAM forces it: a second switch, per role (game tasks,
+  observer tasks), never per kind.
+- **Live rebinding stays deferred.** Sends look the routing table up in the sender's task, so a
+  rebind message to the shell wouldn't remove the race. It needs every send routed through one
+  task, or an atomic update of the table.
+- **A route's cost:** 24 bytes each, bound or not, so a table sized for a real center costs that
+  per id.
+
+### Kay's three properties, scored again
+
+| Property | Enforced by the structure | Still convention | Overridden by Power of Ten |
+|---|---|---|---|
+| **Messaging** | As in phase 3, and now for observers that share a task: each keeps its own route, and gets its messages through the observers' mailbox, never a call from the game. Every kind answers QUERY_STATS, so its counters are messages too. **The observers have message semantics with call-like timing:** they outrank every game, so each event is handled before the game goes on, as a call would be. But it is still a message: copied, addressed by id, rebindable, and answerable with NOT_UNDERSTOOD | The tests call a kind's receive function directly, standing in for the host | The scorer is still a value inside the game, called, by design |
+| **Local, protected state** | As in phase 3. The tests no longer read an actor's fields: they ask | The tests include the state headers, to allocate an actor, and could still read them | Static allocation: the host must know each actor's size |
+| **Extreme late binding** | Who receives a message is the routing table's data, and what it means is the bound kind's. QUERY_FIGURE's contract says so, and QUERY_STATS gives the facts that mean the same for every kind. A second lane is a route and an instance, with no game code | Bindings are made at startup only | The kinds are a closed enum and one switch. Every instance is an array sized at compile time. A game task's stack is sized for the deepest kind |
+
+**Decisions for phase 5: the QEMU target.**
+- **Make the host-only figures real:** the stack contract without the host's allowances, the
+  control blocks' sizes, and the RAM of two lanes.
+- **Measure deadline order:** an observer's worst-case handling time against the game's latency
+  budget, on real preemption. That decides whether the observers can stay above the games.
+- **Rerun the burst tests** on the target, where preemption isn't simulated.
+- **A stack per task role** becomes a decision once the target's RAM is known: built only if the
+  game-sized observer stack doesn't fit.
+- **CI:** the target stage from the gated-CI section's plan, as a gate beside the host's builds.
+
+**Stop.** Phase 4 ends here, as the brief asks.
