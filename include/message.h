@@ -70,6 +70,10 @@ typedef enum {
     MSG_STATS,
     /* Ends a game's practice: the balls after it are scored. */
     MSG_END_PRACTICE,
+    /* The lane's pinsetter is down: its rolls are refused and counted, whatever the game's state,
+     * until MSG_PINSETTER_UP. Manual rolls and edits still work. */
+    MSG_PINSETTER_DOWN,
+    MSG_PINSETTER_UP,
     MSG_SELECTOR_COUNT
 } Selector;
 
@@ -126,6 +130,7 @@ typedef struct {
     uint8_t complete_frames;
     Score total;            /* of the complete frames */
     uint16_t practice_balls; /* a game's, in its practice */
+    uint16_t rolls_refused;  /* the pinsetter's, while it was down, so far */
 } StatsPayload;
 
 /* An envelope, and the fields of its selector only. */
