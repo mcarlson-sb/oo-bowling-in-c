@@ -51,8 +51,22 @@ constexpr ActorId kClient = 2U;
 constexpr ActorId kSubscriber = 3U;
 constexpr ActorId kSecondSubscriber = 4U;
 UBaseType_t s_subscriber_queue_length = OutputQueue::kMaxLength;
-/* What sits at kSubscriber: an external queue the test reads, unless a test hosts a kind there. */
+/* What sits at kSubscriber and kSecondSubscriber: external queues the test reads, unless a test
+ * hosts a kind there. */
 ActorKind s_subscriber_kind = ACTOR_KIND_EXTERNAL;
+ActorKind s_second_subscriber_kind = ACTOR_KIND_EXTERNAL;
+UBaseType_t s_observer_priority = kObserverPriority;
+
+void BindOrHost(ActorId id, ActorKind kind, QueueHandle_t queue)
+{
+    if (kind == ACTOR_KIND_SCOREBOARD) {
+        GameShell_HostScoreboard(id);
+    } else if (kind == ACTOR_KIND_RUNNING_AVERAGE) {
+        GameShell_HostRunningAverage(id);
+    } else {
+        GameShell_Bind(id, queue);
+    }
+}
 
 /* The pinsetter's interrupt, simulated by the highest-priority task: when fired, it counts its
  * rolls one after another, as back-to-back interrupts would, and nothing lower runs until it's
@@ -124,19 +138,13 @@ void ClientTask(void *parameter)
  * messages before the game task runs. */
 void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
 {
-    GameShell_Start(kGamePriority, kObserverPriority);
+    GameShell_Start(kGamePriority, s_observer_priority);
     s_replies.Create();
     s_subscriber.Create(s_subscriber_queue_length);
     s_second_subscriber.Create();
     GameShell_Bind(kClient, s_replies.handle);
-    if (s_subscriber_kind == ACTOR_KIND_SCOREBOARD) {
-        GameShell_HostScoreboard(kSubscriber);
-    } else if (s_subscriber_kind == ACTOR_KIND_RUNNING_AVERAGE) {
-        GameShell_HostRunningAverage(kSubscriber);
-    } else {
-        GameShell_Bind(kSubscriber, s_subscriber.handle);
-    }
-    GameShell_Bind(kSecondSubscriber, s_second_subscriber.handle);
+    BindOrHost(kSubscriber, s_subscriber_kind, s_subscriber.handle);
+    BindOrHost(kSecondSubscriber, s_second_subscriber_kind, s_second_subscriber.handle);
     s_interrupt = xTaskCreateStatic(&InterruptTask, "interrupt", configMINIMAL_STACK_SIZE,
                                     nullptr, kInterruptPriority, s_interrupt_stack,
                                     &s_interrupt_task);
@@ -517,4 +525,41 @@ TEST(GameShellRebindingTest, should_reach_a_recording_double_that_sits_there_wit
     EXPECT_EQ(MSG_FRAME_CHANGED, s_recorded[2].envelope.selector);
     EXPECT_EQ(12U, s_recorded[2].payload.frame.frame_score);
     EXPECT_EQ(MSG_QUERY_SCORE, s_recorded[3].envelope.selector);
+}
+
+/* ---- The observers outrank the game: why their mailbox of 4 takes its bursts ---------------- */
+
+namespace {
+
+/* The game's worst case, as the stack test plays it: 43 messages sent for one edit, 21 of them to
+ * each subscriber, with no wait. */
+void PlayTheGamesWorstBurst()
+{
+    for (int i = 0; i < 12; i++) {
+        const Message strike = RollRequest(static_cast<RequestSeq>(i + 1), 10U);
+        (void)GameShell_Send(&strike, kPatience);
+        (void)xQueueReceive(s_replies.handle, &s_reply, kPatience);
+    }
+    Message subscribe = SubscribeRequest(20U);
+    (void)GameShell_Send(&subscribe, kPatience);
+    subscribe.envelope.from = kSecondSubscriber;
+    (void)GameShell_Send(&subscribe, kPatience);
+    FirePinsetter(13, 10U);
+    const Message every_ball_out = EditRequest(21U, 1U, 12U, {});
+    (void)GameShell_Send(&every_ball_out, kPatience);
+    s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
+    s_dropped_after = GameShell_OutputsDropped();
+}
+
+} // namespace
+
+TEST(GameShellObserverTest, should_drop_nothing_of_the_games_worst_burst_to_two_hosted_observers)
+{
+    /* The observers' task outranks the game's, so it takes each event as the game posts it, and
+     * their shared mailbox of 4 never fills. */
+    s_subscriber_kind = ACTOR_KIND_SCOREBOARD;
+    s_second_subscriber_kind = ACTOR_KIND_RUNNING_AVERAGE;
+    RunClient(&PlayTheGamesWorstBurst);
+    ASSERT_EQ(pdPASS, s_received);
+    EXPECT_EQ(0U, s_dropped_after);
 }
