@@ -23,7 +23,6 @@ typedef struct {
 
 void Outbox_Init(Outbox *self, Message *storage, uint8_t capacity);
 
-/* The next message out, so addressed, for its sender to fill in the payload. */
 Message *Outbox_Next(Outbox *self, Envelope envelope);
 
 /* A reply to `request`: from the id it was sent to, to its sender, with its seq. */

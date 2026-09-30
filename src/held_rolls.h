@@ -29,10 +29,8 @@ bool HeldRolls_IsEmpty(const HeldRolls *self);
 
 uint8_t HeldRolls_Count(const HeldRolls *self);
 
-/* The pins of the roll held longest: the next to be let through. */
 Pins HeldRolls_Oldest(const HeldRolls *self);
 
-/* The index of the roll held last. */
 uint8_t HeldRolls_NewestIndex(const HeldRolls *self);
 
 /* The roll at `index`, from the oldest, 0, as its subscribers hear of it: its pins, the ball it
