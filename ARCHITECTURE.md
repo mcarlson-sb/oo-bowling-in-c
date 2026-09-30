@@ -9,12 +9,13 @@ reasons, with the measurements, are in [RTOS_ACTOR.md](RTOS_ACTOR.md).
 ```
  rtos/  the shell: FreeRTOS on the POSIX port
  +------------------------------------------------------------------------------------+
- |  interrupt side          routing table          hosted actors, a task each        |
- |  (game_shell_isr.c)      id -> kind, instance,  +--------------+ +--------------+ |
- |  pinsetter's queue  -->  mailbox, task          | game task    | | scoreboard   | |
- |  lost report        -->                         | mailbox      | | task         | |
- |                          GameShell_Post         | outbox       | | mailbox      | |
- |                          GameShell_Dispatch     +------+-------+ +------+-------+ |
+ |  pinsetter               routing table          hosting tasks                     |
+ |  (pinsetter.c, _isr.c),  id -> kind, instance,  +--------------+ +--------------+ |
+ |  bound to a game's id:   mailbox, task          | a game's     | | observers'   | |
+ |  rolls, lost report -->                         | own task     | | shared task  | |
+ |                          GameShell_Post         | mailbox      | | mailbox      | |
+ |                          GameShell_Dispatch     | outbox (43)  | | outbox (1)   | |
+ |                                                 +------+-------+ +------+-------+ |
  +-----------------------------------------------------|-----------------|-----------+
                                     one switch on the kind at "to"
  src/  the pure core: no RTOS, no function pointers, no heap

@@ -6,7 +6,7 @@
 
 #include "fault.h"
 
-#include "game_shell_ports.h"
+#include "pinsetter.h"
 #include "posix_stack.h"
 #include "game_actor_state.h"
 #include "running_average_state.h"
@@ -14,7 +14,6 @@
 
 /* How many messages a hosting task's mailbox holds, for all the actors it hosts. */
 #define GAME_SHELL_MAILBOX 4U
-#define GAME_SHELL_PINSETTER_ROLLS 32U
 
 /* The instances of each kind the shell can host. Each game has a task of its own; the observers
  * share one. */
@@ -29,8 +28,6 @@
  * PTHREAD_STACK_MIN, so the port's minimum. */
 #define GAME_SHELL_TASK_STACK_WORDS configMINIMAL_STACK_SIZE
 
-_Static_assert(GAME_SHELL_PINSETTER_ROLLS >= SCORER_MAX_BALLS,
-               "the pinsetter's queue holds a whole game of rolls");
 _Static_assert(GAME_SHELL_TASK_STACK_WORDS * sizeof(StackType_t) >= GAME_SHELL_TASK_STACK_BUDGET,
                "a hosting task's stack holds its budget");
 _Static_assert(SCOREBOARD_MOST_SENT <= GAME_SHELL_OBSERVER_MOST_SENT,
@@ -50,7 +47,6 @@ typedef struct {
 /* A hosting task: one mailbox for every actor it hosts, the message it is handling, and the outbox
  * that message's sends go to, in storage its role sizes. Actors are not tasks. */
 typedef struct {
-    bool takes_the_pinsetter;
     UBaseType_t priority;
     QueueHandle_t mailbox;
     StaticQueue_t mailbox_queue;
@@ -86,13 +82,7 @@ typedef struct {
     RunningAverage running_averages[GAME_SHELL_RUNNING_AVERAGES];
     uint8_t running_average_count;
     atomic_uint_least16_t outputs_dropped; /* written by the hosting tasks, read by any */
-    QueueHandle_t pinsetter;
-    StaticQueue_t pinsetter_queue;
-    uint8_t pinsetter_storage[GAME_SHELL_PINSETTER_ROLLS * sizeof(Pins)];
-    QueueHandle_t lost_report;
-    StaticQueue_t lost_report_queue;
-    uint8_t lost_report_storage[sizeof(uint16_t)];
-    GameShellPorts ports;
+    Pinsetter pinsetter;
 } GameShell;
 
 static GameShell s_shell;
@@ -155,43 +145,11 @@ static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *
     GameShell_Deliver(self, outbox);
 }
 
-/* From the pinsetter, which has no id: it hears no reply. */
-static void Envelope_FromThePinsetter(Envelope *envelope, Selector selector)
-{
-    envelope->selector = selector;
-    envelope->from = ACTOR_ID_NONE;
-    envelope->to = GAME_SHELL_GAME_ID;
-    envelope->seq = 0U;
-}
-
-static bool GameShell_TakePinsetterRoll(GameShell *self, Message *message)
-{
-    Pins pins;
-    if (xQueueReceive(self->pinsetter, &pins, 0U) != pdPASS) {
-        return false;
-    }
-    Envelope_FromThePinsetter(&message->envelope, MSG_PINSETTER_ROLL);
-    message->payload.roll.pins = pins;
-    return true;
-}
-
-static bool GameShell_TakeLostReport(GameShell *self, Message *message)
-{
-    uint16_t lost;
-    if (xQueueReceive(self->lost_report, &lost, 0U) != pdPASS) {
-        return false;
-    }
-    Envelope_FromThePinsetter(&message->envelope, MSG_ROLLS_LOST);
-    message->payload.rolls_lost.lost = lost;
-    return true;
-}
-
-/* For the task that takes the pinsetter, its rolls, then its count of those it lost, before a
- * message waiting with them; for every task, its own mailbox. */
+/* For the task that hosts the pinsetter's game, what the pinsetter counted, before a message
+ * waiting with it; for every task, its own mailbox. */
 static bool GameShell_TakeMessage(GameShell *self, GameShellTask *host)
 {
-    return (host->takes_the_pinsetter && (GameShell_TakePinsetterRoll(self, &host->message) ||
-                                          GameShell_TakeLostReport(self, &host->message))) ||
+    return Pinsetter_Take(&self->pinsetter, host->task, &host->message) ||
            (xQueueReceive(host->mailbox, &host->message, 0U) == pdPASS);
 }
 
@@ -238,7 +196,6 @@ static void GameShell_StartAGame(GameShell *self, ActorId id, UBaseType_t priori
     const uint8_t instance = self->game_count;
     self->game_count++;
     GameShellGameTask *game_task = &self->game_tasks[instance];
-    game_task->task.takes_the_pinsetter = (id == GAME_SHELL_GAME_ID);
     GameShellTask_Start(&game_task->task, game_task->outbox_storage, GAME_OUTBOX_CAPACITY,
                         priority);
     GameActor_Init(&self->games[instance], id);
@@ -248,7 +205,6 @@ static void GameShell_StartAGame(GameShell *self, ActorId id, UBaseType_t priori
 static void GameShell_StartTheObserversTask(GameShell *self, UBaseType_t priority)
 {
     GameShellObserverTask *observers = &self->observer_task;
-    observers->task.takes_the_pinsetter = false;
     GameShellTask_Start(&observers->task, observers->outbox_storage,
                         GAME_SHELL_OBSERVER_MOST_SENT, priority);
 }
@@ -278,17 +234,11 @@ void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
     self->scoreboard_count = 0U;
     self->running_average_count = 0U;
     atomic_init(&self->outputs_dropped, 0U);
-    self->pinsetter = xQueueCreateStatic(GAME_SHELL_PINSETTER_ROLLS, sizeof(Pins),
-                                         self->pinsetter_storage, &self->pinsetter_queue);
-    self->lost_report = xQueueCreateStatic(1U, sizeof(uint16_t), self->lost_report_storage,
-                                           &self->lost_report_queue);
     GameShell_StartAGame(self, GAME_SHELL_GAME_ID, game_priority);
     GameShell_StartTheObserversTask(self, observer_priority);
     GameShell_RequireObserversOutrankEveryGame(self);
-    self->ports.pinsetter = self->pinsetter;
-    self->ports.lost_report = self->lost_report;
-    self->ports.game_task = self->game_tasks[0].task.task;
-    GameShell_ResetIsr();
+    Pinsetter_Start(&self->pinsetter, GAME_SHELL_GAME_ID,
+                    GameShell_RouteTo(self, GAME_SHELL_GAME_ID)->task);
 }
 
 static uint8_t GameShell_StartScoreboard(GameShell *self, ActorId id)
@@ -335,9 +285,9 @@ void GameShell_Bind(ActorId id, QueueHandle_t queue)
     s_shell.routes[id].task = NULL;
 }
 
-const GameShellPorts *GameShell_Ports(void)
+Pinsetter *GameShell_Pinsetter(void)
 {
-    return &s_shell.ports;
+    return &s_shell.pinsetter;
 }
 
 uint16_t GameShell_OutputsDropped(void)
@@ -347,7 +297,8 @@ uint16_t GameShell_OutputsDropped(void)
 
 size_t GameShell_TaskStackUsed(void)
 {
-    return PosixStack_DeepestUse(&s_shell.game_tasks[0].task.stack_paint);
+    const uint8_t game = GameShell_RouteTo(&s_shell, GAME_SHELL_GAME_ID)->instance;
+    return PosixStack_DeepestUse(&s_shell.game_tasks[game].task.stack_paint);
 }
 
 BaseType_t GameShell_Send(const Message *message, TickType_t wait)

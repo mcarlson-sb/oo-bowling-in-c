@@ -50,7 +50,7 @@ target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
 # The limits have headroom over the largest frames today, on CI's GCC 13 (the gate) and on
 # GCC 16, which builds here too:
 #   - everything but the interrupt side: 320 bytes, over the largest frame today, Scorer_Edit's.
-#   - the interrupt side's own file, rtos/game_shell_isr.c: its own limit, with the RTOS shell.
+#   - the interrupt side's own file, rtos/pinsetter_isr.c: its own limit, with the RTOS shell.
 set(OO_C_STACK_LIMIT 320)
 # GCC's option: clang has no -Wstack-usage. Every build that gates on it uses GCC; clang only
 # builds the mutation-testing configuration below.
@@ -165,7 +165,8 @@ if(OO_C_RTOS)
     # The RTOS shell: everything that touches FreeRTOS, under the library's warnings.
     add_library(rtos_shell STATIC
         rtos/game_shell.c
-        rtos/game_shell_isr.c
+        rtos/pinsetter.c
+        rtos/pinsetter_isr.c
         rtos/posix_stack.c
     )
     # src/ for the actors' state headers: the shell hosts the instances, so it sees inside.
@@ -173,9 +174,9 @@ if(OO_C_RTOS)
     target_compile_options(rtos_shell PRIVATE ${OO_C_WARNINGS})
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
         target_compile_options(rtos_shell PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
-        # The shell's interrupt side: GameShell_PinsetterCountedFromIsr is 64 bytes in every
-        # gated build on GCC 13 (debug, release, UBSan, TSan, coverage), so one limit over it.
-        set_source_files_properties(rtos/game_shell_isr.c PROPERTIES
+        # The shell's interrupt side: the pinsetter's interrupt is 64 bytes in every gated build
+        # on GCC 13 (debug, release, UBSan, TSan, coverage), so one limit over it.
+        set_source_files_properties(rtos/pinsetter_isr.c PROPERTIES
             COMPILE_OPTIONS -Wstack-usage=96)
     endif()
     target_link_libraries(rtos_shell PUBLIC freertos bowling)

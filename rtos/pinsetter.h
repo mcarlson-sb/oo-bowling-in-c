@@ -1,0 +1,49 @@
+#ifndef PINSETTER_H
+#define PINSETTER_H
+
+/* The pinsetter: a feeder bound to one game's id. Its interrupt counts each roll into a queue, and
+ * a full queue's losses into a one-slot report, and wakes the task that hosts its game. That task
+ * takes them as messages from no one, to the game, before anything in its mailbox. Private to the
+ * shell; the interrupt side has a file of its own, pinsetter_isr.c, so that its stack tripwire can
+ * be the interrupt's. */
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "FreeRTOS.h"
+#include "queue.h"
+#include "task.h"
+
+#include "message.h"
+
+#define PINSETTER_ROLLS 32U
+
+_Static_assert(PINSETTER_ROLLS >= SCORER_MAX_BALLS,
+               "the pinsetter's queue holds a whole game of rolls");
+
+typedef struct {
+    ActorId game;
+    TaskHandle_t task; /* the task that hosts the game, which the interrupt wakes */
+    QueueHandle_t rolls;
+    StaticQueue_t rolls_queue;
+    uint8_t rolls_storage[PINSETTER_ROLLS * sizeof(Pins)];
+    QueueHandle_t lost_report;
+    StaticQueue_t lost_report_queue;
+    uint8_t lost_report_storage[sizeof(uint16_t)];
+    uint16_t lost_to_full_queue; /* the interrupt's own: nothing else touches it */
+} Pinsetter;
+
+/* Before the scheduler starts: feeding the game at `game`, hosted by `task`, with nothing lost. */
+void Pinsetter_Start(Pinsetter *self, ActorId game, TaskHandle_t task);
+
+/* For `task`, if it hosts the pinsetter's game: a roll, else the count of those lost, as a message
+ * to the game. False if nothing waits, or for any other task. */
+bool Pinsetter_Take(Pinsetter *self, TaskHandle_t task, Message *message);
+
+/* From the interrupt: a roll counted. The newest is the one lost to a full queue. */
+void Pinsetter_CountedFromIsr(Pinsetter *self, Pins pins);
+
+/* The shell's one pinsetter, which the interrupt feeds. */
+Pinsetter *GameShell_Pinsetter(void);
+
+#endif /* PINSETTER_H */
