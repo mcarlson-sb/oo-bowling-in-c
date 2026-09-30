@@ -851,3 +851,19 @@ TEST(GameActorTest, should_answer_its_statistics_with_its_counters_and_facts)
     EXPECT_EQ(10U, stats.payload.stats.complete_frames);
     EXPECT_EQ(0U, stats.payload.stats.total);
 }
+
+TEST(GameActorTest, should_count_in_its_statistics_the_rolls_lost_to_the_pinsetter_and_to_a_full_held_list)
+{
+    /* Pinned at the phase 4 stop, from mutation testing: with losses of one kind only, the sum
+     * reads the same as the difference. */
+    GameActor actor = MakeActor(rules::kTenPin);
+    BowlAGutterGame(&actor);
+    TestOutbox outbox;
+    for (int i = 0; i < 31; i++) {
+        Send(&actor, PinsetterRoll(1U), &outbox); /* 30 held, and the 31st lost: no room */
+    }
+    Send(&actor, RollsLostReport(2U), &outbox); /* and two lost to the pinsetter's queue */
+    Send(&actor, StatsQuery(9U), &outbox);
+    EXPECT_EQ(3U, outbox.items[0].payload.stats.rolls_lost);
+    EXPECT_EQ(30U, outbox.items[0].payload.stats.rolls_held);
+}
