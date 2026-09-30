@@ -349,8 +349,9 @@ static void GameActor_Receive(GameActor *self, const Message *message, Outbox *o
     }
 }
 
-/* Before any game: the pinsetter's rolls wait for the first, and its losses are counted. Any
- * other request is answered "no game". */
+/* Before any game: the pinsetter's rolls wait for the first, and its losses are counted. Its
+ * statistics are answered, as every kind's are, whatever its state. Any other request is answered
+ * "no game". */
 static void GameActor_BeforeAGame(GameActor *self, const Message *message, Outbox *outbox)
 {
     const GameRequest request = GameActor_RequestOf(message);
@@ -358,6 +359,8 @@ static void GameActor_BeforeAGame(GameActor *self, const Message *message, Outbo
         GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
     } else if (request == GAME_ROLLS_LOST) {
         GameActor_RollsLost(self, message, outbox);
+    } else if (message->envelope.selector == MSG_QUERY_STATS) {
+        GameActor_AnswerStats(self, message, outbox);
     } else {
         Outbox_Reply(outbox, message, GAME_ERR_NO_GAME, 0U);
     }

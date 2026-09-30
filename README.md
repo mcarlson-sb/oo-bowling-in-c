@@ -84,9 +84,9 @@ stop. It is not a gate.
 | The shell | `rtos/game_shell.h`, `rtos/game_shell.c` | The actor host, on FreeRTOS. The routing table binds each id to a kind, an instance and a mailbox, and each hosted actor gets a task of its own. One switch, on the kind at a message's `to`, calls that kind's receive function |
 | The interrupt side | `rtos/game_shell_isr.c` | The pinsetter's interrupt, which counts each roll into a queue, and a full queue's losses into a one-slot report |
 
-Everything is statically allocated. Before a game, anything but a NEW_GAME is answered "no
-game". Rules the scorer can't play are refused. A selector a kind doesn't respond to is answered
-NOT_UNDERSTOOD and counted.
+Everything is statically allocated. Before a game, anything but a NEW_GAME or a QUERY_STATS is
+answered "no game". Rules the scorer can't play are refused. A selector a kind doesn't respond
+to is answered NOT_UNDERSTOOD and counted.
 
 ## Follow one roll
 

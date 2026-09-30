@@ -690,7 +690,7 @@ TEST(GameActorLifecycleTest, should_start_a_game_by_the_rules_a_new_game_carries
     EXPECT_EQ(9U, outbox.items[0].payload.reply.score);
 }
 
-TEST(GameActorLifecycleTest, should_reply_no_game_to_anything_but_a_new_game_before_one_starts)
+TEST(GameActorLifecycleTest, should_reply_no_game_to_anything_but_a_new_game_or_a_stats_query_before_one_starts)
 {
     GameActor actor;
     GameActor_Init(&actor, kGame);
