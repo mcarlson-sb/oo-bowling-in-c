@@ -34,6 +34,10 @@ void Outbox_FinishReply(Message *reply, GameStatus status, Score score);
 /* A reply whose outcome is known at once. */
 void Outbox_Reply(Outbox *self, const Message *request, GameStatus status, Score score);
 
+/* A MSG_STATS answer to `request`, as a reply is addressed, with every field 0 for the kind to
+ * fill in what it knows. */
+StatsPayload *Outbox_BeginStats(Outbox *self, const Message *request);
+
 /* The request's selector isn't one its kind responds to. Answered, from `from`, unless it came
  * from no one, who can't hear it, or is a NOT_UNDERSTOOD itself, which two kinds would echo. */
 void Outbox_NotUnderstood(Outbox *self, ActorId from, const Message *request);

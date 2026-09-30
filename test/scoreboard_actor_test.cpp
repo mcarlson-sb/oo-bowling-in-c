@@ -167,3 +167,36 @@ TEST(ScoreboardTest, should_take_the_rest_of_what_a_game_tells_subscribers_in_si
     EXPECT_EQ(0U, outbox.count);
     EXPECT_EQ(0U, board.not_understood);
 }
+
+/* ---- Its statistics: counters and facts, asked for, not read from its state -------------------- */
+
+namespace {
+
+Message StatsQuery(RequestSeq seq)
+{
+    Message message = Query(seq);
+    message.envelope.selector = MSG_QUERY_STATS;
+    return message;
+}
+
+} // namespace
+
+TEST(ScoreboardTest, should_answer_its_statistics_with_its_facts_and_counters)
+{
+    Message roll = {};
+    roll.envelope.selector = MSG_ROLL;
+    roll.envelope.from = kAsker;
+    roll.envelope.to = kBoard;
+    Scoreboard board = MakeBoard();
+    const TestOutbox outbox =
+        Send(&board, {FrameChanged(1, 7, true), FrameChanged(2, 12, true), roll, StatsQuery(4U)});
+    ASSERT_EQ(1U, outbox.count);
+    const Message &stats = outbox.items[0];
+    EXPECT_EQ(MSG_STATS, stats.envelope.selector);
+    EXPECT_EQ(kAsker, stats.envelope.to);
+    EXPECT_EQ(kBoard, stats.envelope.from);
+    EXPECT_EQ(4U, stats.envelope.seq);
+    EXPECT_EQ(19U, stats.payload.stats.total);
+    EXPECT_EQ(2U, stats.payload.stats.complete_frames);
+    EXPECT_EQ(1U, stats.payload.stats.not_understood);
+}

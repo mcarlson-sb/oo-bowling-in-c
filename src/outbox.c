@@ -39,6 +39,15 @@ void Outbox_Reply(Outbox *self, const Message *request, GameStatus status, Score
     Outbox_FinishReply(Outbox_BeginReply(self, request), status, score);
 }
 
+StatsPayload *Outbox_BeginStats(Outbox *self, const Message *request)
+{
+    Message *stats = Outbox_Next(self, MSG_STATS, request->envelope.to, request->envelope.from);
+    stats->envelope.seq = request->envelope.seq;
+    const StatsPayload none = { 0U, 0U, 0U, 0U, 0U };
+    stats->payload.stats = none;
+    return &stats->payload.stats;
+}
+
 static bool Envelope_WantsNotUnderstood(const Envelope *envelope)
 {
     return (envelope->from != ACTOR_ID_NONE) && (envelope->selector != MSG_NOT_UNDERSTOOD);

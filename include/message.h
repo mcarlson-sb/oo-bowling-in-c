@@ -54,6 +54,10 @@ typedef enum {
     /* To from, with its seq: the selector sent was one the kind at "to" doesn't answer. Never
      * answered itself. */
     MSG_NOT_UNDERSTOOD,
+    /* Every kind answers it, with MSG_STATS: its counters, and the facts behind its answers. */
+    MSG_QUERY_STATS,
+    /* To a MSG_QUERY_STATS's from, with its seq. A field a kind has nothing for is 0. */
+    MSG_STATS,
     MSG_SELECTOR_COUNT
 } Selector;
 
@@ -100,6 +104,16 @@ typedef struct {
     Selector selector;
 } NotUnderstoodPayload;
 
+/* What a kind knows, as facts rather than rounded answers, so that a consumer can combine several
+ * exactly: an observer's total and complete frames give an average over many lanes. */
+typedef struct {
+    uint16_t not_understood;
+    uint16_t rolls_lost;    /* a game's, so far */
+    uint8_t rolls_held;     /* a game's, now */
+    uint8_t complete_frames;
+    Score total;            /* of the complete frames */
+} StatsPayload;
+
 /* An envelope, and the fields of its selector only. */
 typedef struct {
     Envelope envelope;
@@ -112,6 +126,7 @@ typedef struct {
         FrameEvent frame;             /* MSG_FRAME_CHANGED */
         RollHeldPayload roll_held;    /* MSG_ROLL_HELD */
         NotUnderstoodPayload not_understood; /* MSG_NOT_UNDERSTOOD */
+        StatsPayload stats;           /* MSG_STATS */
     } payload;
 } Message;
 
