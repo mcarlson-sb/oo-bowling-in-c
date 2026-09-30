@@ -38,6 +38,7 @@ add_library(bowling STATIC
     src/frame_board.c
     src/held_rolls.c
     src/running_average.c
+    src/subscribers.c
 )
 target_include_directories(bowling PUBLIC include PRIVATE src)
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})

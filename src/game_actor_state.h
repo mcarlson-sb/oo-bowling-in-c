@@ -8,15 +8,11 @@
 
 #include "game_actor.h"
 #include "held_rolls.h"
+#include "subscribers.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef struct {
-    ActorId ids[GAME_MAX_SUBSCRIBERS];
-    uint8_t count;
-} Subscribers;
 
 /* Where the game's lifecycle is: which messages mean something now. Whether a game in play is
  * over is the scorer's to say. */

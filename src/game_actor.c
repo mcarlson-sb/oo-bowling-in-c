@@ -6,35 +6,6 @@
 
 #include "outbox.h"
 
-
-static void Subscribers_Init(Subscribers *subscribers)
-{
-    subscribers->count = 0U;
-}
-
-static bool Subscribers_IsFull(const Subscribers *subscribers)
-{
-    return subscribers->count == GAME_MAX_SUBSCRIBERS;
-}
-
-static void Subscribers_Add(Subscribers *subscribers, ActorId id)
-{
-    subscribers->ids[subscribers->count] = id;
-    subscribers->count++;
-}
-
-static bool Subscribers_Remove(Subscribers *subscribers, ActorId id)
-{
-    for (uint8_t i = 0U; i < subscribers->count; i++) {
-        if (subscribers->ids[i] == id) {
-            subscribers->count--;
-            subscribers->ids[i] = subscribers->ids[subscribers->count];
-            return true;
-        }
-    }
-    return false;
-}
-
 void GameActor_Init(GameActor *self, ActorId id)
 {
     self->id = id;
@@ -55,9 +26,9 @@ static void GameOutbox_FrameChanged(Outbox *outbox, ActorId from, ActorId to,
 static void GameActor_Publish(const GameActor *self, const FrameEvents *events,
                               Outbox *outbox)
 {
-    for (uint8_t s = 0U; s < self->subscribers.count; s++) {
+    for (uint8_t s = 0U; s < Subscribers_Count(&self->subscribers); s++) {
         for (uint8_t e = 0U; e < events->count; e++) {
-            GameOutbox_FrameChanged(outbox, self->id, self->subscribers.ids[s],
+            GameOutbox_FrameChanged(outbox, self->id, Subscribers_At(&self->subscribers, s),
                                     &events->events[e]);
         }
     }
@@ -70,8 +41,9 @@ static RollNumber GameActor_HeldBallNumber(const GameActor *self, uint8_t index)
 
 static void GameActor_PublishHeld(const GameActor *self, uint8_t index, Outbox *outbox)
 {
-    for (uint8_t s = 0U; s < self->subscribers.count; s++) {
-        Message *out = Outbox_Next(outbox, MSG_ROLL_HELD, self->id, self->subscribers.ids[s]);
+    for (uint8_t s = 0U; s < Subscribers_Count(&self->subscribers); s++) {
+        const ActorId subscriber = Subscribers_At(&self->subscribers, s);
+        Message *out = Outbox_Next(outbox, MSG_ROLL_HELD, self->id, subscriber);
         out->payload.roll_held.pins = HeldRolls_PinsAt(&self->held, index);
         out->payload.roll_held.position = GameActor_HeldBallNumber(self, index);
         out->payload.roll_held.held = HeldRolls_Count(&self->held);
@@ -81,8 +53,9 @@ static void GameActor_PublishHeld(const GameActor *self, uint8_t index, Outbox *
 
 static void GameActor_PublishLost(const GameActor *self, Outbox *outbox)
 {
-    for (uint8_t s = 0U; s < self->subscribers.count; s++) {
-        Message *out = Outbox_Next(outbox, MSG_ROLLS_LOST, self->id, self->subscribers.ids[s]);
+    for (uint8_t s = 0U; s < Subscribers_Count(&self->subscribers); s++) {
+        const ActorId subscriber = Subscribers_At(&self->subscribers, s);
+        Message *out = Outbox_Next(outbox, MSG_ROLLS_LOST, self->id, subscriber);
         out->payload.rolls_lost.lost =
             (uint16_t)(self->lost_to_full_queue + self->lost_to_full_held_list);
     }
