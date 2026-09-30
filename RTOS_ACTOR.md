@@ -1908,3 +1908,96 @@ phase argues for more.
 | The shell's static RAM | 56,120 bytes |
 | The game's state | 96 bytes |
 | Tests | 152 |
+
+### Interim report, after steps 1 and 2: the tables
+
+**What changed.**
+1. **A protocol table per lifecycle state** (`k_game_protocols[state][selector]`), with a row for
+   every selector and one for a selector outside the protocol. BeforeAGame's chain and the
+   special cases for NEW_GAME and QUERY_STATS are gone. `GameActor_Handle` is three lines: look up
+   the meaning, answer, play.
+2. **Holding is an explicit state.** It's set where holding starts, on the first pinsetter roll
+   refused in play or a held roll refused again, and cleared when the last held roll is let
+   through. The pinsetter's roll and the discard stopped asking whether anything is held: the
+   state's row answers.
+
+**The metrics, against the baseline (27b7567):**
+
+| | Baseline | Step 1 | Step 2 |
+|---|---|---|---|
+| States | 2 (one implied) | 2 | 3 |
+| Highest cyclomatic complexity in the game (limit 10) | 10, `GameActor_Receive` | 9, `GameActor_MakeThePlay` | 9 and 9, `GameActor_Answer` and `GameActor_MakeThePlay` |
+| `if`s in `game_actor.c` | 17 | 12 | 10 |
+| `case` labels in `game_actor.c` | 11 | 15 | 16 |
+| `game_actor.c`, NLOC / functions | 323 / 33 | 368 / 35 | 385 / 35 |
+| NLOC, `src/`, `include/`, `rtos/` | 1,876 | – | 1,940 |
+| The tables, ROM | 60 bytes | 256 | 384 |
+| Stack contract, game task, release / debug | 4048 / 4320 | – | 4048 / 4336 |
+| The game's state / the shell's RAM | 96 / 56,120 | – | 96 / 56,120 |
+| Tests | 152 | 152 | 152 |
+
+**What the tables did, and didn't.**
+- **The conditionals went.** Five of the game's 17 `if`s were the lifecycle, asked outright or
+  through "is anything held". The largest function fell from 10 to 9, as predicted, with a third
+  state added.
+- **The switch didn't shrink; it split.** One switch over every request would have 13 cases, past
+  ENG-3.1's 10. So an entry names an answer, which leaves the game as it is, and a play, which
+  changes it, and each has a switch. The complexity limit, not the tables, decides the shape of
+  the dispatch, as it did twice in phase 3. With the three states still to come, the plays will
+  pass 9 cases again. The next split, if it comes, is by what a play touches (the rolls, or the
+  lifecycle).
+- **The cost is rows.** Three states of 16 rows is 48 lines, and 384 bytes of ROM. Each new state
+  adds 16 of each, whether a selector means anything new there or not. That is the price of
+  "every pair explicit", and it is paid in data, not in branches.
+- **The threshold is already in view.** The pinsetter's roll means three things in three states:
+  held before a game, played or held in play, and held behind the others while holding. The
+  discard also means three: "no game", "nothing held" and a discard. Steps 3 to 5 take the
+  pinsetter's roll to five.
+
+**Found by writing every row out: two games can answer each other forever.** Before its first
+game, a game answers everything but NEW_GAME, the pinsetter's messages and QUERY_STATS with a
+"no game" reply. That includes events, replies and NOT_UNDERSTOOD. So a reply to an in-play game
+is not understood, and the NOT_UNDERSTOOD it sends to a game awaiting rules gets a "no game"
+reply. That reply is not understood again, and so on, for as long as both run. Phase 4 found the
+same shape for observers and ROLL_HELD. Only a message between two games could start it, and no
+sender does that today. Step 1 kept the behavior, since it was a `[make-easy]`. Brought to you
+below.
+
+**Brought to you before step 3, with a recommendation each.**
+1. **The echo above.** I'd make it a `[make-change]` before step 3: before a game, events, replies
+   and NOT_UNDERSTOOD get the answer they get in play (not understood, and a NOT_UNDERSTOOD is
+   counted but never answered). "No game" stays the answer to requests.
+2. **Whose state is "pinsetter down", the pinsetter's or the game's?**
+   - **The pinsetter's.** With a pinsetter per lane, it knows it is down, and can refuse and count
+     at the source. Manual rolls and edits keep working for free, since they never come through
+     it. But the pinsetter isn't an actor: it has no id, no mailbox, and no way to hear "down" or
+     answer QUERY_STATS. Making it one reopens the held-roll question you decided in the clean-up,
+     and moves "refused and counted" out of the game's statistics.
+   - **The game's.** Down is one more row in the game's table. The pinsetter's roll is refused
+     and counted there, and the statistics already live there. It is the threshold's own example.
+   - **I'd make it the game's for phase 5,** and record the pinsetter's as the alternative, with the
+     held-roll question beside it. The phase's question is whether per-state tables pay off,
+     and this keeps it about that.
+3. **Resume after pinsetter down.** Back to in play always, with holding worked out again from the
+   held list, is simpler, and it's the only one that stays right. Edits and discards still work
+   while the machine is down, so an edit can let every held roll through. A remembered "holding"
+   would then be stale. Working it out needs one question, at one transition: is anything held?
+4. **Must a finished game be certified before the next NEW_GAME?** I'd say no. Certifying is a
+   manager's decision, and a lane shouldn't stop because it wasn't made. An uncertified game
+   simply ends uncertified. If a league requires it, that's a rule for a lane or league actor,
+   not the game.
+5. **Pinsetter down during practice.** I'd allow it. Practice pinsetter rolls are refused and
+   counted, as in play, and resume goes back to practice. If down is the game's state, that means
+   remembering practice, or a "down in practice" row. If it's the pinsetter's, it comes for free:
+   one more point for the pinsetter.
+6. **The lifecycle in the game, or in a lane actor that owns the game?** Practice and
+   certification look like the lane's business: neither is a rule of bowling, and practice needs
+   no scorer. I'd keep them in the game through step 5. Then the `become:` spike measures the
+   other shape, a state as its own kind, which is close to what a lane actor would be.
+7. **The protocol's own OK status** (from the clean-up decisions). I'd do it as a `[make-easy]`
+   before step 3, since practice's and certification's replies are the first that aren't the
+   game's own.
+8. **Practice counts manual rolls too.** "Balls are counted but not scored": I've read that as both
+   the pinsetter's and the manual ones. Say if you meant only the pinsetter's.
+
+**Stop.** Steps 1 and 2 end here, for your review.
