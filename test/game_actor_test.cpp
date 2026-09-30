@@ -1060,3 +1060,26 @@ TEST(GameActorPinsetterDownTest, should_still_score_manual_rolls_and_edits_while
     Send(&actor, edit, &outbox);
     EXPECT_EQ(8U, outbox.items[0].payload.reply.score);
 }
+
+namespace {
+
+Message PinsetterUp(RequestSeq seq)
+{
+    Message message = RollRequest(seq, 0U);
+    message.envelope.selector = MSG_PINSETTER_UP;
+    return message;
+}
+
+} // namespace
+
+TEST(GameActorPinsetterDownTest, should_score_the_pinsetters_rolls_again_once_it_is_up)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    TestOutbox outbox;
+    Send(&actor, PinsetterDown(1U), &outbox);
+    Send(&actor, PinsetterUp(2U), &outbox);
+    EXPECT_EQ(REPLY_OK, outbox.items[0].payload.reply.status);
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    Send(&actor, PinsetterRoll(4U), &outbox);
+    EXPECT_EQ(7U, ScoreOf(&actor));
+}

@@ -341,7 +341,8 @@ typedef enum {
     GAME_NO_MOVE = 0,
     GAME_NEW_GAME,
     GAME_END_PRACTICE,
-    GAME_PINSETTER_DOWN
+    GAME_PINSETTER_DOWN,
+    GAME_PINSETTER_UP
 } GameMove;
 
 typedef struct {
@@ -394,7 +395,7 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_END_PRACTICE] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_END_PRACTICE, GAME_OK },
         [MSG_PINSETTER_DOWN] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_DOWN, GAME_OK },
-        [MSG_PINSETTER_UP] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_PINSETTER_UP] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_UP, GAME_OK },
         [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
     },
     [GAME_STATE_IN_PLAY] = {
@@ -415,7 +416,7 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NOT_IN_PRACTICE },
         [MSG_PINSETTER_DOWN] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_DOWN, GAME_OK },
-        [MSG_PINSETTER_UP] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_PINSETTER_UP] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_UP, GAME_OK },
         [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
     },
 
@@ -437,7 +438,7 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NOT_IN_PRACTICE },
         [MSG_PINSETTER_DOWN] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_DOWN, GAME_OK },
-        [MSG_PINSETTER_UP] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_PINSETTER_UP] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_UP, GAME_OK },
         [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
     },
 };
@@ -523,9 +524,11 @@ static void GameActor_EndPractice(GameActor *self, const Message *message, Outbo
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
 }
 
-static void GameActor_PinsetterDown(GameActor *self, const Message *message, Outbox *outbox)
+/* Down or up, whatever the lifecycle: only the pinsetter's rolls heed it. */
+static void GameActor_SetThePinsetter(GameActor *self, bool down, const Message *message,
+                                      Outbox *outbox)
 {
-    self->pinsetter_down = true;
+    self->pinsetter_down = down;
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
 }
 
@@ -542,7 +545,10 @@ static void GameActor_MakeTheMove(GameActor *self, GameMove move, const Message 
         GameActor_EndPractice(self, message, outbox);
         break;
     case GAME_PINSETTER_DOWN:
-        GameActor_PinsetterDown(self, message, outbox);
+        GameActor_SetThePinsetter(self, true, message, outbox);
+        break;
+    case GAME_PINSETTER_UP:
+        GameActor_SetThePinsetter(self, false, message, outbox);
         break;
     }
 }
