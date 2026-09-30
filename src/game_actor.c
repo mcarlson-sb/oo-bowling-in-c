@@ -21,8 +21,12 @@ static void GameOutbox_FrameChanged(Outbox *outbox, ActorId from, ActorId to,
     Outbox_Next(outbox, Envelope_Event(MSG_FRAME_CHANGED, from, to))->payload.frame = *frame;
 }
 
-/* An event from the game, for its subscribers to be told. */
-static Message GameActor_Event(const GameActor *self, Selector selector)
+static bool GameActor_HasHadAGame(const GameActor *self)
+{
+    return self->lifecycle == GAME_IN_PLAY;
+}
+
+static Message GameActor_EventForItsSubscribers(const GameActor *self, Selector selector)
 {
     Message event;
     event.envelope = Envelope_Event(selector, self->id, ACTOR_ID_NONE);
@@ -33,37 +37,34 @@ static void GameActor_Publish(const GameActor *self, const FrameEvents *events,
                               Outbox *outbox)
 {
     for (uint8_t e = 0U; e < events->count; e++) {
-        Message event = GameActor_Event(self, MSG_FRAME_CHANGED);
+        Message event = GameActor_EventForItsSubscribers(self, MSG_FRAME_CHANGED);
         event.payload.frame = events->events[e];
         Subscribers_Tell(&self->subscribers, outbox, &event);
     }
 }
 
-/* The ball the oldest held roll would be: the next the scorer takes. */
-static RollNumber GameActor_FirstHeldBallNumber(const GameActor *self)
+static RollNumber GameActor_NextBallNumber(const GameActor *self)
 {
     return (RollNumber)(Scorer_BallCount(&self->scorer) + 1U);
 }
 
 static void GameActor_PublishHeld(const GameActor *self, uint8_t index, Outbox *outbox)
 {
-    Message event = GameActor_Event(self, MSG_ROLL_HELD);
+    Message event = GameActor_EventForItsSubscribers(self, MSG_ROLL_HELD);
     event.payload.roll_held =
-        HeldRolls_Report(&self->held, index, GameActor_FirstHeldBallNumber(self));
+        HeldRolls_Report(&self->held, index, GameActor_NextBallNumber(self));
     Subscribers_Tell(&self->subscribers, outbox, &event);
 }
 
-/* Every roll lost so far: the pinsetter's, to its full queue, and the game's, to no room to hold
- * it. */
-static uint16_t GameActor_RollsLost(const GameActor *self)
+static uint16_t GameActor_RollsLostEverywhere(const GameActor *self)
 {
     return (uint16_t)(self->lost_to_full_queue + HeldRolls_Lost(&self->held));
 }
 
 static void GameActor_PublishLost(const GameActor *self, Outbox *outbox)
 {
-    Message event = GameActor_Event(self, MSG_ROLLS_LOST);
-    event.payload.rolls_lost.lost = GameActor_RollsLost(self);
+    Message event = GameActor_EventForItsSubscribers(self, MSG_ROLLS_LOST);
+    event.payload.rolls_lost.lost = GameActor_RollsLostEverywhere(self);
     Subscribers_Tell(&self->subscribers, outbox, &event);
 }
 
@@ -169,9 +170,9 @@ static void GameActor_AnswerStats(const GameActor *self, const Message *message,
 {
     StatsPayload *stats = Outbox_BeginStats(outbox, message);
     stats->not_understood = self->not_understood;
-    stats->rolls_lost = GameActor_RollsLost(self);
+    stats->rolls_lost = GameActor_RollsLostEverywhere(self);
     stats->rolls_held = HeldRolls_Count(&self->held);
-    if (self->lifecycle == GAME_IN_PLAY) { /* before a game, the scorer holds no game at all */
+    if (GameActor_HasHadAGame(self)) {
         FrameEvents complete;
         Scorer_ReportCompleteFrames(&self->scorer, &complete);
         stats->complete_frames = complete.count;
@@ -179,8 +180,8 @@ static void GameActor_AnswerStats(const GameActor *self, const Message *message,
     }
 }
 
-/* The game's figure: its total. */
-static void GameActor_AnswerFigure(const GameActor *self, const Message *message, Outbox *outbox)
+static void GameActor_AnswerItsTotalAsItsFigure(const GameActor *self, const Message *message,
+                                                Outbox *outbox)
 {
     Outbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
 }
@@ -256,27 +257,24 @@ static GameRequest GameActor_RequestOf(const Message *message)
 
 static bool GameActor_IsPlayingAGame(const GameActor *self)
 {
-    return (self->lifecycle == GAME_IN_PLAY) && !Scorer_IsOver(&self->scorer);
+    return GameActor_HasHadAGame(self) && !Scorer_IsOver(&self->scorer);
 }
 
-/* The old game's complete frames, each as no longer complete: what the new game's start does to
- * a subscriber's view. None before the first game. */
-static void GameActor_ReopenEveryFrame(const GameActor *self, FrameEvents *reopened)
+static void GameActor_ReopenTheOldGamesFrames(const GameActor *self, FrameEvents *reopened)
 {
-    if (self->lifecycle != GAME_IN_PLAY) {
+    if (!GameActor_HasHadAGame(self)) {
         reopened->count = 0U;
         return;
     }
     Scorer_ReportReopened(&self->scorer, reopened);
 }
 
-/* By these rules: the old game's frames reopened for the subscribers, and the rolls held since
- * let through. Refused, changing nothing, if the scorer can't play them. */
+/* Refused, changing nothing, if the scorer can't play the rules. */
 static GameStatus GameActor_StartNextGame(GameActor *self, const ScorerRules *rules,
                                           Outbox *outbox)
 {
     FrameEvents reopened;
-    GameActor_ReopenEveryFrame(self, &reopened);
+    GameActor_ReopenTheOldGamesFrames(self, &reopened);
     const GameStatus status = Scorer_Start(&self->scorer, rules);
     if (status != GAME_OK) {
         return status;
@@ -321,7 +319,7 @@ static void GameActor_Receive(GameActor *self, const Message *message, Outbox *o
         GameActor_HearLostReport(self, message, outbox);
         break;
     case GAME_QUERY_FIGURE:
-        GameActor_AnswerFigure(self, message, outbox);
+        GameActor_AnswerItsTotalAsItsFigure(self, message, outbox);
         break;
     case GAME_ROLL:
         GameActor_Roll(self, message, outbox);
