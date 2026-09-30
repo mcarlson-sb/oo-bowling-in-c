@@ -1096,3 +1096,16 @@ TEST(GameActorPinsetterDownTest, should_go_back_to_practice_when_the_pinsetter_c
     EXPECT_EQ(1U, outbox.items[0].payload.stats.rolls_refused);
     EXPECT_EQ(1U, outbox.items[0].payload.stats.practice_balls);
 }
+
+TEST(GameActorPinsetterDownTest, should_refuse_the_pinsetters_rolls_while_it_is_down_even_before_a_game)
+{
+    GameActor actor;
+    GameActor_Init(&actor, kGame);
+    TestOutbox outbox;
+    Send(&actor, PinsetterDown(1U), &outbox);
+    EXPECT_EQ(REPLY_OK, outbox.items[0].payload.reply.status);
+    Send(&actor, PinsetterRoll(3U), &outbox); /* refused, not held for the next game */
+    Send(&actor, StatsQuery(2U), &outbox);
+    EXPECT_EQ(1U, outbox.items[0].payload.stats.rolls_refused);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
+}
