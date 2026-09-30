@@ -14,6 +14,8 @@ void GameActor_Init(GameActor *self, ActorId id)
     self->lost_to_full_queue = 0U;
     self->not_understood = 0U;
     self->practice_balls = 0U;
+    self->pinsetter_down = false;
+    self->rolls_refused = 0U;
 }
 
 static void GameOutbox_FrameChanged(Outbox *outbox, ActorId from, ActorId to,
@@ -162,6 +164,7 @@ static void GameActor_AnswerStats(const GameActor *self, const Message *message,
     stats->rolls_lost = GameActor_RollsLostEverywhere(self);
     stats->rolls_held = HeldRolls_Count(&self->held);
     stats->practice_balls = self->practice_balls;
+    stats->rolls_refused = self->rolls_refused;
     if (GameActor_HasHadAGame(self)) {
         FrameEvents complete;
         Scorer_ReportCompleteFrames(&self->scorer, &complete);
@@ -330,13 +333,15 @@ typedef enum {
     GAME_EDIT,
     GAME_DISCARD_HELD,
     GAME_HEAR_LOST_REPORT,
-    GAME_COUNT_PRACTICE_BALL
+    GAME_COUNT_PRACTICE_BALL,
+    GAME_REFUSE_THE_PINSETTERS_ROLL
 } GamePlay;
 
 typedef enum {
     GAME_NO_MOVE = 0,
     GAME_NEW_GAME,
-    GAME_END_PRACTICE
+    GAME_END_PRACTICE,
+    GAME_PINSETTER_DOWN
 } GameMove;
 
 typedef struct {
@@ -388,7 +393,7 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_END_PRACTICE] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_END_PRACTICE, GAME_OK },
-        [MSG_PINSETTER_DOWN] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_PINSETTER_DOWN] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_DOWN, GAME_OK },
         [MSG_PINSETTER_UP] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
     },
@@ -409,7 +414,7 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NOT_IN_PRACTICE },
-        [MSG_PINSETTER_DOWN] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_PINSETTER_DOWN] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_DOWN, GAME_OK },
         [MSG_PINSETTER_UP] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
     },
@@ -431,15 +436,23 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NOT_IN_PRACTICE },
-        [MSG_PINSETTER_DOWN] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_PINSETTER_DOWN] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_DOWN, GAME_OK },
         [MSG_PINSETTER_UP] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
     },
 };
 
+/* The pinsetter's roll while it is down, in every state: the one meaning the flag changes. */
+static const GameMeaning k_a_pinsetter_roll_while_it_is_down = {
+    GAME_NO_ANSWER, GAME_REFUSE_THE_PINSETTERS_ROLL, GAME_NO_MOVE, GAME_OK
+};
+
 static GameMeaning GameActor_MeaningOf(const GameActor *self, const Message *message)
 {
     const Selector selector = message->envelope.selector;
+    if (self->pinsetter_down && (selector == MSG_PINSETTER_ROLL)) {
+        return k_a_pinsetter_roll_while_it_is_down;
+    }
     const unsigned row = Selector_IsInProtocol(selector) ? (unsigned)selector : MSG_SELECTOR_COUNT;
     return k_game_protocols[GameActor_State(self)][row];
 }
@@ -498,12 +511,21 @@ static void GameActor_MakeThePlay(GameActor *self, GamePlay play, const Message 
     case GAME_COUNT_PRACTICE_BALL:
         GameActor_CountPracticeBall(self, message, outbox);
         break;
+    case GAME_REFUSE_THE_PINSETTERS_ROLL:
+        self->rolls_refused++;
+        break;
     }
 }
 
 static void GameActor_EndPractice(GameActor *self, const Message *message, Outbox *outbox)
 {
     self->lifecycle = GAME_IN_PLAY;
+    Outbox_Reply(outbox, message, REPLY_OK, 0U);
+}
+
+static void GameActor_PinsetterDown(GameActor *self, const Message *message, Outbox *outbox)
+{
+    self->pinsetter_down = true;
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
 }
 
@@ -518,6 +540,9 @@ static void GameActor_MakeTheMove(GameActor *self, GameMove move, const Message 
         break;
     case GAME_END_PRACTICE:
         GameActor_EndPractice(self, message, outbox);
+        break;
+    case GAME_PINSETTER_DOWN:
+        GameActor_PinsetterDown(self, message, outbox);
         break;
     }
 }

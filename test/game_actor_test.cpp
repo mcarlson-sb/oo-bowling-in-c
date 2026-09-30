@@ -1015,3 +1015,30 @@ TEST(GameActorPracticeTest, should_refuse_a_new_game_during_practice_as_a_game_i
     Send(&actor, NewGameRequest(1U, rules::kCandlepin), &outbox);
     EXPECT_EQ(GAME_ERR_GAME_IN_PROGRESS, outbox.items[0].payload.reply.status);
 }
+
+/* ---- A league night: the pinsetter down --------------------------------------------------- */
+
+namespace {
+
+Message PinsetterDown(RequestSeq seq)
+{
+    Message message = RollRequest(seq, 0U);
+    message.envelope.selector = MSG_PINSETTER_DOWN;
+    return message;
+}
+
+} // namespace
+
+TEST(GameActorPinsetterDownTest, should_refuse_and_count_the_pinsetters_rolls_while_it_is_down)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    TestOutbox outbox;
+    Send(&actor, PinsetterDown(1U), &outbox);
+    EXPECT_EQ(REPLY_OK, outbox.items[0].payload.reply.status);
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    Send(&actor, PinsetterRoll(4U), &outbox);
+    Send(&actor, StatsQuery(2U), &outbox);
+    EXPECT_EQ(2U, outbox.items[0].payload.stats.rolls_refused);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.total);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
+}

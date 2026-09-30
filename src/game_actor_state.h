@@ -32,6 +32,8 @@ struct GameActor {
     uint16_t lost_to_full_queue;
     uint16_t not_understood;
     uint16_t practice_balls; /* this game's */
+    bool pinsetter_down;     /* a decision across the lifecycle: only the pinsetter's rolls heed it */
+    uint16_t rolls_refused;  /* the pinsetter's, while it was down */
 };
 
 #ifdef __cplusplus
