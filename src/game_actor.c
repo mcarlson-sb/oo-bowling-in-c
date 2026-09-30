@@ -92,12 +92,10 @@ static void GameActor_LetHeldRollsThrough(GameActor *self, Outbox *outbox)
         if (status != GAME_OK) {
             HeldRolls_RefuseFirst(&self->held, status);
             GameActor_PublishHeld(self, 0U, outbox);
-            self->lifecycle = GAME_HOLDING;
             return;
         }
         HeldRolls_DropFirst(&self->held);
     }
-    self->lifecycle = GAME_IN_PLAY;
 }
 
 static void GameActor_Roll(GameActor *self, const Message *message, Outbox *outbox)
@@ -107,7 +105,7 @@ static void GameActor_Roll(GameActor *self, const Message *message, Outbox *outb
     Outbox_FinishReply(reply, status, Scorer_Score(&self->scorer));
 }
 
-/* In play, nothing is held: the first roll the scorer refuses starts the holding. */
+/* In play with nothing held: the first roll the scorer refuses is held, and the game is holding. */
 static void GameActor_PlayOrHold(GameActor *self, const Message *message, Outbox *outbox)
 {
     const Pins pins = message->payload.roll.pins;
@@ -115,7 +113,6 @@ static void GameActor_PlayOrHold(GameActor *self, const Message *message, Outbox
     if (status != GAME_OK) {
         HeldRolls_RefuseFirst(&self->held, status);
         GameActor_HoldOrLose(self, pins, outbox);
-        self->lifecycle = GAME_HOLDING;
     }
 }
 
@@ -272,7 +269,23 @@ static void GameActor_HoldTheRoll(GameActor *self, const Message *message, Outbo
     GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
 }
 
-/* What a message means to the game in each state of its lifecycle: an answer, which leaves the
+/* The state a message is read in: the lifecycle's decision, and what the held list says. */
+typedef enum {
+    GAME_STATE_AWAITING_RULES,
+    GAME_STATE_IN_PLAY,
+    GAME_STATE_HOLDING, /* in play, with rolls held */
+    GAME_STATES
+} GameState;
+
+static GameState GameActor_State(const GameActor *self)
+{
+    if (self->lifecycle == GAME_AWAITING_RULES) {
+        return GAME_STATE_AWAITING_RULES;
+    }
+    return HeldRolls_IsEmpty(&self->held) ? GAME_STATE_IN_PLAY : GAME_STATE_HOLDING;
+}
+
+/* What a message means to the game in each state: an answer, which leaves the
  * game as it is, or a play, which changes the game or its lifecycle. Every entry names both, one
  * of them nothing. Two switches, not one: together they are more cases than ENG-3.1 allows one
  * function. */
@@ -306,8 +319,8 @@ typedef struct {
 /* One row per selector, and one, at MSG_SELECTOR_COUNT, for a selector outside the protocol. */
 #define GAME_PROTOCOL_ROWS (MSG_SELECTOR_COUNT + 1U)
 
-static const GameMeaning k_game_protocols[GAME_LIFECYCLE_STATES][GAME_PROTOCOL_ROWS] = {
-    [GAME_AWAITING_RULES] = {
+static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
+    [GAME_STATE_AWAITING_RULES] = {
         [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NEW_GAME },
         [MSG_ROLL] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
         [MSG_SUBSCRIBE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
@@ -325,7 +338,7 @@ static const GameMeaning k_game_protocols[GAME_LIFECYCLE_STATES][GAME_PROTOCOL_R
         [MSG_STATS] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
         [MSG_SELECTOR_COUNT] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
     },
-    [GAME_IN_PLAY] = {
+    [GAME_STATE_IN_PLAY] = {
         [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NEW_GAME },
         [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL },
         [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY },
@@ -344,7 +357,7 @@ static const GameMeaning k_game_protocols[GAME_LIFECYCLE_STATES][GAME_PROTOCOL_R
         [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
     },
 
-    [GAME_HOLDING] = {
+    [GAME_STATE_HOLDING] = {
         [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NEW_GAME },
         [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL },
         [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY },
@@ -368,7 +381,7 @@ static GameMeaning GameActor_MeaningOf(const GameActor *self, const Message *mes
 {
     const Selector selector = message->envelope.selector;
     const unsigned row = Selector_IsInProtocol(selector) ? (unsigned)selector : MSG_SELECTOR_COUNT;
-    return k_game_protocols[self->lifecycle][row];
+    return k_game_protocols[GameActor_State(self)][row];
 }
 
 static void GameActor_Answer(GameActor *self, GameAnswer answer, const Message *message,

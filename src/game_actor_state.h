@@ -14,14 +14,12 @@
 extern "C" {
 #endif
 
-/* Where the game's lifecycle is: which messages mean something now. Holding is in play with a
- * pinsetter roll refused and held, and every one after it, until a correction lets them through.
- * Whether a game in play is over is the scorer's to say. */
+/* The decisions the game's lifecycle stores: a new game started it, and nothing the game holds
+ * can work it out. Facts are derived, not stored: whether a game is over is the scorer's to say,
+ * and whether it is holding rolls is the held list's. */
 typedef enum {
     GAME_AWAITING_RULES,
-    GAME_IN_PLAY,
-    GAME_HOLDING,
-    GAME_LIFECYCLE_STATES /* how many there are */
+    GAME_IN_PLAY
 } GameLifecycle;
 
 struct GameActor {
