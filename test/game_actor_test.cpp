@@ -1222,3 +1222,12 @@ TEST(GameActorCertifiedTest, should_refuse_to_certify_a_game_twice)
     EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
     EXPECT_EQ(GAME_ERR_CERTIFIED, outbox.items[0].payload.reply.status);
 }
+
+TEST(GameActorCertifiedTest, should_refuse_to_certify_a_game_in_practice_as_not_over)
+{
+    GameActor actor = MakePracticingActor();
+    TestOutbox outbox;
+    Send(&actor, CertifyRequest(1U), &outbox);
+    EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
+    EXPECT_EQ(GAME_ERR_NOT_OVER, outbox.items[0].payload.reply.status);
+}
