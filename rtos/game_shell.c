@@ -98,12 +98,12 @@ static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *
     }
 }
 
-/* For the task that hosts the pinsetter's game, what the pinsetter counted, before a message
- * waiting with it; for every task, its own mailbox. */
 static bool GameShell_TakeMessage(GameShell *self, GameShellTask *host)
 {
-    return Pinsetter_Take(&self->pinsetter, host->task, &host->message) ||
-           (xQueueReceive(host->mailbox, &host->message, 0U) == pdPASS);
+    if (Pinsetter_Take(&self->pinsetter, host->task, &host->message)) {
+        return true;
+    }
+    return xQueueReceive(host->mailbox, &host->message, 0U) == pdPASS;
 }
 
 static void GameShell_Task(void *parameter)
