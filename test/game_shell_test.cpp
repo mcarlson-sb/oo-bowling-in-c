@@ -640,6 +640,28 @@ TEST(GameShellLanesTest, should_play_two_lanes_each_by_its_own_rules_in_tasks_of
     EXPECT_EQ(7U, s_first_lane_last.payload.reply.score); /* ten-pin: 3, 4 is a frame */
 }
 
+namespace {
+
+Message s_first_lanes_figure;
+Message s_second_lanes_figure;
+
+} // namespace
+
+TEST(GameShellLanesTest, should_feed_each_lanes_game_from_its_own_pinsetter)
+{
+    /* Lane 1's pinsetter counts a candlepin frame: 3, 3, 3. Lane 0's game hears none of it. */
+    s_second_lane = true;
+    RunClient([] {
+        (void)Ask(NewGameAt(kSecondLane, 1U, rules::kCandlepin));
+        s_interrupt_lane = 1U;
+        FirePinsetter({3U, 3U, 3U});
+        s_second_lanes_figure = Ask(QueryTo(kSecondLane, 2U));
+        s_first_lanes_figure = Ask(QueryTo(GAME_SHELL_GAME_ID, 3U));
+    });
+    EXPECT_EQ(9U, s_second_lanes_figure.payload.reply.score);
+    EXPECT_EQ(0U, s_first_lanes_figure.payload.reply.score);
+}
+
 TEST(GameShellObserverDeathTest, should_refuse_a_second_lane_the_observers_do_not_outrank)
 {
     /* Every game, not only the first: the observers must preempt each of them. */

@@ -14,6 +14,5 @@ void Pinsetter_CountedFromIsr(Pinsetter *self, Pins pins)
 
 void GameShell_PinsetterCountedFromIsr(GameShellLane lane, Pins pins)
 {
-    (void)lane;
-    Pinsetter_CountedFromIsr(GameShell_Pinsetter(), pins);
+    Pinsetter_CountedFromIsr(GameShell_PinsetterOfLane(lane), pins);
 }

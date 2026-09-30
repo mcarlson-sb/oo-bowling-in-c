@@ -35,8 +35,10 @@ _Static_assert(RUNNING_AVERAGE_MOST_SENT <= GAME_SHELL_OBSERVER_MOST_SENT,
                "the observers' outbox holds a running average's largest burst");
 
 /* A hosting task: one mailbox for every actor it hosts, the message it is handling, and the outbox
- * that message's sends go to, in storage its role sizes. Actors are not tasks. */
+ * that message's sends go to, in storage its role sizes; for a game's task, its lane's pinsetter.
+ * Actors are not tasks. */
 typedef struct {
+    Pinsetter *pinsetter; /* none for the observers' task */
     UBaseType_t priority;
     QueueHandle_t mailbox;
     StaticQueue_t mailbox_queue;
@@ -53,6 +55,7 @@ typedef struct {
 typedef struct {
     GameShellTask task;
     Message outbox_storage[GAME_OUTBOX_CAPACITY];
+    Pinsetter pinsetter;
 } GameShellGameTask;
 
 /* The observers' task: every observer, sharing one stack, one mailbox and a small outbox. */
@@ -71,7 +74,6 @@ typedef struct {
     uint8_t scoreboard_count;
     RunningAverage running_averages[GAME_SHELL_RUNNING_AVERAGES];
     uint8_t running_average_count;
-    Pinsetter pinsetter;
 } GameShell;
 
 static GameShell s_shell;
@@ -98,9 +100,9 @@ static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *
     }
 }
 
-static bool GameShell_TakeMessage(GameShell *self, GameShellTask *host)
+static bool GameShell_TakeMessage(GameShellTask *host)
 {
-    if (Pinsetter_Take(&self->pinsetter, host->task, &host->message)) {
+    if ((host->pinsetter != NULL) && Pinsetter_Take(host->pinsetter, &host->message)) {
         return true;
     }
     return xQueueReceive(host->mailbox, &host->message, 0U) == pdPASS;
@@ -112,7 +114,7 @@ static void GameShell_Task(void *parameter)
     PosixStack_Paint(&host->stack_paint);
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        while (GameShell_TakeMessage(&s_shell, host)) {
+        while (GameShell_TakeMessage(host)) {
             host->outbox.count = 0U;
             GameShell_Dispatch(&s_shell, &host->message, &host->outbox);
             Router_Deliver(&s_shell.router, &host->outbox);
@@ -159,6 +161,8 @@ static uint8_t GameShell_StartAGame(GameShell *self, ActorId id, UBaseType_t pri
     GameShellGameTask *game_task = &self->game_tasks[instance];
     GameShellTask_Start(&game_task->task, game_task->outbox_storage, GAME_OUTBOX_CAPACITY,
                         priority);
+    Pinsetter_Start(&game_task->pinsetter, id, game_task->task.task);
+    game_task->task.pinsetter = &game_task->pinsetter;
     GameActor_Init(&self->games[instance], id);
     return instance;
 }
@@ -176,6 +180,7 @@ static void GameShell_StartTheObserversTask(GameShell *self, UBaseType_t priorit
     GameShellObserverTask *observers = &self->observer_task;
     GameShellTask_Start(&observers->task, observers->outbox_storage,
                         GAME_SHELL_OBSERVER_MOST_SENT, priority);
+    observers->task.pinsetter = NULL;
 }
 
 /* Why the observers must outrank every game is in ARCHITECTURE.md, section 3. */
@@ -197,11 +202,6 @@ static void GameShell_UnbindEveryIdAndForgetEveryInstance(GameShell *self)
     self->running_average_count = 0U;
 }
 
-static void GameShell_StartThePinsetterFeeding(GameShell *self, ActorId game)
-{
-    Pinsetter_Start(&self->pinsetter, game, Router_RouteTo(&self->router, game)->task);
-}
-
 void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
 {
     GameShell *self = &s_shell;
@@ -209,7 +209,6 @@ void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
     GameShell_HostAGame(self, GAME_SHELL_GAME_ID, game_priority);
     GameShell_StartTheObserversTask(self, observer_priority);
     GameShell_RequireObserversOutrankEveryGame(self);
-    GameShell_StartThePinsetterFeeding(self, GAME_SHELL_GAME_ID);
 }
 
 static uint8_t GameShell_StartScoreboard(GameShell *self, ActorId id)
@@ -255,9 +254,9 @@ void GameShell_Bind(ActorId id, QueueHandle_t queue)
     GameShell_Route(&s_shell, id, external);
 }
 
-Pinsetter *GameShell_Pinsetter(void)
+Pinsetter *GameShell_PinsetterOfLane(GameShellLane lane)
 {
-    return &s_shell.pinsetter;
+    return &s_shell.game_tasks[lane].pinsetter;
 }
 
 uint16_t GameShell_OutputsDropped(void)

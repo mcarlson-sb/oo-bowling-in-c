@@ -46,9 +46,9 @@ typedef enum {
  * `observer_priority`: above the game's, it takes each event as the game sends it. */
 void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority);
 
-/* After GameShell_Start, before the scheduler starts: another game at `id`, a lane of its own,
- * in a task of its own at `priority`, with no game yet. The pinsetter's interrupt feeds only the
- * game at GAME_SHELL_GAME_ID. The observers' task must outrank it too. */
+/* After GameShell_Start, before the scheduler starts: another game at `id`, the next lane, in a
+ * task of its own at `priority` and fed by a pinsetter of its own, with no game yet. The
+ * observers' task must outrank it too. */
 void GameShell_HostGame(ActorId id, UBaseType_t priority);
 
 /* After GameShell_Start, before the scheduler starts: a scoreboard, or a running average, at
@@ -68,7 +68,7 @@ BaseType_t GameShell_Send(const Message *message, TickType_t wait);
  * at GAME_SHELL_GAME_ID. */
 typedef uint8_t GameShellLane;
 
-/* From a lane's pinsetter interrupt: a roll it counted. Only lane 0 has a pinsetter yet. */
+/* From a lane's pinsetter interrupt: a roll it counted. */
 void GameShell_PinsetterCountedFromIsr(GameShellLane lane, Pins pins);
 
 /* Replies and events not delivered, so far: to an id nothing is bound to, or can be, or to a

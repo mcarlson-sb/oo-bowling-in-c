@@ -14,6 +14,7 @@
 #include "queue.h"
 #include "task.h"
 
+#include "game_shell.h"
 #include "message.h"
 
 #define PINSETTER_ROLLS 32U
@@ -36,14 +37,14 @@ typedef struct {
 /* Before the scheduler starts: feeding the game at `game`, hosted by `task`, with nothing lost. */
 void Pinsetter_Start(Pinsetter *self, ActorId game, TaskHandle_t task);
 
-/* Gives `task`, if it hosts the pinsetter's game, the next roll, or else the count of those lost,
- * as a message to the game. Returns false if neither waits, or for any other task. */
-bool Pinsetter_Take(Pinsetter *self, TaskHandle_t task, Message *message);
+/* Gives the task that hosts the pinsetter's game the next roll, or else the count of those lost,
+ * as a message to the game. Returns false if neither waits. */
+bool Pinsetter_Take(Pinsetter *self, Message *message);
 
 /* From the interrupt: a roll counted. The newest is the one lost to a full queue. */
 void Pinsetter_CountedFromIsr(Pinsetter *self, Pins pins);
 
-/* The shell's one pinsetter, which the interrupt feeds. */
-Pinsetter *GameShell_Pinsetter(void);
+/* The pinsetter of a lane, which its interrupt feeds. */
+Pinsetter *GameShell_PinsetterOfLane(GameShellLane lane);
 
 #endif /* PINSETTER_H */

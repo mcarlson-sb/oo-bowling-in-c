@@ -39,10 +39,7 @@ static bool Pinsetter_TakeLostReport(Pinsetter *self, Message *message)
     return true;
 }
 
-bool Pinsetter_Take(Pinsetter *self, TaskHandle_t task, Message *message)
+bool Pinsetter_Take(Pinsetter *self, Message *message)
 {
-    if (task != self->task) {
-        return false;
-    }
     return Pinsetter_TakeRoll(self, message) || Pinsetter_TakeLostReport(self, message);
 }
