@@ -18,7 +18,8 @@ extern "C" {
  * over is the scorer's to say. */
 typedef enum {
     GAME_AWAITING_RULES,
-    GAME_IN_PLAY
+    GAME_IN_PLAY,
+    GAME_LIFECYCLE_STATES /* how many there are */
 } GameLifecycle;
 
 struct GameActor {

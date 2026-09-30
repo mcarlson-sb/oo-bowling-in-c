@@ -221,40 +221,6 @@ static void GameActor_DoesNotUnderstand(GameActor *self, const Message *message,
     Outbox_NotUnderstood(outbox, self->id, message);
 }
 
-/* What the game makes of each selector of the protocol. The ones it doesn't answer are the ones
- * not listed, which read as GAME_DOES_NOT_UNDERSTAND. */
-typedef enum {
-    GAME_DOES_NOT_UNDERSTAND = 0,
-    GAME_ROLL,
-    GAME_SUBSCRIBE,
-    GAME_UNSUBSCRIBE,
-    GAME_EDIT,
-    GAME_PINSETTER_ROLL,
-    GAME_QUERY_FIGURE,
-    GAME_DISCARD_HELD,
-    GAME_ROLLS_LOST
-} GameRequest;
-
-static const GameRequest k_game_requests[MSG_SELECTOR_COUNT] = {
-    [MSG_ROLL] = GAME_ROLL,
-    [MSG_SUBSCRIBE] = GAME_SUBSCRIBE,
-    [MSG_UNSUBSCRIBE] = GAME_UNSUBSCRIBE,
-    [MSG_EDIT] = GAME_EDIT,
-    [MSG_PINSETTER_ROLL] = GAME_PINSETTER_ROLL,
-    [MSG_QUERY_FIGURE] = GAME_QUERY_FIGURE,
-    [MSG_DISCARD_HELD] = GAME_DISCARD_HELD,
-    [MSG_ROLLS_LOST] = GAME_ROLLS_LOST,
-};
-
-static GameRequest GameActor_RequestOf(const Message *message)
-{
-    const Selector selector = message->envelope.selector;
-    if (!Selector_IsInProtocol(selector)) {
-        return GAME_DOES_NOT_UNDERSTAND;
-    }
-    return k_game_requests[selector];
-}
-
 static bool GameActor_IsPlayingAGame(const GameActor *self)
 {
     return GameActor_HasHadAGame(self) && !Scorer_IsOver(&self->scorer);
@@ -297,71 +263,157 @@ static void GameActor_NewGame(GameActor *self, const Message *message, Outbox *o
     Outbox_FinishReply(reply, status, (status == GAME_OK) ? Scorer_Score(&self->scorer) : 0U);
 }
 
-static void GameActor_Receive(GameActor *self, const Message *message, Outbox *outbox)
+/* Before any game, the one answer to all but what starts a game, the pinsetter's rolls and
+ * losses, and the statistics. */
+static void GameActor_AnswerNoGame(const Message *message, Outbox *outbox)
 {
-    switch (GameActor_RequestOf(message)) {
+    Outbox_Reply(outbox, message, GAME_ERR_NO_GAME, 0U);
+}
+
+static void GameActor_HoldTheRoll(GameActor *self, const Message *message, Outbox *outbox)
+{
+    GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
+}
+
+/* What a message means to the game in each state of its lifecycle: an answer, which leaves the
+ * game as it is, or a play, which changes the game or its lifecycle. Every entry names both, one
+ * of them nothing. Two switches, not one: together they are more cases than ENG-3.1 allows one
+ * function. */
+typedef enum {
+    GAME_DOES_NOT_UNDERSTAND = 0, /* what a missing entry reads as */
+    GAME_NO_ANSWER,
+    GAME_ANSWER_NO_GAME,
+    GAME_ANSWER_FIGURE,
+    GAME_ANSWER_STATS,
+    GAME_SUBSCRIBE,
+    GAME_UNSUBSCRIBE
+} GameAnswer;
+
+typedef enum {
+    GAME_NO_PLAY = 0,
+    GAME_NEW_GAME,
+    GAME_ROLL,
+    GAME_PINSETTER_ROLL,
+    GAME_HOLD_THE_ROLL,
+    GAME_EDIT,
+    GAME_DISCARD_HELD,
+    GAME_HEAR_LOST_REPORT
+} GamePlay;
+
+typedef struct {
+    GameAnswer answer;
+    GamePlay play;
+} GameMeaning;
+
+/* One row per selector, and one, at MSG_SELECTOR_COUNT, for a selector outside the protocol. */
+#define GAME_PROTOCOL_ROWS (MSG_SELECTOR_COUNT + 1U)
+
+static const GameMeaning k_game_protocols[GAME_LIFECYCLE_STATES][GAME_PROTOCOL_ROWS] = {
+    [GAME_AWAITING_RULES] = {
+        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NEW_GAME },
+        [MSG_ROLL] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_SUBSCRIBE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_UNSUBSCRIBE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_EDIT] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_HOLD_THE_ROLL },
+        [MSG_QUERY_FIGURE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_DISCARD_HELD] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT },
+        [MSG_REPLY] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_FRAME_CHANGED] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_ROLL_HELD] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_NOT_UNDERSTOOD] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY },
+        [MSG_STATS] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_SELECTOR_COUNT] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+    },
+    [GAME_IN_PLAY] = {
+        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NEW_GAME },
+        [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL },
+        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY },
+        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY },
+        [MSG_EDIT] = { GAME_NO_ANSWER, GAME_EDIT },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_PINSETTER_ROLL },
+        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY },
+        [MSG_DISCARD_HELD] = { GAME_NO_ANSWER, GAME_DISCARD_HELD },
+        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT },
+        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY },
+        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+    },
+};
+
+static GameMeaning GameActor_MeaningOf(const GameActor *self, const Message *message)
+{
+    const Selector selector = message->envelope.selector;
+    const unsigned row = Selector_IsInProtocol(selector) ? (unsigned)selector : MSG_SELECTOR_COUNT;
+    return k_game_protocols[self->lifecycle][row];
+}
+
+static void GameActor_Answer(GameActor *self, GameAnswer answer, const Message *message,
+                             Outbox *outbox)
+{
+    switch (answer) {
+    case GAME_DOES_NOT_UNDERSTAND:
+        GameActor_DoesNotUnderstand(self, message, outbox);
+        break;
+    case GAME_NO_ANSWER:
+        break;
+    case GAME_ANSWER_NO_GAME:
+        GameActor_AnswerNoGame(message, outbox);
+        break;
+    case GAME_ANSWER_FIGURE:
+        GameActor_AnswerItsTotalAsItsFigure(self, message, outbox);
+        break;
+    case GAME_ANSWER_STATS:
+        GameActor_AnswerStats(self, message, outbox);
+        break;
     case GAME_SUBSCRIBE:
         GameActor_Subscribe(self, message, outbox);
         break;
     case GAME_UNSUBSCRIBE:
         GameActor_Unsubscribe(self, message, outbox);
         break;
-    case GAME_EDIT:
-        GameActor_Edit(self, message, outbox);
+    }
+}
+
+static void GameActor_MakeThePlay(GameActor *self, GamePlay play, const Message *message,
+                                  Outbox *outbox)
+{
+    switch (play) {
+    case GAME_NO_PLAY:
         break;
-    case GAME_PINSETTER_ROLL:
-        GameActor_PinsetterRoll(self, message, outbox);
-        break;
-    case GAME_DISCARD_HELD:
-        GameActor_DiscardHeld(self, message, outbox);
-        break;
-    case GAME_ROLLS_LOST:
-        GameActor_HearLostReport(self, message, outbox);
-        break;
-    case GAME_QUERY_FIGURE:
-        GameActor_AnswerItsTotalAsItsFigure(self, message, outbox);
+    case GAME_NEW_GAME:
+        GameActor_NewGame(self, message, outbox);
         break;
     case GAME_ROLL:
         GameActor_Roll(self, message, outbox);
         break;
-    case GAME_DOES_NOT_UNDERSTAND:
-        GameActor_DoesNotUnderstand(self, message, outbox);
+    case GAME_PINSETTER_ROLL:
+        GameActor_PinsetterRoll(self, message, outbox);
+        break;
+    case GAME_HOLD_THE_ROLL:
+        GameActor_HoldTheRoll(self, message, outbox);
+        break;
+    case GAME_EDIT:
+        GameActor_Edit(self, message, outbox);
+        break;
+    case GAME_DISCARD_HELD:
+        GameActor_DiscardHeld(self, message, outbox);
+        break;
+    case GAME_HEAR_LOST_REPORT:
+        GameActor_HearLostReport(self, message, outbox);
         break;
     }
 }
 
-/* Before any game: the pinsetter's rolls wait for the first, and its losses are counted. Any
- * other request is answered "no game". */
-static void GameActor_BeforeAGame(GameActor *self, const Message *message, Outbox *outbox)
-{
-    const GameRequest request = GameActor_RequestOf(message);
-    if (request == GAME_PINSETTER_ROLL) {
-        GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
-    } else if (request == GAME_ROLLS_LOST) {
-        GameActor_HearLostReport(self, message, outbox);
-    } else {
-        Outbox_Reply(outbox, message, GAME_ERR_NO_GAME, 0U);
-    }
-}
-
-/* What every state treats alike first: the lifecycle's own message, and the statistics, which
- * every kind answers whatever its state. Then what the lifecycle makes of the rest. */
 void GameActor_Handle(GameActor *self, const Message *message, Outbox *outbox)
 {
-    if (message->envelope.selector == MSG_NEW_GAME) {
-        GameActor_NewGame(self, message, outbox);
-        return;
-    }
-    if (message->envelope.selector == MSG_QUERY_STATS) {
-        GameActor_AnswerStats(self, message, outbox);
-        return;
-    }
-    switch (self->lifecycle) {
-    case GAME_AWAITING_RULES:
-        GameActor_BeforeAGame(self, message, outbox);
-        break;
-    case GAME_IN_PLAY:
-        GameActor_Receive(self, message, outbox);
-        break;
-    }
+    const GameMeaning meaning = GameActor_MeaningOf(self, message);
+    GameActor_Answer(self, meaning.answer, message, outbox);
+    GameActor_MakeThePlay(self, meaning.play, message, outbox);
 }
