@@ -1169,3 +1169,15 @@ TEST(GameActorCertifiedTest, should_refuse_to_certify_a_game_with_rolls_held)
     Send(&actor, CertifyRequest(1U), &outbox);
     EXPECT_EQ(GAME_ERR_ROLLS_HELD, outbox.items[0].payload.reply.status);
 }
+
+TEST(GameActorCertifiedTest, should_refuse_and_count_the_pinsetters_rolls_once_certified)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    BowlAGutterGame(&actor);
+    TestOutbox outbox;
+    Send(&actor, CertifyRequest(1U), &outbox);
+    Send(&actor, PinsetterRoll(3U), &outbox);
+    Send(&actor, StatsQuery(2U), &outbox);
+    EXPECT_EQ(1U, outbox.items[0].payload.stats.rolls_refused);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
+}
