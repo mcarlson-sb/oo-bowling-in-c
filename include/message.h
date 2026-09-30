@@ -26,6 +26,12 @@ typedef uint8_t ReplyStatus;
 
 #define REPLY_OK ((ReplyStatus)0U)
 
+/* A game's status, as its reply carries it: every GameStatus fits a ReplyStatus. */
+static inline ReplyStatus ReplyStatus_OfGame(GameStatus status)
+{
+    return (ReplyStatus)status;
+}
+
 typedef enum {
     /* A new game, by the rules it carries. Refused with GAME_ERR_INVALID_RULES, changing
      * nothing, if the scorer can't play them. */

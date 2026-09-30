@@ -105,7 +105,7 @@ static void GameActor_Roll(GameActor *self, const Message *message, Outbox *outb
 {
     Message *reply = Outbox_BeginReply(outbox, message);
     const GameStatus status = GameActor_Play(self, message->payload.roll.pins, outbox);
-    Outbox_FinishReply(reply, status, Scorer_Score(&self->scorer));
+    Outbox_FinishReply(reply, ReplyStatus_OfGame(status), Scorer_Score(&self->scorer));
 }
 
 /* In play with nothing held: the first roll the scorer refuses is held, and the game is holding. */
@@ -137,7 +137,7 @@ static void GameActor_Edit(GameActor *self, const Message *message, Outbox *outb
     if (status == GAME_OK) {
         GameActor_LetHeldRollsThrough(self, outbox);
     }
-    Outbox_FinishReply(reply, status, Scorer_Score(&self->scorer));
+    Outbox_FinishReply(reply, ReplyStatus_OfGame(status), Scorer_Score(&self->scorer));
 }
 
 static void GameActor_DiscardHeld(GameActor *self, const Message *message,
@@ -269,14 +269,15 @@ static void GameActor_NewGame(GameActor *self, const Message *message, Outbox *o
     Message *reply = Outbox_BeginReply(outbox, message);
     const GameStatus status =
         GameActor_StartNextGame(self, &message->payload.new_game, outbox);
-    Outbox_FinishReply(reply, status, (status == GAME_OK) ? Scorer_Score(&self->scorer) : 0U);
+    Outbox_FinishReply(reply, ReplyStatus_OfGame(status),
+                       (status == GAME_OK) ? Scorer_Score(&self->scorer) : 0U);
 }
 
 /* A request this state refuses, for its reason: "no game" before a game, "no such roll" to a
  * discard with nothing held. */
 static void GameActor_Refuse(const Message *message, GameStatus why, Outbox *outbox)
 {
-    Outbox_Reply(outbox, message, why, 0U);
+    Outbox_Reply(outbox, message, ReplyStatus_OfGame(why), 0U);
 }
 
 /* A ball in practice: counted, not scored. */
