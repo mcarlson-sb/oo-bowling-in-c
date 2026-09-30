@@ -756,3 +756,53 @@ TEST(GameShellLanesTest, should_combine_two_lanes_statistics_into_the_exact_aver
     EXPECT_EQ(7U, both);
     EXPECT_NE(both, (7U + 9U) / 2U); /* not the average of the rounded averages */
 }
+
+namespace {
+
+Message s_lane_edit_replies[2];
+
+/* Both lanes' worst bursts at once. Each lane is a perfect ten-pin game with a scoreboard and a
+ * running average subscribed; lane 1 also holds 13 of the pinsetter's strikes. The client, above
+ * both games, sends each lane an edit taking every ball out before either game runs, so the two
+ * games' bursts (43 and 21 sent) interleave into the four observers' one mailbox. */
+void BothLanesWorstBurstsAtOnce()
+{
+    RequestSeq seq = 1U;
+    (void)Ask(NewGameAt(kSecondLane, seq++, rules::kTenPin));
+    for (int i = 0; i < 12; i++) {
+        (void)Ask(RollRequest(seq++, 10U));
+        (void)Ask(ToLane(kSecondLane, RollRequest(seq++, 10U)));
+    }
+    const Message subscriptions[] = {SubscribeTo(GAME_SHELL_GAME_ID, kSubscriber, seq++),
+                                     SubscribeTo(GAME_SHELL_GAME_ID, kSecondSubscriber, seq++),
+                                     SubscribeTo(kSecondLane, kSecondLaneBoard, seq++),
+                                     SubscribeTo(kSecondLane, kSecondLaneAverage, seq++)};
+    for (const Message &subscription : subscriptions) {
+        (void)GameShell_Send(&subscription, kPatience);
+    }
+    FirePinsetter(13, 10U);
+    const Message edits[] = {EditRequest(seq++, 1U, 12U, {}),
+                             ToLane(kSecondLane, EditRequest(seq++, 1U, 12U, {}))};
+    for (const Message &edit : edits) {
+        (void)GameShell_Send(&edit, kPatience);
+    }
+    for (int i = 0; i < 2; i++) {
+        (void)xQueueReceive(s_replies.handle, &s_lane_edit_replies[i], kPatience);
+    }
+    s_dropped_after = GameShell_OutputsDropped();
+}
+
+} // namespace
+
+TEST(GameShellObserverTest, should_drop_nothing_of_both_lanes_worst_bursts_at_once)
+{
+    s_second_lane = true;
+    s_subscriber_kind = ACTOR_KIND_SCOREBOARD;
+    s_second_subscriber_kind = ACTOR_KIND_RUNNING_AVERAGE;
+    s_more_observers = {{kSecondLaneBoard, ACTOR_KIND_SCOREBOARD},
+                        {kSecondLaneAverage, ACTOR_KIND_RUNNING_AVERAGE}};
+    RunClient(&BothLanesWorstBurstsAtOnce, kObserverPriority);
+    EXPECT_EQ(MSG_REPLY, s_lane_edit_replies[0].envelope.selector);
+    EXPECT_EQ(MSG_REPLY, s_lane_edit_replies[1].envelope.selector);
+    EXPECT_EQ(0U, s_dropped_after);
+}
