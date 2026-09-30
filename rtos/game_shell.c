@@ -81,7 +81,6 @@ static GameShell s_shell;
 static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *outbox)
 {
     const Route *route = Router_RouteTo(&self->router, message->envelope.to);
-    outbox->count = 0U;
     switch (route->kind) {
     case ACTOR_KIND_GAME:
         GameActor_Handle(&self->games[route->instance], message, outbox);
@@ -97,7 +96,6 @@ static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *
         Router_CountDropped(&self->router);
         break;
     }
-    Router_Deliver(&self->router, outbox);
 }
 
 /* For the task that hosts the pinsetter's game, what the pinsetter counted, before a message
@@ -115,7 +113,9 @@ static void GameShell_Task(void *parameter)
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         while (GameShell_TakeMessage(&s_shell, host)) {
+            host->outbox.count = 0U;
             GameShell_Dispatch(&s_shell, &host->message, &host->outbox);
+            Router_Deliver(&s_shell.router, &host->outbox);
         }
     }
 }
