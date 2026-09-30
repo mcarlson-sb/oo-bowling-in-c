@@ -16,7 +16,8 @@ typedef enum {
     GAME_ERR_GAME_IN_PROGRESS,  /* a NEW_GAME while a game is still in play */
     GAME_ERR_NOT_IN_PRACTICE,   /* an END_PRACTICE with no practice going on */
     GAME_ERR_CERTIFIED,         /* a change to a game once it is certified */
-    GAME_ERR_NOT_OVER           /* a CERTIFY before the scorer says the game is over */
+    GAME_ERR_NOT_OVER,          /* a CERTIFY before the scorer says the game is over */
+    GAME_ERR_ROLLS_HELD         /* a CERTIFY with pinsetter rolls still held */
 } GameStatus;
 
 #endif /* BOWLING_STATUS_H */

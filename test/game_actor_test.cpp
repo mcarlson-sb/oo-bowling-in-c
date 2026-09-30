@@ -1159,3 +1159,13 @@ TEST(GameActorCertifiedTest, should_refuse_to_certify_a_game_that_isnt_over)
     Send(&actor, RollRequest(3U, 4U), &outbox); /* still in play */
     EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
 }
+
+TEST(GameActorCertifiedTest, should_refuse_to_certify_a_game_with_rolls_held)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    BowlAGutterGame(&actor);
+    TestOutbox outbox;
+    Send(&actor, PinsetterRoll(3U), &outbox); /* held: the game is over */
+    Send(&actor, CertifyRequest(1U), &outbox);
+    EXPECT_EQ(GAME_ERR_ROLLS_HELD, outbox.items[0].payload.reply.status);
+}
