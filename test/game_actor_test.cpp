@@ -882,6 +882,14 @@ TEST(GameActorLifecycleTest, should_answer_no_frames_and_no_total_before_a_game_
 
 namespace {
 
+/* The one message a request got back: a reply. */
+const ReplyPayload &OnlyReply(const TestOutbox &outbox)
+{
+    EXPECT_EQ(1U, outbox.count);
+    EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
+    return outbox.items[0].payload.reply;
+}
+
 Message PracticeGameRequest(RequestSeq seq, const ScorerRules &rules)
 {
     Message message = NewGameRequest(seq, rules);
@@ -908,7 +916,7 @@ TEST(GameActorPracticeTest, should_not_score_a_roll_in_practice)
     TestOutbox outbox;
     Send(&actor, RollRequest(1U, 3U), &outbox);
     Send(&actor, RollRequest(2U, 4U), &outbox); /* a frame of 7, were it scored */
-    EXPECT_EQ(REPLY_OK, outbox.items[0].payload.reply.status);
+    EXPECT_EQ(REPLY_OK, OnlyReply(outbox).status);
     EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
     EXPECT_EQ(0U, ScoreOf(&actor));
 }
@@ -940,7 +948,7 @@ TEST(GameActorPracticeTest, should_score_the_balls_after_practice_ends_and_none_
     TestOutbox outbox;
     Send(&actor, RollRequest(1U, 10U), &outbox); /* practice: a strike that earns nothing */
     Send(&actor, EndPracticeRequest(2U), &outbox);
-    EXPECT_EQ(REPLY_OK, outbox.items[0].payload.reply.status);
+    EXPECT_EQ(REPLY_OK, OnlyReply(outbox).status);
     Send(&actor, RollRequest(3U, 3U), &outbox);
     Send(&actor, RollRequest(4U, 4U), &outbox);
     EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
@@ -1034,7 +1042,7 @@ TEST(GameActorPinsetterDownTest, should_refuse_and_count_the_pinsetters_rolls_wh
     GameActor actor = MakeActor(rules::kTenPin);
     TestOutbox outbox;
     Send(&actor, PinsetterDown(1U), &outbox);
-    EXPECT_EQ(REPLY_OK, outbox.items[0].payload.reply.status);
+    EXPECT_EQ(REPLY_OK, OnlyReply(outbox).status);
     Send(&actor, PinsetterRoll(3U), &outbox);
     Send(&actor, PinsetterRoll(4U), &outbox);
     Send(&actor, StatsQuery(2U), &outbox);
@@ -1078,7 +1086,7 @@ TEST(GameActorPinsetterDownTest, should_score_the_pinsetters_rolls_again_once_it
     TestOutbox outbox;
     Send(&actor, PinsetterDown(1U), &outbox);
     Send(&actor, PinsetterUp(2U), &outbox);
-    EXPECT_EQ(REPLY_OK, outbox.items[0].payload.reply.status);
+    EXPECT_EQ(REPLY_OK, OnlyReply(outbox).status);
     Send(&actor, PinsetterRoll(3U), &outbox);
     Send(&actor, PinsetterRoll(4U), &outbox);
     EXPECT_EQ(7U, ScoreOf(&actor));
@@ -1230,4 +1238,16 @@ TEST(GameActorCertifiedTest, should_refuse_to_certify_a_game_in_practice_as_not_
     Send(&actor, CertifyRequest(1U), &outbox);
     EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
     EXPECT_EQ(GAME_ERR_NOT_OVER, outbox.items[0].payload.reply.status);
+}
+
+TEST(GameActorLifecycleTest, should_count_no_practice_balls_before_a_game_whatever_memory_it_starts_in)
+{
+    /* Pinned at the phase 5 stop, from mutation testing: a new game resets the count, so only
+     * the statistics before any game read what Init left. */
+    GameActor actor;
+    std::memset(&actor, 0xFF, sizeof(actor));
+    GameActor_Init(&actor, kGame);
+    TestOutbox outbox;
+    Send(&actor, StatsQuery(1U), &outbox);
+    EXPECT_EQ(0U, outbox.items[0].payload.stats.practice_balls);
 }
