@@ -10,8 +10,6 @@
 
 bool RollEdit_IsWithinBalls(const RollEdit *edit, uint8_t ball_count);
 
-bool RollEdit_PromisesBallsWithoutPins(const RollEdit *edit);
-
 unsigned RollEdit_BallsAfter(const RollEdit *edit, uint8_t ball_count);
 
 /* Ball `index` of the edited game, given the game's balls before it. */

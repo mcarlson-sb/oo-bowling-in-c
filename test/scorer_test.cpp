@@ -249,17 +249,6 @@ TEST(TenPinScorerEditTest, should_reject_an_edit_outside_the_balls_the_game_has_
     EXPECT_EQ(7U, Scorer_Score(&scorer));
 }
 
-TEST(TenPinScorerEditTest, should_reject_a_null_edit_or_one_that_promises_balls_it_does_not_give)
-{
-    Scorer scorer = MakeScorer(rules::kTenPin);
-    RollAll(&scorer, {3U, 4U});
-    FrameEvents events;
-    const RollEdit no_pins = {1U, 1U, nullptr, 1U};
-    EXPECT_EQ(GAME_ERR_INVALID_EDIT, Scorer_Edit(&scorer, nullptr, &events));
-    EXPECT_EQ(GAME_ERR_INVALID_EDIT, Scorer_Edit(&scorer, &no_pins, &events));
-    EXPECT_EQ(7U, Scorer_Score(&scorer));
-}
-
 TEST(TenPinScorerEditTest, should_reject_an_edit_that_leaves_more_balls_than_a_game_can_have)
 {
     Scorer scorer = MakeScorer(rules::kTenPin);

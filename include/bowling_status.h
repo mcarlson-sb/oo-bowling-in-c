@@ -9,7 +9,6 @@ typedef enum {
     GAME_ERR_INVALID_PINS,
     GAME_ERR_NO_SUCH_ROLL,      /* an edit's range isn't rolls the game has had */
     GAME_ERR_TOO_MANY_ROLLS,    /* an edit would leave more balls than the variant's longest game */
-    GAME_ERR_INVALID_EDIT,      /* a NULL edit, or one that promises rolls but gives no pins */
     GAME_ERR_TOO_MANY_SUBSCRIBERS,
     GAME_ERR_NOT_SUBSCRIBED,
     GAME_ERR_INVALID_RULES,     /* rules the scorer can't play */

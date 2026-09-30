@@ -1,7 +1,6 @@
 #include "roll_edit.h"
 
 #include <assert.h>
-#include <stddef.h>
 
 static bool RollEdit_StartsAtABall(const RollEdit *edit, uint8_t ball_count)
 {
@@ -17,11 +16,6 @@ bool RollEdit_IsWithinBalls(const RollEdit *edit, uint8_t ball_count)
 {
     return RollEdit_StartsAtABall(edit, ball_count) &&
            RollEdit_RemovesOnlyBallsThere(edit, ball_count);
-}
-
-bool RollEdit_PromisesBallsWithoutPins(const RollEdit *edit)
-{
-    return (edit->new_pins == NULL) && (edit->new_count > 0U);
 }
 
 unsigned RollEdit_BallsAfter(const RollEdit *edit, uint8_t ball_count)

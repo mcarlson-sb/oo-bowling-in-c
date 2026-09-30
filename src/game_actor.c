@@ -2,7 +2,6 @@
 #include "game_actor_state.h"
 
 #include <assert.h>
-#include <stddef.h>
 
 #include "outbox.h"
 
@@ -127,8 +126,7 @@ static void GameActor_PinsetterRoll(GameActor *self, const Message *message,
 static RollEdit Message_Edit(const Message *message)
 {
     const EditPayload *payload = &message->payload.edit;
-    const RollEdit edit = { payload->first_roll, payload->rolls_removed,
-                            (payload->new_count > 0U) ? payload->new_pins : NULL,
+    const RollEdit edit = { payload->first_roll, payload->rolls_removed, payload->new_pins,
                             payload->new_count };
     return edit;
 }

@@ -3,7 +3,6 @@
 #include "roll_edit.h"
 
 #include <assert.h>
-#include <stddef.h>
 
 /* A frame scores at most every ball of the game, so no total can outgrow a Score. */
 _Static_assert((SCORER_MAX_FRAMES * SCORER_MAX_BALLS * SCORER_MAX_PINS_PER_RACK) <= UINT16_MAX,
@@ -346,14 +345,8 @@ static bool Scorer_IsLongerThanAGame(const Scorer *self, unsigned ball_count)
 
 static GameStatus Scorer_CheckEdit(const Scorer *self, const RollEdit *edit)
 {
-    if (edit == NULL) {
-        return GAME_ERR_INVALID_EDIT;
-    }
     if (!RollEdit_IsWithinBalls(edit, self->ball_count)) {
         return GAME_ERR_NO_SUCH_ROLL;
-    }
-    if (RollEdit_PromisesBallsWithoutPins(edit)) {
-        return GAME_ERR_INVALID_EDIT;
     }
     if (Scorer_IsLongerThanAGame(self, RollEdit_BallsAfter(edit, self->ball_count))) {
         return GAME_ERR_TOO_MANY_ROLLS;
