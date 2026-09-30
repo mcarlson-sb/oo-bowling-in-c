@@ -98,7 +98,7 @@ This is Smalltalk's `become:`, as an enum. The actor's own state decides what a 
 ```c
 static const ScoreboardRequest k_scoreboard_protocol[MSG_SELECTOR_COUNT] = {
     [MSG_FRAME_CHANGED] = SCOREBOARD_FRAME_CHANGED,
-    [MSG_QUERY_SCORE] = SCOREBOARD_QUERY_SCORE,
+    [MSG_QUERY_FIGURE] = SCOREBOARD_QUERY_FIGURE,
     [MSG_REPLY] = SCOREBOARD_REPLY,
 };
 ```

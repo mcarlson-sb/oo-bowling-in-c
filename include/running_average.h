@@ -2,8 +2,8 @@
 #define RUNNING_AVERAGE_H
 
 /* A running average: an actor that hears a game's FRAME_CHANGED events as a subscriber, and
- * answers QUERY_SCORE, the selector the game and the scoreboard answer with a total, with the
- * average score of the complete frames, rounded down. Kay-oo's no-tap average listener, as an
+ * answers QUERY_FIGURE with its figure, the average score of the complete frames, rounded down,
+ * where the game and the scoreboard report a total. Kay-oo's no-tap average listener, as an
  * actor. */
 
 #include <stdbool.h>

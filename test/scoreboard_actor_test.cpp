@@ -1,5 +1,5 @@
 /* The scoreboard kind: a subscriber that rebuilds the frames from the events it hears, and answers
- * QUERY_SCORE with their total. Driven by messages alone, as any actor is. */
+ * QUERY_FIGURE with their total. Driven by messages alone, as any actor is. */
 
 #include <gtest/gtest.h>
 
@@ -38,7 +38,7 @@ Message FrameChanged(int frame, int score, bool complete)
 Message Query(RequestSeq seq)
 {
     Message message = {};
-    message.envelope.selector = MSG_QUERY_SCORE;
+    message.envelope.selector = MSG_QUERY_FIGURE;
     message.envelope.from = kAsker;
     message.envelope.to = kBoard;
     message.envelope.seq = seq;

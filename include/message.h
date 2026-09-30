@@ -37,15 +37,20 @@ typedef enum {
      * game rejects is held, with every pinsetter roll after it, until a correction lets it
      * through; see GameActor. */
     MSG_PINSETTER_ROLL,
-    MSG_QUERY_SCORE,
+    /* The figure the kind at "to" reports, in the reply's score: a game's total, a scoreboard's
+     * total, a running average's average. What the figure means is the kind's to say, and the
+     * protocol promises only that every kind which answers it gives the one figure it reports.
+     * For facts that mean the same whatever the kind, ask MSG_QUERY_STATS. */
+    MSG_QUERY_FIGURE,
     /* Throws away the first held roll, a glitch, and lets the rest through as far as they go.
      * GAME_ERR_NO_SUCH_ROLL if nothing is held. */
     MSG_DISCARD_HELD,
     /* How many rolls have been lost so far: the pinsetter's to its full queue, told to the game;
      * the game's total, to a full queue or to no room to hold them, told to its subscribers. */
     MSG_ROLLS_LOST,
-    /* To a request's from, with its seq. The score is after everything the request caused, for
-     * a Roll, an Edit, an accepted DiscardHeld and a QueryScore; 0 in every other reply. */
+    /* To a request's from, with its seq. The score is the game's after everything the request
+     * caused, for a Roll, an Edit and an accepted DiscardHeld; the figure, for a QueryFigure; 0
+     * in every other reply. */
     MSG_REPLY,
     MSG_FRAME_CHANGED,
     /* A pinsetter roll was held: its pins, the ball it would be (position), how many are held

@@ -191,10 +191,10 @@ Message SubscribeRequest(RequestSeq seq)
     return message;
 }
 
-Message ScoreQuery(RequestSeq seq)
+Message FigureQuery(RequestSeq seq)
 {
     Message message = {};
-    message.envelope.selector = MSG_QUERY_SCORE;
+    message.envelope.selector = MSG_QUERY_FIGURE;
     message.envelope.seq = seq;
     message.envelope.from = kClient;
     message.envelope.to = GAME_SHELL_GAME_ID;
@@ -311,7 +311,7 @@ TEST(GameShellTest, should_drop_and_count_an_event_for_a_subscriber_whose_queue_
         const Message subscribe = SubscribeRequest(1U);
         s_sent = GameShell_Send(&subscribe, 0U);
         FirePinsetter({3U, 4U}); /* completes frame 1: an event it has no room for */
-        const Message query = ScoreQuery(2U);
+        const Message query = FigureQuery(2U);
         (void)GameShell_Send(&query, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience); /* after the rolls */
         s_dropped = GameShell_OutputsDropped();
@@ -415,7 +415,7 @@ TEST(GameShellTest, should_drop_and_count_an_output_to_an_id_nothing_is_bound_to
         Message subscribe = SubscribeRequest(1U);
         subscribe.envelope.from = 5U;
         (void)GameShell_Send(&subscribe, kPatience);
-        const Message query = ScoreQuery(2U);
+        const Message query = FigureQuery(2U);
         (void)GameShell_Send(&query, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
         s_dropped = GameShell_OutputsDropped();
@@ -431,7 +431,7 @@ TEST(GameShellTest, should_drop_and_count_an_output_to_an_id_past_the_routing_ta
         Message subscribe = SubscribeRequest(1U);
         subscribe.envelope.from = 200U;
         (void)GameShell_Send(&subscribe, kPatience);
-        const Message query = ScoreQuery(2U);
+        const Message query = FigureQuery(2U);
         (void)GameShell_Send(&query, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
         s_dropped = GameShell_OutputsDropped();
@@ -446,7 +446,7 @@ namespace {
 
 Message QueryTo(ActorId to, RequestSeq seq)
 {
-    Message message = ScoreQuery(seq);
+    Message message = FigureQuery(seq);
     message.envelope.to = to;
     return message;
 }
@@ -454,7 +454,7 @@ Message QueryTo(ActorId to, RequestSeq seq)
 uint16_t s_dropped_after;
 
 /* The one scenario every binding plays, sent by the client: the subscriber's id subscribed, a
- * spare and an open frame rolled (7, then 12), and whoever sits at that id asked QUERY_SCORE. The
+ * spare and an open frame rolled (7, then 12), and whoever sits at that id asked QUERY_FIGURE. The
  * game's code and this code are the same every time; only the binding differs. */
 void SubscribeRollAndAsk()
 {
@@ -514,7 +514,7 @@ void SubscribeRollAskAndReadTheRecording()
     Message message;
     while (xQueueReceive(s_subscriber.handle, &message, kPatience) == pdPASS) {
         s_recorded.push_back(message);
-        if (message.envelope.selector == MSG_QUERY_SCORE) {
+        if (message.envelope.selector == MSG_QUERY_FIGURE) {
             break;
         }
     }
@@ -536,7 +536,7 @@ TEST(GameShellRebindingTest, should_reach_a_recording_double_that_sits_there_wit
     EXPECT_EQ(7U, s_recorded[1].payload.frame.frame_score);
     EXPECT_EQ(MSG_FRAME_CHANGED, s_recorded[2].envelope.selector);
     EXPECT_EQ(12U, s_recorded[2].payload.frame.frame_score);
-    EXPECT_EQ(MSG_QUERY_SCORE, s_recorded[3].envelope.selector);
+    EXPECT_EQ(MSG_QUERY_FIGURE, s_recorded[3].envelope.selector);
 }
 
 /* ---- The observers outrank the game: why their mailbox of 4 takes its bursts ---------------- */
@@ -669,7 +669,7 @@ constexpr ActorId kSecondLaneAverage = 8U;
 Message s_lane_answers[4];
 
 /* A scoreboard and a running average per lane, each subscribed to its own: lane 1's 3, 4 then
- * 5, 2 (7 and 7), and lane 2's 3, 3, 3 (9). Each observer is then asked QUERY_SCORE. */
+ * 5, 2 (7 and 7), and lane 2's 3, 3, 3 (9). Each observer is then asked QUERY_FIGURE. */
 void AScoreboardAndAnAveragePerLane()
 {
     RequestSeq seq = 1U;

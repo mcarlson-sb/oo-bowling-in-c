@@ -1,4 +1,4 @@
-/* The running-average kind: a subscriber that answers QUERY_SCORE with the average of the frames
+/* The running-average kind: a subscriber that answers QUERY_FIGURE with the average of the frames
  * it has heard complete. The same selectors as the scoreboard, a different answer. */
 
 #include <gtest/gtest.h>
@@ -40,7 +40,7 @@ Message FrameChanged(int frame, int score, bool complete)
 Message Query(RequestSeq seq)
 {
     Message message = {};
-    message.envelope.selector = MSG_QUERY_SCORE;
+    message.envelope.selector = MSG_QUERY_FIGURE;
     message.envelope.from = kAsker;
     message.envelope.to = kAverage;
     message.envelope.seq = seq;

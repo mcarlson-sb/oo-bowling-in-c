@@ -272,10 +272,10 @@ std::vector<Held> HeldEventsIn(const Outbox &outbox)
     return held;
 }
 
-Message ScoreQuery(RequestSeq seq)
+Message FigureQuery(RequestSeq seq)
 {
     Message message = {};
-    message.envelope.selector = MSG_QUERY_SCORE;
+    message.envelope.selector = MSG_QUERY_FIGURE;
     message.envelope.seq = seq;
     message.envelope.from = kReplyTo;
     return message;
@@ -284,7 +284,7 @@ Message ScoreQuery(RequestSeq seq)
 Score ScoreOf(GameActor *actor)
 {
     TestOutbox outbox;
-    Send(actor, ScoreQuery(99U), &outbox);
+    Send(actor, FigureQuery(99U), &outbox);
     EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
     return outbox.items[0].payload.reply.score;
 }
@@ -619,7 +619,7 @@ namespace {
 /* Its not-understood count, asked for rather than read from its state. */
 uint16_t NotUnderstoodCount(GameActor *actor)
 {
-    Message ask = ScoreQuery(99U);
+    Message ask = FigureQuery(99U);
     ask.envelope.selector = MSG_QUERY_STATS;
     TestOutbox outbox;
     Send(actor, ask, &outbox);
@@ -701,7 +701,7 @@ TEST(GameActorLifecycleTest, should_reply_no_game_to_anything_but_a_new_game_or_
     EXPECT_EQ(GAME_ERR_NO_GAME, outbox.items[0].payload.reply.status);
     Send(&actor, SubscribeRequest(2U, kSubscriber), &outbox);
     EXPECT_EQ(GAME_ERR_NO_GAME, outbox.items[0].payload.reply.status);
-    Send(&actor, ScoreQuery(3U), &outbox);
+    Send(&actor, FigureQuery(3U), &outbox);
     EXPECT_EQ(GAME_ERR_NO_GAME, outbox.items[0].payload.reply.status);
 }
 
@@ -822,7 +822,7 @@ namespace {
 
 Message StatsQuery(RequestSeq seq)
 {
-    Message message = ScoreQuery(seq);
+    Message message = FigureQuery(seq);
     message.envelope.selector = MSG_QUERY_STATS;
     return message;
 }

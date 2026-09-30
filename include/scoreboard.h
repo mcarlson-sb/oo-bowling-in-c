@@ -2,7 +2,7 @@
 #define SCOREBOARD_H
 
 /* A scoreboard: an actor that rebuilds a game's frames from the FRAME_CHANGED events it hears,
- * as a subscriber, and answers QUERY_SCORE with the total of those complete. It knows nothing of
+ * as a subscriber, and answers QUERY_FIGURE with the total of those complete. It knows nothing of
  * the game but the protocol. */
 
 #include <stdbool.h>

@@ -80,7 +80,7 @@ stop. It is not a gate.
 | The vocabulary | `include/bowling_types.h`, `include/rules.h` | What every part speaks: pins, scores, a variant's rules, the news of one frame, and the limits. The protocol and the observers depend on these, not on the scorer |
 | The protocol | `include/message.h`, `include/outbox.h`, `src/outbox.c` | One message type for every actor: an envelope (selector, from, to, seq) and a payload of that selector's fields. How every kind replies, and answers NOT_UNDERSTOOD |
 | The game actor | `include/game_actor.h`, `src/game_actor.c` | One game, and everything that may change it, as messages. NEW_GAME carries the rules. It holds pinsetter rolls the game refuses, until a correction lets them through, and tells its subscribers every frame that changes |
-| The scoreboard and the running average | `include/scoreboard.h`, `include/running_average.h`, `src/` | Two kinds of subscriber. Each rebuilds the frames from the events it hears, and answers QUERY_SCORE its own way: the total, or the average |
+| The scoreboard and the running average | `include/scoreboard.h`, `include/running_average.h`, `src/` | Two kinds of subscriber. Each rebuilds the frames from the events it hears, and answers QUERY_FIGURE its own way: the total, or the average |
 | The shell | `rtos/game_shell.h`, `rtos/game_shell.c` | The actor host, on FreeRTOS. The routing table binds each id to a kind, an instance and a mailbox, and each hosted actor gets a task of its own. One switch, on the kind at a message's `to`, calls that kind's receive function |
 | The interrupt side | `rtos/game_shell_isr.c` | The pinsetter's interrupt, which counts each roll into a queue, and a full queue's losses into a one-slot report |
 
@@ -116,7 +116,7 @@ Kay's three properties, and where each one stands:
   the shell and the tests can see it. The public headers have an incomplete type, and the test
   `actor_state_is_hidden` fails if a definition moves back.
 - **Late binding.** Senders address ids. Which kind sits at an id is the routing table's to
-  say, and the kind decides what a message means: the same QUERY_SCORE gets a game's total, a
+  say, and the kind decides what a message means: the same QUERY_FIGURE gets a game's total, a
   scoreboard's total or an average. The rules are data in a message, so a variant never
   compiled in needs no code.
 

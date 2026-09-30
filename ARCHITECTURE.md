@@ -53,7 +53,7 @@ typedef struct {
 
 - **Nothing in a message points anywhere,** because a queue copies it. The edit's balls are
   inline for that reason, and they are what makes every message 44 bytes.
-- **Several kinds answer the same selectors.** QUERY_SCORE gets a game's total, a scoreboard's
+- **Several kinds answer the same selectors.** QUERY_FIGURE gets a game's total, a scoreboard's
   total or a running average's average.
 - **A reply is from the id its request was sent to,** to the request's `from`, with its `seq`.
 - **An event carries no seq.**
