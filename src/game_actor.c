@@ -285,10 +285,10 @@ static GameState GameActor_State(const GameActor *self)
     return HeldRolls_IsEmpty(&self->held) ? GAME_STATE_IN_PLAY : GAME_STATE_HOLDING;
 }
 
-/* What a message means to the game in each state: an answer, which leaves the
- * game as it is, or a play, which changes the game or its lifecycle. Every entry names both, one
- * of them nothing. Two switches, not one: together they are more cases than ENG-3.1 allows one
- * function. */
+/* What a message means to the game in each state: an answer, which leaves the game as it is; a
+ * play, which changes the game's balls; or a move, which changes its lifecycle. Every entry names
+ * all three, all but one of them nothing. Three switches, not one: together they are more cases
+ * than ENG-3.1 allows one function. */
 typedef enum {
     GAME_DOES_NOT_UNDERSTAND = 0, /* what a missing entry reads as */
     GAME_NO_ANSWER,
@@ -302,7 +302,6 @@ typedef enum {
 
 typedef enum {
     GAME_NO_PLAY = 0,
-    GAME_NEW_GAME,
     GAME_ROLL,
     GAME_PLAY_OR_HOLD,
     GAME_HOLD_THE_ROLL,
@@ -311,9 +310,15 @@ typedef enum {
     GAME_HEAR_LOST_REPORT
 } GamePlay;
 
+typedef enum {
+    GAME_NO_MOVE = 0,
+    GAME_NEW_GAME
+} GameMove;
+
 typedef struct {
     GameAnswer answer;
     GamePlay play;
+    GameMove move;
 } GameMeaning;
 
 /* One row per selector, and one, at MSG_SELECTOR_COUNT, for a selector outside the protocol. */
@@ -321,59 +326,59 @@ typedef struct {
 
 static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
     [GAME_STATE_AWAITING_RULES] = {
-        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NEW_GAME },
-        [MSG_ROLL] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_SUBSCRIBE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_UNSUBSCRIBE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_EDIT] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_HOLD_THE_ROLL },
-        [MSG_QUERY_FIGURE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_DISCARD_HELD] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT },
-        [MSG_REPLY] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_FRAME_CHANGED] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_ROLL_HELD] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_NOT_UNDERSTOOD] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY },
-        [MSG_STATS] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
-        [MSG_SELECTOR_COUNT] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY },
+        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME },
+        [MSG_ROLL] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_SUBSCRIBE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_UNSUBSCRIBE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_EDIT] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_HOLD_THE_ROLL, GAME_NO_MOVE },
+        [MSG_QUERY_FIGURE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_DISCARD_HELD] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT, GAME_NO_MOVE },
+        [MSG_REPLY] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_FRAME_CHANGED] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_ROLL_HELD] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_NOT_UNDERSTOOD] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_STATS] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_SELECTOR_COUNT] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
     },
     [GAME_STATE_IN_PLAY] = {
-        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NEW_GAME },
-        [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL },
-        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY },
-        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY },
-        [MSG_EDIT] = { GAME_NO_ANSWER, GAME_EDIT },
-        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_PLAY_OR_HOLD },
-        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY },
-        [MSG_DISCARD_HELD] = { GAME_ANSWER_NOTHING_HELD, GAME_NO_PLAY },
-        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT },
-        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
-        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
-        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
-        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
-        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY },
-        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
-        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME },
+        [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL, GAME_NO_MOVE },
+        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_EDIT] = { GAME_NO_ANSWER, GAME_EDIT, GAME_NO_MOVE },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_PLAY_OR_HOLD, GAME_NO_MOVE },
+        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_DISCARD_HELD] = { GAME_ANSWER_NOTHING_HELD, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT, GAME_NO_MOVE },
+        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
     },
 
     [GAME_STATE_HOLDING] = {
-        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NEW_GAME },
-        [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL },
-        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY },
-        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY },
-        [MSG_EDIT] = { GAME_NO_ANSWER, GAME_EDIT },
-        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_HOLD_THE_ROLL },
-        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY },
-        [MSG_DISCARD_HELD] = { GAME_NO_ANSWER, GAME_DISCARD_HELD },
-        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT },
-        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
-        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
-        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
-        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
-        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY },
-        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
-        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY },
+        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME },
+        [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL, GAME_NO_MOVE },
+        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_EDIT] = { GAME_NO_ANSWER, GAME_EDIT, GAME_NO_MOVE },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_HOLD_THE_ROLL, GAME_NO_MOVE },
+        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_DISCARD_HELD] = { GAME_NO_ANSWER, GAME_DISCARD_HELD, GAME_NO_MOVE },
+        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT, GAME_NO_MOVE },
+        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
     },
 };
 
@@ -420,9 +425,6 @@ static void GameActor_MakeThePlay(GameActor *self, GamePlay play, const Message 
     switch (play) {
     case GAME_NO_PLAY:
         break;
-    case GAME_NEW_GAME:
-        GameActor_NewGame(self, message, outbox);
-        break;
     case GAME_ROLL:
         GameActor_Roll(self, message, outbox);
         break;
@@ -444,9 +446,22 @@ static void GameActor_MakeThePlay(GameActor *self, GamePlay play, const Message 
     }
 }
 
+static void GameActor_MakeTheMove(GameActor *self, GameMove move, const Message *message,
+                                  Outbox *outbox)
+{
+    switch (move) {
+    case GAME_NO_MOVE:
+        break;
+    case GAME_NEW_GAME:
+        GameActor_NewGame(self, message, outbox);
+        break;
+    }
+}
+
 void GameActor_Handle(GameActor *self, const Message *message, Outbox *outbox)
 {
     const GameMeaning meaning = GameActor_MeaningOf(self, message);
     GameActor_Answer(self, meaning.answer, message, outbox);
     GameActor_MakeThePlay(self, meaning.play, message, outbox);
+    GameActor_MakeTheMove(self, meaning.move, message, outbox);
 }
