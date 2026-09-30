@@ -26,8 +26,8 @@ extern "C" {
 #define GAME_SHELL_SEND_STACK_BUDGET 3584U
 
 /* The ids the routing table can bind: 1 to GAME_SHELL_ACTORS - 1. The game is at
- * GAME_SHELL_GAME_ID. */
-#define GAME_SHELL_ACTORS 8U
+ * GAME_SHELL_GAME_ID. A route is 24 bytes on this host, bound or not. */
+#define GAME_SHELL_ACTORS 16U
 #define GAME_SHELL_GAME_ID 1U
 
 /* What sits at an id, which decides what a message sent there means. An external actor reads
