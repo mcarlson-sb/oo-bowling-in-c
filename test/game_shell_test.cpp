@@ -662,6 +662,16 @@ TEST(GameShellLanesTest, should_feed_each_lanes_game_from_its_own_pinsetter)
     EXPECT_EQ(0U, s_first_lanes_figure.payload.reply.score);
 }
 
+TEST(GameShellLanesDeathTest, should_stop_on_a_roll_counted_at_a_lane_no_game_is_hosted_at)
+{
+    EXPECT_DEATH(
+        {
+            GameShell_Start(kGamePriority, kObserverPriority);
+            GameShell_PinsetterCountedFromIsr(1U, 3U); /* only lane 0 is hosted */
+        },
+        "no game is hosted at");
+}
+
 TEST(GameShellObserverDeathTest, should_refuse_a_second_lane_the_observers_do_not_outrank)
 {
     /* Every game, not only the first: the observers must preempt each of them. */

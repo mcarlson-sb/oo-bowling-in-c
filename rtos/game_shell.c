@@ -256,6 +256,9 @@ void GameShell_Bind(ActorId id, QueueHandle_t queue)
 
 Pinsetter *GameShell_PinsetterOfLane(GameShellLane lane)
 {
+    if (lane >= s_shell.game_count) {
+        Fault_Stop("GameShell: a pinsetter counted a roll at a lane no game is hosted at");
+    }
     return &s_shell.game_tasks[lane].pinsetter;
 }
 

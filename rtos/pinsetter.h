@@ -44,7 +44,8 @@ bool Pinsetter_Take(Pinsetter *self, Message *message);
 /* From the interrupt: a roll counted. The newest is the one lost to a full queue. */
 void Pinsetter_CountedFromIsr(Pinsetter *self, Pins pins);
 
-/* The pinsetter of a lane, which its interrupt feeds. */
+/* The pinsetter of a lane, which its interrupt feeds. Stops, as a fault, for a lane no game is
+ * hosted at. */
 Pinsetter *GameShell_PinsetterOfLane(GameShellLane lane);
 
 #endif /* PINSETTER_H */

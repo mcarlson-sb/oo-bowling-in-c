@@ -2,9 +2,9 @@
 #define GAME_SHELL_H
 
 /* The RTOS shell, an actor host: where the kinds' instances, the tasks that host them, the
- * routing table and the pinsetter are created and wired. Actors address each other by id. The
- * routing table binds each id to a kind and an instance, in a hosting task with a mailbox, or to
- * the queue of an external actor that reads its own. A message goes to whoever is bound at its
+ * routing table and the lanes' pinsetters are created and wired. Actors address each other by id.
+ * The routing table binds each id to a kind and an instance, in a hosting task with a mailbox, or
+ * to the queue of an external actor that reads its own. A message goes to whoever is bound at its
  * "to" when it is sent, and the kind bound there decides what it means. */
 
 #include <stddef.h>
@@ -68,7 +68,8 @@ BaseType_t GameShell_Send(const Message *message, TickType_t wait);
  * at GAME_SHELL_GAME_ID. */
 typedef uint8_t GameShellLane;
 
-/* From a lane's pinsetter interrupt: a roll it counted. */
+/* From a lane's pinsetter interrupt: a roll it counted. Stops, as a fault, for a lane no game is
+ * hosted at. */
 void GameShell_PinsetterCountedFromIsr(GameShellLane lane, Pins pins);
 
 /* Replies and events not delivered, so far: to an id nothing is bound to, or can be, or to a
