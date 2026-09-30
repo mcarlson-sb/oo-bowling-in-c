@@ -1,5 +1,7 @@
 #include "message.h"
 
+_Static_assert(GAME_OK == REPLY_OK, "a game's OK is the protocol's REPLY_OK");
+
 Envelope Envelope_Event(Selector selector, ActorId from, ActorId to)
 {
     const Envelope event = { selector, from, to, 0U };

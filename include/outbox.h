@@ -28,11 +28,11 @@ Message *Outbox_Next(Outbox *self, Envelope envelope);
 /* A reply to `request`: from the id it was sent to, to its sender, with its seq. */
 Message *Outbox_BeginReply(Outbox *self, const Message *request);
 
-void Outbox_FinishReply(Message *reply, GameStatus status, Score score);
+void Outbox_FinishReply(Message *reply, ReplyStatus status, Score score);
 
 /* A reply whose outcome is known at once, if the request wants an answer at all (see
  * Envelope_WantsAnAnswer): the way every default answer, such as "no game", is given. */
-void Outbox_Reply(Outbox *self, const Message *request, GameStatus status, Score score);
+void Outbox_Reply(Outbox *self, const Message *request, ReplyStatus status, Score score);
 
 /* A MSG_STATS answer to `request`, as a reply is addressed, with every field 0 for the kind to
  * fill in what it knows. */

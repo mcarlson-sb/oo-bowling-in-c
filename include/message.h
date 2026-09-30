@@ -20,6 +20,13 @@ extern "C" {
 /* Chosen by the caller, and echoed in the reply, so it can have several requests in flight. */
 typedef uint16_t RequestSeq;
 
+/* How a request went, in its reply: REPLY_OK, every kind's "done", or a game's reason for refusing
+ * it, one of its GameStatus errors. */
+typedef uint8_t ReplyStatus;
+
+#define REPLY_OK ((ReplyStatus)0U)
+
+
 typedef enum {
     /* A new game, by the rules it carries. Refused with GAME_ERR_INVALID_RULES, changing
      * nothing, if the scorer can't play them. */
@@ -93,7 +100,7 @@ typedef struct {
 } RollsLostPayload;
 
 typedef struct {
-    GameStatus status;
+    ReplyStatus status;
     Score score;
 } ReplyPayload;
 

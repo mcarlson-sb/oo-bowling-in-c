@@ -52,7 +52,7 @@ void Scoreboard_Handle(Scoreboard *self, const Message *message, Outbox *outbox)
         FrameBoard_Hear(&self->board, &message->payload.frame);
         break;
     case SCOREBOARD_QUERY_FIGURE:
-        Outbox_Reply(outbox, message, GAME_OK, FrameBoard_Total(&self->board));
+        Outbox_Reply(outbox, message, REPLY_OK, FrameBoard_Total(&self->board));
         break;
     case SCOREBOARD_QUERY_STATS:
         Scoreboard_AnswerStats(self, message, outbox);

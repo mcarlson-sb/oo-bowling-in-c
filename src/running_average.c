@@ -63,7 +63,7 @@ void RunningAverage_Handle(RunningAverage *self, const Message *message, Outbox 
         FrameBoard_Hear(&self->board, &message->payload.frame);
         break;
     case AVERAGE_QUERY_FIGURE:
-        Outbox_Reply(outbox, message, GAME_OK, RunningAverage_Average(self));
+        Outbox_Reply(outbox, message, REPLY_OK, RunningAverage_Average(self));
         break;
     case AVERAGE_QUERY_STATS:
         RunningAverage_AnswerStats(self, message, outbox);

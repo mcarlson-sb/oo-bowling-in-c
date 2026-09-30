@@ -23,13 +23,13 @@ Message *Outbox_BeginReply(Outbox *self, const Message *request)
     return Outbox_Next(self, Envelope_ReplyTo(&request->envelope, MSG_REPLY));
 }
 
-void Outbox_FinishReply(Message *reply, GameStatus status, Score score)
+void Outbox_FinishReply(Message *reply, ReplyStatus status, Score score)
 {
     reply->payload.reply.status = status;
     reply->payload.reply.score = score;
 }
 
-void Outbox_Reply(Outbox *self, const Message *request, GameStatus status, Score score)
+void Outbox_Reply(Outbox *self, const Message *request, ReplyStatus status, Score score)
 {
     if (!Envelope_WantsAnAnswer(&request->envelope)) {
         return;
