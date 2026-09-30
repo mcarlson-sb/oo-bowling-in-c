@@ -57,6 +57,17 @@ TestOutbox Send(RunningAverage *average, std::initializer_list<Message> messages
     return outbox;
 }
 
+
+/* Its not-understood count, asked for rather than read from its state. */
+uint16_t NotUnderstoodCount(RunningAverage *average)
+{
+    Message ask = Query(99U);
+    ask.envelope.selector = MSG_QUERY_STATS;
+    const TestOutbox outbox = Send(average, {ask});
+    EXPECT_EQ(MSG_STATS, outbox.items[0].envelope.selector);
+    return outbox.items[0].payload.stats.not_understood;
+}
+
 } // namespace
 
 TEST(RunningAverageTest, should_answer_the_average_of_the_frames_it_has_heard_complete)
@@ -88,7 +99,7 @@ TEST(RunningAverageTest, should_not_understand_a_roll_and_count_it)
     const TestOutbox outbox = Send(&average, {roll});
     ASSERT_EQ(1U, outbox.count);
     EXPECT_EQ(MSG_NOT_UNDERSTOOD, outbox.items[0].envelope.selector);
-    EXPECT_EQ(1U, average.not_understood);
+    EXPECT_EQ(1U, NotUnderstoodCount(&average));
 }
 
 TEST(RunningAverageTest, should_take_the_reply_to_its_subscription_in_silence)
@@ -100,7 +111,7 @@ TEST(RunningAverageTest, should_take_the_reply_to_its_subscription_in_silence)
     reply.envelope.to = kAverage;
     const TestOutbox outbox = Send(&average, {reply});
     EXPECT_EQ(0U, outbox.count);
-    EXPECT_EQ(0U, average.not_understood);
+    EXPECT_EQ(0U, NotUnderstoodCount(&average));
 }
 
 TEST(RunningAverageTest, should_start_empty_whatever_memory_it_is_given)
@@ -110,7 +121,7 @@ TEST(RunningAverageTest, should_start_empty_whatever_memory_it_is_given)
     RunningAverage_Init(&average, kAverage);
     const TestOutbox outbox = Send(&average, {FrameChanged(1, 8, true), Query(1U)});
     EXPECT_EQ(8U, outbox.items[0].payload.reply.score); /* one frame: nothing left over */
-    EXPECT_EQ(0U, average.not_understood);
+    EXPECT_EQ(0U, NotUnderstoodCount(&average));
 }
 
 TEST(RunningAverageTest, should_say_not_understood_from_its_own_id)
@@ -135,7 +146,7 @@ TEST(RunningAverageTest, should_take_the_rest_of_what_a_game_tells_subscribers_i
     lost.envelope.selector = MSG_ROLLS_LOST;
     const TestOutbox outbox = Send(&average, {held, lost});
     EXPECT_EQ(0U, outbox.count);
-    EXPECT_EQ(0U, average.not_understood);
+    EXPECT_EQ(0U, NotUnderstoodCount(&average));
 }
 
 TEST(RunningAverageTest, should_answer_its_statistics_with_the_facts_behind_its_average)

@@ -614,6 +614,21 @@ TEST(GameActorTest, should_catch_a_subscriber_joining_mid_frame_up_on_the_comple
               FrameEventsIn(outbox));
 }
 
+namespace {
+
+/* Its not-understood count, asked for rather than read from its state. */
+uint16_t NotUnderstoodCount(GameActor *actor)
+{
+    Message ask = ScoreQuery(99U);
+    ask.envelope.selector = MSG_QUERY_STATS;
+    TestOutbox outbox;
+    Send(actor, ask, &outbox);
+    EXPECT_EQ(MSG_STATS, outbox.items[0].envelope.selector);
+    return outbox.items[0].payload.stats.not_understood;
+}
+
+} // namespace
+
 /* ---- A selector the game doesn't answer ------------------------------------------------ */
 
 TEST(GameActorTest, should_reply_not_understood_to_a_selector_it_does_not_answer_and_count_it)
@@ -633,7 +648,7 @@ TEST(GameActorTest, should_reply_not_understood_to_a_selector_it_does_not_answer
     EXPECT_EQ(kGame, reply.envelope.from);
     EXPECT_EQ(5U, reply.envelope.seq);
     EXPECT_EQ(MSG_FRAME_CHANGED, reply.payload.not_understood.selector);
-    EXPECT_EQ(1U, actor.not_understood);
+    EXPECT_EQ(1U, NotUnderstoodCount(&actor));
 }
 
 TEST(GameActorTest, should_count_but_never_answer_a_not_understood_so_two_kinds_cannot_echo_it)
@@ -654,7 +669,7 @@ TEST(GameActorTest, should_count_but_never_answer_a_not_understood_so_two_kinds_
     from_no_one.envelope.to = kGame;
     Send(&actor, from_no_one, &outbox);
     EXPECT_EQ(0U, outbox.count);
-    EXPECT_EQ(2U, actor.not_understood);
+    EXPECT_EQ(2U, NotUnderstoodCount(&actor));
 }
 
 /* ---- A game whose rules arrive in a message ------------------------------------------ */

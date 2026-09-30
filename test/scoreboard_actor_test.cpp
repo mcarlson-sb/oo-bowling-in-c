@@ -56,6 +56,17 @@ TestOutbox Send(Scoreboard *board, std::initializer_list<Message> messages)
     return outbox;
 }
 
+
+/* Its not-understood count, asked for rather than read from its state. */
+uint16_t NotUnderstoodCount(Scoreboard *board)
+{
+    Message ask = Query(99U);
+    ask.envelope.selector = MSG_QUERY_STATS;
+    const TestOutbox outbox = Send(board, {ask});
+    EXPECT_EQ(MSG_STATS, outbox.items[0].envelope.selector);
+    return outbox.items[0].payload.stats.not_understood;
+}
+
 } // namespace
 
 TEST(ScoreboardTest, should_answer_the_total_of_the_frames_it_has_heard_complete)
@@ -86,7 +97,7 @@ TEST(ScoreboardTest, should_not_understand_a_roll_and_count_it)
     EXPECT_EQ(MSG_NOT_UNDERSTOOD, outbox.items[0].envelope.selector);
     EXPECT_EQ(kAsker, outbox.items[0].envelope.to);
     EXPECT_EQ(MSG_ROLL, outbox.items[0].payload.not_understood.selector);
-    EXPECT_EQ(1U, board.not_understood);
+    EXPECT_EQ(1U, NotUnderstoodCount(&board));
 }
 
 TEST(ScoreboardTest, should_take_the_reply_to_its_subscription_in_silence)
@@ -99,7 +110,7 @@ TEST(ScoreboardTest, should_take_the_reply_to_its_subscription_in_silence)
     reply.envelope.to = kBoard;
     const TestOutbox outbox = Send(&board, {reply});
     EXPECT_EQ(0U, outbox.count);
-    EXPECT_EQ(0U, board.not_understood);
+    EXPECT_EQ(0U, NotUnderstoodCount(&board));
 }
 
 TEST(ScoreboardTest, should_ignore_a_frame_number_outside_the_frames_it_keeps)
@@ -131,7 +142,7 @@ TEST(ScoreboardTest, should_start_empty_whatever_memory_it_is_given)
     Scoreboard_Init(&board, kBoard);
     const TestOutbox outbox = Send(&board, {Query(1U)});
     EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
-    EXPECT_EQ(0U, board.not_understood);
+    EXPECT_EQ(0U, NotUnderstoodCount(&board));
 }
 
 TEST(ScoreboardTest, should_keep_the_last_frame_the_game_has)
@@ -165,7 +176,7 @@ TEST(ScoreboardTest, should_take_the_rest_of_what_a_game_tells_subscribers_in_si
     lost.envelope.selector = MSG_ROLLS_LOST;
     const TestOutbox outbox = Send(&board, {held, lost});
     EXPECT_EQ(0U, outbox.count);
-    EXPECT_EQ(0U, board.not_understood);
+    EXPECT_EQ(0U, NotUnderstoodCount(&board));
 }
 
 /* ---- Its statistics: counters and facts, asked for, not read from its state -------------------- */
