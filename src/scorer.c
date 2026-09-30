@@ -158,11 +158,21 @@ static void Lane_Throw(Lane *lane, const ScorerRules *rules, uint8_t ball_index,
     }
 }
 
-/* Off a full rack, few enough left standing to count as clearing it. */
+static bool ScorerRules_IsAFullRack(const ScorerRules *rules, Pins standing)
+{
+    return standing == rules->pins_per_rack;
+}
+
+static bool ScorerRules_LeavesFewEnoughToCountAsAClear(const ScorerRules *rules, Pins standing,
+                                                       Pins pins)
+{
+    return (Pins)(standing - pins) <= rules->pins_standing_that_count_as_a_clear;
+}
+
 static bool ScorerRules_CountsAsAClear(const ScorerRules *rules, Pins standing, Pins pins)
 {
-    return (standing == rules->pins_per_rack) &&
-           ((Pins)(standing - pins) <= rules->pins_standing_that_count_as_a_clear);
+    return ScorerRules_IsAFullRack(rules, standing) &&
+           ScorerRules_LeavesFewEnoughToCountAsAClear(rules, standing, pins);
 }
 
 static Pins Scorer_CountPins(const Scorer *self, Pins standing, Pins pins)
