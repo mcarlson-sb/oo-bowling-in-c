@@ -19,6 +19,7 @@ extern "C" {
  * and whether it is holding rolls is the held list's. */
 typedef enum {
     GAME_AWAITING_RULES,
+    GAME_PRACTICE, /* a new game asked for it: balls are counted, not scored, until it ends */
     GAME_IN_PLAY
 } GameLifecycle;
 

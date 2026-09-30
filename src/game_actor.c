@@ -224,16 +224,16 @@ static void GameActor_ReopenTheOldGamesFrames(const GameActor *self, FrameEvents
 }
 
 /* Refused, changing nothing, if the scorer can't play the rules. */
-static GameStatus GameActor_StartNextGame(GameActor *self, const ScorerRules *rules,
+static GameStatus GameActor_StartNextGame(GameActor *self, const NewGamePayload *new_game,
                                           Outbox *outbox)
 {
     FrameEvents reopened;
     GameActor_ReopenTheOldGamesFrames(self, &reopened);
-    const GameStatus status = Scorer_Start(&self->scorer, rules);
+    const GameStatus status = Scorer_Start(&self->scorer, &new_game->rules);
     if (status != GAME_OK) {
         return status;
     }
-    self->lifecycle = GAME_IN_PLAY;
+    self->lifecycle = new_game->practice ? GAME_PRACTICE : GAME_IN_PLAY;
     GameActor_Publish(self, &reopened, outbox);
     GameActor_LetHeldRollsThrough(self, outbox);
     return GAME_OK;
@@ -247,7 +247,7 @@ static void GameActor_NewGame(GameActor *self, const Message *message, Outbox *o
     }
     Message *reply = Outbox_BeginReply(outbox, message);
     const GameStatus status =
-        GameActor_StartNextGame(self, &message->payload.new_game.rules, outbox);
+        GameActor_StartNextGame(self, &message->payload.new_game, outbox);
     Outbox_FinishReply(reply, status, (status == GAME_OK) ? Scorer_Score(&self->scorer) : 0U);
 }
 
@@ -264,6 +264,12 @@ static void GameActor_AnswerNothingHeld(const Message *message, Outbox *outbox)
     Outbox_Reply(outbox, message, GAME_ERR_NO_SUCH_ROLL, 0U);
 }
 
+/* A ball in practice: counted, not scored. */
+static void GameActor_CountPracticeBall(const Message *message, Outbox *outbox)
+{
+    Outbox_Reply(outbox, message, REPLY_OK, 0U);
+}
+
 static void GameActor_HoldTheRoll(GameActor *self, const Message *message, Outbox *outbox)
 {
     GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
@@ -272,6 +278,7 @@ static void GameActor_HoldTheRoll(GameActor *self, const Message *message, Outbo
 /* The state a message is read in: the lifecycle's decision, and what the held list says. */
 typedef enum {
     GAME_STATE_AWAITING_RULES,
+    GAME_STATE_PRACTICE,
     GAME_STATE_IN_PLAY,
     GAME_STATE_HOLDING, /* in play, with rolls held */
     GAME_STATES
@@ -281,6 +288,9 @@ static GameState GameActor_State(const GameActor *self)
 {
     if (self->lifecycle == GAME_AWAITING_RULES) {
         return GAME_STATE_AWAITING_RULES;
+    }
+    if (self->lifecycle == GAME_PRACTICE) {
+        return GAME_STATE_PRACTICE;
     }
     return HeldRolls_IsEmpty(&self->held) ? GAME_STATE_IN_PLAY : GAME_STATE_HOLDING;
 }
@@ -307,7 +317,8 @@ typedef enum {
     GAME_HOLD_THE_ROLL,
     GAME_EDIT,
     GAME_DISCARD_HELD,
-    GAME_HEAR_LOST_REPORT
+    GAME_HEAR_LOST_REPORT,
+    GAME_COUNT_PRACTICE_BALL
 } GamePlay;
 
 typedef enum {
@@ -343,6 +354,25 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_STATS] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
         [MSG_END_PRACTICE] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
         [MSG_SELECTOR_COUNT] = { GAME_ANSWER_NO_GAME, GAME_NO_PLAY, GAME_NO_MOVE },
+    },
+    [GAME_STATE_PRACTICE] = {
+        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME },
+        [MSG_ROLL] = { GAME_NO_ANSWER, GAME_COUNT_PRACTICE_BALL, GAME_NO_MOVE },
+        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_EDIT] = { GAME_NO_ANSWER, GAME_EDIT, GAME_NO_MOVE },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_PLAY_OR_HOLD, GAME_NO_MOVE },
+        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_DISCARD_HELD] = { GAME_ANSWER_NOTHING_HELD, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT, GAME_NO_MOVE },
+        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_END_PRACTICE] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
     },
     [GAME_STATE_IN_PLAY] = {
         [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME },
@@ -445,6 +475,9 @@ static void GameActor_MakeThePlay(GameActor *self, GamePlay play, const Message 
         break;
     case GAME_HEAR_LOST_REPORT:
         GameActor_HearLostReport(self, message, outbox);
+        break;
+    case GAME_COUNT_PRACTICE_BALL:
+        GameActor_CountPracticeBall(message, outbox);
         break;
     }
 }

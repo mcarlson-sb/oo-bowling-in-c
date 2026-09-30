@@ -877,3 +877,38 @@ TEST(GameActorLifecycleTest, should_answer_no_frames_and_no_total_before_a_game_
     EXPECT_EQ(0U, outbox.items[0].payload.stats.complete_frames);
     EXPECT_EQ(0U, outbox.items[0].payload.stats.total);
 }
+
+/* ---- A league night: practice --------------------------------------------------------------- */
+
+namespace {
+
+Message PracticeGameRequest(RequestSeq seq, const ScorerRules &rules)
+{
+    Message message = NewGameRequest(seq, rules);
+    message.payload.new_game.practice = true;
+    return message;
+}
+
+/* A game actor, with a ten-pin game started in practice. */
+GameActor MakePracticingActor()
+{
+    GameActor actor;
+    GameActor_Init(&actor, kGame);
+    TestOutbox outbox;
+    Send(&actor, PracticeGameRequest(0U, rules::kTenPin), &outbox);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status) << "setup: the practice game";
+    return actor;
+}
+
+} // namespace
+
+TEST(GameActorPracticeTest, should_not_score_a_roll_in_practice)
+{
+    GameActor actor = MakePracticingActor();
+    TestOutbox outbox;
+    Send(&actor, RollRequest(1U, 3U), &outbox);
+    Send(&actor, RollRequest(2U, 4U), &outbox); /* a frame of 7, were it scored */
+    EXPECT_EQ(REPLY_OK, outbox.items[0].payload.reply.status);
+    EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
+    EXPECT_EQ(0U, ScoreOf(&actor));
+}
