@@ -85,7 +85,7 @@ typedef struct {
     RollNumber first_roll;
     uint8_t rolls_removed;
     uint8_t new_count;
-    Pins new_pins[SCORER_MAX_BALLS];
+    Pins new_pins[BOWLING_MAX_BALLS];
 } EditPayload;
 
 typedef struct {

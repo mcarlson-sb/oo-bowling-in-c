@@ -19,6 +19,9 @@
 extern "C" {
 #endif
 
+/* The most frames one roll or edit reports: every frame, once. */
+#define SCORER_MAX_EVENTS BOWLING_MAX_FRAMES
+
 typedef struct {
     FrameEvent events[SCORER_MAX_EVENTS];
     uint8_t count;
@@ -32,7 +35,7 @@ typedef struct {
 typedef struct {
     ScorerRules rules;
     uint8_t max_balls;
-    Pins balls[SCORER_MAX_BALLS];
+    Pins balls[BOWLING_MAX_BALLS];
     uint8_t ball_count;
 } Scorer;
 

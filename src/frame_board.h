@@ -14,8 +14,8 @@ extern "C" {
 #endif
 
 typedef struct {
-    Score scores[SCORER_MAX_FRAMES];
-    bool complete[SCORER_MAX_FRAMES];
+    Score scores[BOWLING_MAX_FRAMES];
+    bool complete[BOWLING_MAX_FRAMES];
 } FrameBoard;
 
 void FrameBoard_Init(FrameBoard *self);

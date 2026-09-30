@@ -19,7 +19,7 @@
 
 #define PINSETTER_ROLLS 32U
 
-_Static_assert(PINSETTER_ROLLS >= SCORER_MAX_BALLS,
+_Static_assert(PINSETTER_ROLLS >= BOWLING_MAX_BALLS,
                "the pinsetter's queue holds a whole game of rolls");
 
 typedef struct {

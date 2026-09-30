@@ -36,7 +36,7 @@ RollHeldPayload HeldRolls_Report(const HeldRolls *self, uint8_t index, RollNumbe
 
 bool HeldRolls_Hold(HeldRolls *self, Pins pins)
 {
-    if (self->count == SCORER_MAX_BALLS) {
+    if (self->count == BOWLING_MAX_BALLS) {
         self->lost++;
         return false;
     }

@@ -14,12 +14,10 @@
 extern "C" {
 #endif
 
-#define SCORER_MAX_BALLS 30U
-#define SCORER_MAX_FRAMES 10U
-#define SCORER_MAX_BALLS_PER_FRAME 3U
-#define SCORER_MAX_PINS_PER_RACK 20U
-
-#define SCORER_MAX_EVENTS SCORER_MAX_FRAMES
+#define BOWLING_MAX_BALLS 30U
+#define BOWLING_MAX_FRAMES 10U
+#define BOWLING_MAX_BALLS_PER_FRAME 3U
+#define BOWLING_MAX_PINS_PER_RACK 20U
 
 typedef enum {
     SCORER_CLEARED_BY_FIRST_BALL,
@@ -32,7 +30,7 @@ typedef struct {
     uint8_t frames;
     uint8_t balls_per_frame;
     Pins pins_per_rack;
-    uint8_t bonus_balls_by_clearing_ball[SCORER_MAX_BALLS_PER_FRAME];
+    uint8_t bonus_balls_by_clearing_ball[BOWLING_MAX_BALLS_PER_FRAME];
     /* Off a full rack, a ball that leaves this many standing or fewer counts as clearing it:
      * 0 counts the pins that fell, 1 is nine-pin no-tap. */
     Pins pins_standing_that_count_as_a_clear;

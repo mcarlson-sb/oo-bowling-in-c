@@ -677,7 +677,7 @@ void ExpectCompleteFramesToComeFirst(const ScorerRules &rules, int max_balls, un
             RollAll(&scorer, {static_cast<Pins>(down)});
             lane.Roll(down);
             bool incomplete_seen = false;
-            for (uint8_t index = 0U; index < SCORER_MAX_FRAMES; index++) {
+            for (uint8_t index = 0U; index < BOWLING_MAX_FRAMES; index++) {
                 const bool complete = Scorer_Frame(&scorer, index).complete;
                 ASSERT_FALSE(incomplete_seen && complete)
                     << "game " << game_number << ", after ball " << (ball + 1) << ", frame "
@@ -770,7 +770,7 @@ namespace {
 std::map<int, int> CompleteFrames(const Scorer &scorer)
 {
     std::map<int, int> frames;
-    for (uint8_t index = 0U; index < SCORER_MAX_FRAMES; index++) {
+    for (uint8_t index = 0U; index < BOWLING_MAX_FRAMES; index++) {
         const ScorerFrame frame = Scorer_Frame(&scorer, index);
         if (frame.complete) {
             frames[index + 1] = frame.score;
@@ -805,7 +805,7 @@ void CheckEditsAgainstFreshGames(const ScorerRules &rules, unsigned seed)
         Scorer scorer;
         Scorer_Start(&scorer, &rules);
         std::vector<Pins> balls;
-        const int length = 1 + static_cast<int>(random() % SCORER_MAX_BALLS);
+        const int length = 1 + static_cast<int>(random() % BOWLING_MAX_BALLS);
         for (int tries = 0; (static_cast<int>(balls.size()) < length) && (tries < 200); tries++) {
             FrameEvents ignored;
             const Pins pins = static_cast<Pins>(random() % 11U);
@@ -952,7 +952,7 @@ void ExpectToPlayAsTheReferenceDoes(const ScorerRules &rules, unsigned seed)
         Scorer scorer = MakeScorer(rules);
         rules_reference::Lane lane(reference);
         std::vector<int> balls;
-        const int stop_after = std::uniform_int_distribution<int>(1, SCORER_MAX_BALLS)(random);
+        const int stop_after = std::uniform_int_distribution<int>(1, BOWLING_MAX_BALLS)(random);
         for (int ball = 0; (ball < stop_after) && !lane.over; ++ball) {
             const bool clear_the_rack = std::uniform_int_distribution<int>(0, 3)(random) == 0;
             const int down =
@@ -1014,7 +1014,7 @@ TEST(ScorerRulesTest, should_count_a_last_ball_clears_fill_balls_in_the_longest_
 TEST(ScorerRulesTest, should_accept_the_largest_rack_it_scores)
 {
     Scorer scorer = MakeScorer(rules::kTenPin);
-    const ScorerRules twenty_pins = {10U, 2U, SCORER_MAX_PINS_PER_RACK, {2U, 1U, 0U}, 0U};
+    const ScorerRules twenty_pins = {10U, 2U, BOWLING_MAX_PINS_PER_RACK, {2U, 1U, 0U}, 0U};
     EXPECT_EQ(GAME_OK, Scorer_Start(&scorer, &twenty_pins));
     EXPECT_EQ(20U, Scorer_PinsStanding(&scorer));
 }

@@ -5,7 +5,7 @@
 #include <assert.h>
 
 /* A frame scores at most every ball of the game, so no total can outgrow a Score. */
-_Static_assert((SCORER_MAX_FRAMES * SCORER_MAX_BALLS * SCORER_MAX_PINS_PER_RACK) <= UINT16_MAX,
+_Static_assert((BOWLING_MAX_FRAMES * BOWLING_MAX_BALLS * BOWLING_MAX_PINS_PER_RACK) <= UINT16_MAX,
                "the highest possible total fits a Score");
 
 typedef struct {
@@ -22,9 +22,9 @@ typedef enum {
 } LanePhase;
 
 typedef struct {
-    FrameShape frames[SCORER_MAX_FRAMES];
+    FrameShape frames[BOWLING_MAX_FRAMES];
     uint8_t frames_started;
-    Pins counted_pins[SCORER_MAX_BALLS];
+    Pins counted_pins[BOWLING_MAX_BALLS];
     Pins standing;
     LanePhase phase;
     uint8_t fill_balls_left;

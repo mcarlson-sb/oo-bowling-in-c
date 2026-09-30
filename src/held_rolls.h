@@ -17,7 +17,7 @@ extern "C" {
 #endif
 
 typedef struct {
-    Pins pins[SCORER_MAX_BALLS];
+    Pins pins[BOWLING_MAX_BALLS];
     uint8_t count;
     GameStatus first_refused_for;
     uint16_t lost; /* rolls there was no room to hold, so far */

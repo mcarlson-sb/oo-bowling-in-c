@@ -2,7 +2,7 @@
 
 void FrameBoard_Init(FrameBoard *self)
 {
-    for (uint8_t i = 0U; i < SCORER_MAX_FRAMES; i++) {
+    for (uint8_t i = 0U; i < BOWLING_MAX_FRAMES; i++) {
         self->scores[i] = 0U;
         self->complete[i] = false;
     }
@@ -10,7 +10,7 @@ void FrameBoard_Init(FrameBoard *self)
 
 static bool FrameEvent_IsOfAFrameKept(const FrameEvent *frame)
 {
-    return (frame->frame_number >= 1U) && (frame->frame_number <= SCORER_MAX_FRAMES);
+    return (frame->frame_number >= 1U) && (frame->frame_number <= BOWLING_MAX_FRAMES);
 }
 
 void FrameBoard_Hear(FrameBoard *self, const FrameEvent *frame)
@@ -26,7 +26,7 @@ void FrameBoard_Hear(FrameBoard *self, const FrameEvent *frame)
 uint8_t FrameBoard_CompleteCount(const FrameBoard *self)
 {
     uint8_t count = 0U;
-    for (uint8_t i = 0U; i < SCORER_MAX_FRAMES; i++) {
+    for (uint8_t i = 0U; i < BOWLING_MAX_FRAMES; i++) {
         if (self->complete[i]) {
             count++;
         }
@@ -37,7 +37,7 @@ uint8_t FrameBoard_CompleteCount(const FrameBoard *self)
 Score FrameBoard_Total(const FrameBoard *self)
 {
     Score total = 0U;
-    for (uint8_t i = 0U; i < SCORER_MAX_FRAMES; i++) {
+    for (uint8_t i = 0U; i < BOWLING_MAX_FRAMES; i++) {
         if (self->complete[i]) {
             total = (Score)(total + self->scores[i]);
         }

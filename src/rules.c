@@ -18,18 +18,18 @@ unsigned ScorerRules_LongestGame(const ScorerRules *rules)
 
 static bool ScorerRules_HasFramesItHolds(const ScorerRules *rules)
 {
-    return (rules->frames != 0U) && (rules->frames <= SCORER_MAX_FRAMES);
+    return (rules->frames != 0U) && (rules->frames <= BOWLING_MAX_FRAMES);
 }
 
 static bool ScorerRules_HasBallsItHolds(const ScorerRules *rules)
 {
     return (rules->balls_per_frame != 0U) &&
-           (rules->balls_per_frame <= SCORER_MAX_BALLS_PER_FRAME);
+           (rules->balls_per_frame <= BOWLING_MAX_BALLS_PER_FRAME);
 }
 
 static bool ScorerRules_BonusesStopAtTheFramesBalls(const ScorerRules *rules)
 {
-    for (uint8_t ball = rules->balls_per_frame; ball < SCORER_MAX_BALLS_PER_FRAME; ball++) {
+    for (uint8_t ball = rules->balls_per_frame; ball < BOWLING_MAX_BALLS_PER_FRAME; ball++) {
         if (rules->bonus_balls_by_clearing_ball[ball] != 0U) {
             return false;
         }
@@ -39,7 +39,7 @@ static bool ScorerRules_BonusesStopAtTheFramesBalls(const ScorerRules *rules)
 
 static bool ScorerRules_HasPinsItCanCount(const ScorerRules *rules)
 {
-    return (rules->pins_per_rack != 0U) && (rules->pins_per_rack <= SCORER_MAX_PINS_PER_RACK);
+    return (rules->pins_per_rack != 0U) && (rules->pins_per_rack <= BOWLING_MAX_PINS_PER_RACK);
 }
 
 static bool ScorerRules_MakesABallEarnAClear(const ScorerRules *rules)
@@ -58,5 +58,5 @@ bool ScorerRules_AreValid(const ScorerRules *rules)
 {
     return ScorerRules_HasFramesItHolds(rules) && ScorerRules_HasBallsItHolds(rules) &&
            ScorerRules_BonusesStopAtTheFramesBalls(rules) && ScorerRules_HasARackItScores(rules) &&
-           (ScorerRules_LongestGame(rules) <= SCORER_MAX_BALLS);
+           (ScorerRules_LongestGame(rules) <= BOWLING_MAX_BALLS);
 }
