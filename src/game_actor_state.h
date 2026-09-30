@@ -7,16 +7,11 @@
 #include <stdint.h>
 
 #include "game_actor.h"
+#include "held_rolls.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef struct {
-    Pins pins[SCORER_MAX_BALLS];
-    uint8_t count;
-    GameStatus first_refused_for;
-} HeldRolls;
 
 typedef struct {
     ActorId ids[GAME_MAX_SUBSCRIBERS];

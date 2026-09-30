@@ -36,6 +36,7 @@ add_library(bowling STATIC
     src/outbox.c
     src/scoreboard.c
     src/frame_board.c
+    src/held_rolls.c
     src/running_average.c
 )
 target_include_directories(bowling PUBLIC include PRIVATE src)

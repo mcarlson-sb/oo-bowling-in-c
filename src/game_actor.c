@@ -7,46 +7,6 @@
 #include "outbox.h"
 
 
-static void HeldRolls_Init(HeldRolls *held)
-{
-    held->count = 0U;
-    held->first_refused_for = GAME_OK;
-}
-
-static bool HeldRolls_IsEmpty(const HeldRolls *held)
-{
-    return held->count == 0U;
-}
-
-static bool HeldRolls_IsFull(const HeldRolls *held)
-{
-    return held->count == SCORER_MAX_BALLS;
-}
-
-static void HeldRolls_Push(HeldRolls *held, Pins pins)
-{
-    held->pins[held->count] = pins;
-    held->count++;
-}
-
-static uint8_t HeldRolls_Newest(const HeldRolls *held)
-{
-    return (uint8_t)(held->count - 1U);
-}
-
-static void HeldRolls_RefuseFirst(HeldRolls *held, GameStatus why)
-{
-    held->first_refused_for = why;
-}
-
-static void HeldRolls_DropFirst(HeldRolls *held)
-{
-    held->count--;
-    for (uint8_t i = 0U; i < held->count; i++) {
-        held->pins[i] = held->pins[i + 1U];
-    }
-}
-
 static void Subscribers_Init(Subscribers *subscribers)
 {
     subscribers->count = 0U;
@@ -112,10 +72,10 @@ static void GameActor_PublishHeld(const GameActor *self, uint8_t index, Outbox *
 {
     for (uint8_t s = 0U; s < self->subscribers.count; s++) {
         Message *out = Outbox_Next(outbox, MSG_ROLL_HELD, self->id, self->subscribers.ids[s]);
-        out->payload.roll_held.pins = self->held.pins[index];
+        out->payload.roll_held.pins = HeldRolls_PinsAt(&self->held, index);
         out->payload.roll_held.position = GameActor_HeldBallNumber(self, index);
-        out->payload.roll_held.held = self->held.count;
-        out->payload.roll_held.status = self->held.first_refused_for;
+        out->payload.roll_held.held = HeldRolls_Count(&self->held);
+        out->payload.roll_held.status = HeldRolls_WhyFirstRefused(&self->held);
     }
 }
 
@@ -160,7 +120,7 @@ static GameStatus GameActor_Play(GameActor *self, Pins pins, Outbox *outbox)
 static void GameActor_LetHeldRollsThrough(GameActor *self, Outbox *outbox)
 {
     while (!HeldRolls_IsEmpty(&self->held)) {
-        const GameStatus status = GameActor_Play(self, self->held.pins[0], outbox);
+        const GameStatus status = GameActor_Play(self, HeldRolls_PinsAt(&self->held, 0U), outbox);
         if (status != GAME_OK) {
             HeldRolls_RefuseFirst(&self->held, status);
             GameActor_PublishHeld(self, 0U, outbox);
@@ -253,7 +213,7 @@ static void GameActor_AnswerStats(const GameActor *self, const Message *message,
     StatsPayload *stats = Outbox_BeginStats(outbox, message);
     stats->not_understood = self->not_understood;
     stats->rolls_lost = (uint16_t)(self->lost_to_full_queue + self->lost_to_full_held_list);
-    stats->rolls_held = self->held.count;
+    stats->rolls_held = HeldRolls_Count(&self->held);
     stats->complete_frames = GameActor_CompleteFrames(self);
     stats->total = Scorer_Score(&self->scorer);
 }
