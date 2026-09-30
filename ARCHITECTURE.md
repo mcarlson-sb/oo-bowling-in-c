@@ -75,8 +75,10 @@ task, to wake.
   that instance: the single late-binding point, and every target is a direct call the call graph
   sees.
 - **Each kind** then looks the selector up in its own protocol table (`respondsTo:`). A
-  selector it doesn't list is not understood: answered NOT_UNDERSTOOD, unless it came from no
-  one or is a NOT_UNDERSTOOD itself, and counted.
+  selector it doesn't list is not understood, and counted. It's answered NOT_UNDERSTOOD only if
+  it is a request from someone: an answer (a reply, an event, a NOT_UNDERSTOOD or statistics) is
+  never answered, by any kind in any state, so two kinds can't trade answers forever.
+  `message.c` classifies each selector once.
 
 Bindings are made at startup, before the scheduler runs:
 - **`GameShell_Start`** hosts the game at id 1.

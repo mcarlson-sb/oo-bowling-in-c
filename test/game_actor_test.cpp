@@ -635,7 +635,7 @@ uint16_t NotUnderstoodCount(GameActor *actor)
 
 /* ---- A selector the game doesn't answer ------------------------------------------------ */
 
-TEST(GameActorTest, should_reply_not_understood_to_a_selector_it_does_not_answer_and_count_it)
+TEST(GameActorTest, should_count_an_event_it_does_not_listen_to_and_never_answer_it)
 {
     GameActor actor = MakeActor(rules::kTenPin);
     TestOutbox outbox;
@@ -643,15 +643,8 @@ TEST(GameActorTest, should_reply_not_understood_to_a_selector_it_does_not_answer
     frame_changed.envelope.selector = MSG_FRAME_CHANGED;
     frame_changed.envelope.from = kReplyTo;
     frame_changed.envelope.to = kGame;
-    frame_changed.envelope.seq = 5U;
     Send(&actor, frame_changed, &outbox);
-    ASSERT_EQ(1U, outbox.count);
-    const Message &reply = outbox.items[0];
-    EXPECT_EQ(MSG_NOT_UNDERSTOOD, reply.envelope.selector);
-    EXPECT_EQ(kReplyTo, reply.envelope.to);
-    EXPECT_EQ(kGame, reply.envelope.from);
-    EXPECT_EQ(5U, reply.envelope.seq);
-    EXPECT_EQ(MSG_FRAME_CHANGED, reply.payload.not_understood.selector);
+    EXPECT_EQ(0U, outbox.count);
     EXPECT_EQ(1U, NotUnderstoodCount(&actor));
 }
 

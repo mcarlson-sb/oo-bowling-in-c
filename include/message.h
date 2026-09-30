@@ -140,9 +140,13 @@ Envelope Envelope_Event(Selector selector, ActorId from, ActorId to);
 /* The answer to a request: from the id it was sent to, to its sender, with its seq. */
 Envelope Envelope_ReplyTo(const Envelope *request, Selector selector);
 
-/* Whether a request whose selector isn't understood should hear so: not if it came from no one,
- * who can't hear it, nor if it is a NOT_UNDERSTOOD itself, which two kinds would echo. */
-bool Envelope_WantsNotUnderstood(const Envelope *request);
+/* A request asks for something, and may be answered. An answer, a reply, an event, a
+ * NOT_UNDERSTOOD or statistics, is never answered, by any kind in any state: two kinds that
+ * answered answers could trade them forever. A selector outside the protocol is a request. */
+bool Selector_IsARequest(Selector selector);
+
+/* Whether a message may be answered at all: a request, from someone who can hear the answer. */
+bool Envelope_WantsAnAnswer(const Envelope *message);
 
 /* Checks a selector before it indexes a kind's protocol table: a sender can fill the enum with
  * any value, and only the protocol's own are in the table. */

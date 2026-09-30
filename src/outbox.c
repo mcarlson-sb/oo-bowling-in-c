@@ -31,6 +31,9 @@ void Outbox_FinishReply(Message *reply, GameStatus status, Score score)
 
 void Outbox_Reply(Outbox *self, const Message *request, GameStatus status, Score score)
 {
+    if (!Envelope_WantsAnAnswer(&request->envelope)) {
+        return;
+    }
     Outbox_FinishReply(Outbox_BeginReply(self, request), status, score);
 }
 
@@ -44,7 +47,7 @@ StatsPayload *Outbox_BeginStats(Outbox *self, const Message *request)
 
 void Outbox_NotUnderstood(Outbox *self, ActorId from, const Message *request)
 {
-    if (!Envelope_WantsNotUnderstood(&request->envelope)) {
+    if (!Envelope_WantsAnAnswer(&request->envelope)) {
         return;
     }
     Envelope answer = Envelope_ReplyTo(&request->envelope, MSG_NOT_UNDERSTOOD);

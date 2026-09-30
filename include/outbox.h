@@ -30,7 +30,8 @@ Message *Outbox_BeginReply(Outbox *self, const Message *request);
 
 void Outbox_FinishReply(Message *reply, GameStatus status, Score score);
 
-/* A reply whose outcome is known at once. */
+/* A reply whose outcome is known at once, if the request wants an answer at all (see
+ * Envelope_WantsAnAnswer): the way every default answer, such as "no game", is given. */
 void Outbox_Reply(Outbox *self, const Message *request, GameStatus status, Score score);
 
 /* A MSG_STATS answer to `request`, as a reply is addressed, with every field 0 for the kind to
@@ -38,7 +39,7 @@ void Outbox_Reply(Outbox *self, const Message *request, GameStatus status, Score
 StatsPayload *Outbox_BeginStats(Outbox *self, const Message *request);
 
 /* Answers that the request's selector isn't one its kind responds to, from `from`, the kind's own
- * id, if the request wants to hear it (see Envelope_WantsNotUnderstood). */
+ * id, if the request wants an answer at all (see Envelope_WantsAnAnswer). */
 void Outbox_NotUnderstood(Outbox *self, ActorId from, const Message *request);
 
 #ifdef __cplusplus

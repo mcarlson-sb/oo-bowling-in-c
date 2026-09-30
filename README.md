@@ -85,9 +85,11 @@ stop. It is not a gate.
 | The router | `rtos/router.h`, `rtos/router.c` | The routing table: which kind and instance sits at each id, and the mailbox and task that host it. It posts to whoever is bound at a message's `to`, and counts what it couldn't |
 | The pinsetter | `rtos/pinsetter.h`, `rtos/pinsetter.c`, `rtos/pinsetter_isr.c` | A feeder bound to a game's id. Its interrupt counts each roll into a queue, and a full queue's losses into a one-slot report, and the task that hosts its game takes them as messages from no one |
 
-Everything is statically allocated. Before a game, anything but a NEW_GAME or a QUERY_STATS is
-answered "no game". Rules the scorer can't play are refused. A selector a kind doesn't respond
-to is answered NOT_UNDERSTOOD and counted.
+Everything is statically allocated. Every selector is a request or an answer (a reply, an event,
+a NOT_UNDERSTOOD or statistics), and only requests are ever answered, by any kind in any state.
+Before a game, a request other than NEW_GAME or QUERY_STATS is answered "no game". Rules the
+scorer can't play are refused. A request a kind doesn't respond to is answered NOT_UNDERSTOOD, and
+counted, as an answer it doesn't listen to is.
 
 ## Follow one roll
 

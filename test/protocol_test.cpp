@@ -1,9 +1,14 @@
-/* What the protocol promises of every kind, whatever sits at an id: here, that a client can always
- * ask for the facts, with QUERY_STATS, without knowing which kind it asks. */
+/* What the protocol promises of every kind, whatever sits at an id: that a client can always ask
+ * for the facts, with QUERY_STATS, without knowing which kind it asks; and that no kind, in any
+ * state, answers an answer. */
 
 #include <gtest/gtest.h>
 
 #include "test_outbox.h"
+
+#include <deque>
+
+#include "rules_presets.h"
 
 extern "C" {
 #include "game_actor.h"
@@ -60,4 +65,58 @@ TEST(ProtocolTest, should_have_every_kind_answer_its_statistics_as_it_starts_eve
     const Message to_average = StatsQuery(3U);
     RunningAverage_Handle(&average, &to_average, &to_the_average);
     ExpectStatsIn(to_the_average, 3U, "a running average");
+}
+
+namespace {
+
+constexpr ActorId kAwaitingRules = 2U;
+constexpr ActorId kInPlay = 3U;
+
+/* Delivers every message in flight between two games, and what each makes the other send, up to
+ * `most` deliveries. What is still in flight after that is returned. */
+std::deque<Message> Exchange(GameActor *awaiting, GameActor *in_play, std::deque<Message> in_flight,
+                             int most)
+{
+    for (int delivered = 0; !in_flight.empty() && (delivered < most); delivered++) {
+        const Message message = in_flight.front();
+        in_flight.pop_front();
+        GameActor *to = (message.envelope.to == kAwaitingRules) ? awaiting : in_play;
+        TestOutbox outbox;
+        GameActor_Handle(to, &message, &outbox);
+        in_flight.insert(in_flight.end(), outbox.items, outbox.items + outbox.count);
+    }
+    return in_flight;
+}
+
+} // namespace
+
+TEST(ProtocolTest, should_end_an_exchange_between_a_game_awaiting_rules_and_a_game_in_play)
+{
+    /* A reply that reaches the wrong game: answered, it would start an exchange of answers. */
+    GameActor awaiting;
+    GameActor_Init(&awaiting, kAwaitingRules);
+    GameActor in_play;
+    GameActor_Init(&in_play, kInPlay);
+    Message new_game = {};
+    new_game.envelope = Envelope_Event(MSG_NEW_GAME, kAsker, kInPlay);
+    new_game.payload.new_game.rules = rules::kTenPin;
+    TestOutbox started;
+    GameActor_Handle(&in_play, &new_game, &started);
+    Message stray = {};
+    stray.envelope = Envelope_Event(MSG_REPLY, kAwaitingRules, kInPlay);
+    EXPECT_TRUE(Exchange(&awaiting, &in_play, {stray}, 100).empty());
+}
+
+TEST(ProtocolTest, should_have_a_game_awaiting_rules_answer_no_answer_with_no_game)
+{
+    for (const Selector answer :
+         {MSG_REPLY, MSG_FRAME_CHANGED, MSG_ROLL_HELD, MSG_ROLLS_LOST, MSG_NOT_UNDERSTOOD, MSG_STATS}) {
+        GameActor game;
+        GameActor_Init(&game, kAwaitingRules);
+        Message message = {};
+        message.envelope = Envelope_Event(answer, kAsker, kAwaitingRules);
+        TestOutbox outbox;
+        GameActor_Handle(&game, &message, &outbox);
+        EXPECT_EQ(0U, outbox.count) << "selector " << answer;
+    }
 }
