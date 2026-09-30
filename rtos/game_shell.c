@@ -1,13 +1,12 @@
 #include "game_shell.h"
 
-#include <stdatomic.h>
-
 #include "task.h"
 
 #include "fault.h"
 
 #include "pinsetter.h"
 #include "posix_stack.h"
+#include "router.h"
 #include "game_actor_state.h"
 #include "running_average_state.h"
 #include "scoreboard_state.h"
@@ -34,15 +33,6 @@ _Static_assert(SCOREBOARD_MOST_SENT <= GAME_SHELL_OBSERVER_MOST_SENT,
                "the observers' outbox holds a scoreboard's largest burst");
 _Static_assert(RUNNING_AVERAGE_MOST_SENT <= GAME_SHELL_OBSERVER_MOST_SENT,
                "the observers' outbox holds a running average's largest burst");
-
-/* A row of the routing table: the kind at an id, which of that kind's instances, and the mailbox
- * and task of the task that hosts it; for an external actor, only the queue it reads. */
-typedef struct {
-    ActorKind kind;
-    uint8_t instance;
-    QueueHandle_t mailbox;
-    TaskHandle_t task;
-} GameShellRoute;
 
 /* A hosting task: one mailbox for every actor it hosts, the message it is handling, and the outbox
  * that message's sends go to, in storage its role sizes. Actors are not tasks. */
@@ -72,7 +62,7 @@ typedef struct {
 } GameShellObserverTask;
 
 typedef struct {
-    GameShellRoute routes[GAME_SHELL_ACTORS];
+    Router router;
     GameShellGameTask game_tasks[GAME_SHELL_GAMES];
     GameShellObserverTask observer_task;
     GameActor games[GAME_SHELL_GAMES];
@@ -81,51 +71,16 @@ typedef struct {
     uint8_t scoreboard_count;
     RunningAverage running_averages[GAME_SHELL_RUNNING_AVERAGES];
     uint8_t running_average_count;
-    atomic_uint_least16_t outputs_dropped; /* written by the hosting tasks, read by any */
     Pinsetter pinsetter;
 } GameShell;
 
 static GameShell s_shell;
 
-static const GameShellRoute s_no_route = { ACTOR_KIND_NONE, 0U, NULL, NULL };
-
-static const GameShellRoute *GameShell_RouteTo(const GameShell *self, ActorId id)
-{
-    return (id < GAME_SHELL_ACTORS) ? &self->routes[id] : &s_no_route;
-}
-
-static void GameShell_CountDropped(GameShell *self)
-{
-    (void)atomic_fetch_add_explicit(&self->outputs_dropped, 1U, memory_order_relaxed);
-}
-
-/* Into the mailbox of whoever is bound at the message's "to", waking the task that hosts it. */
-static bool GameShell_Post(const GameShell *self, const Message *message, TickType_t wait)
-{
-    const GameShellRoute *route = GameShell_RouteTo(self, message->envelope.to);
-    if ((route->mailbox == NULL) || (xQueueSend(route->mailbox, message, wait) != pdPASS)) {
-        return false;
-    }
-    if (route->task != NULL) {
-        xTaskNotifyGive(route->task);
-    }
-    return true;
-}
-
-static void GameShell_Deliver(GameShell *self, const Outbox *outbox)
-{
-    for (uint8_t i = 0U; i < outbox->count; i++) {
-        if (!GameShell_Post(self, &outbox->items[i], 0U)) {
-            GameShell_CountDropped(self);
-        }
-    }
-}
-
 /* The one late-binding point: the kind bound at the message's "to" decides what it means, and
  * which instance's receive function hears it. */
 static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *outbox)
 {
-    const GameShellRoute *route = GameShell_RouteTo(self, message->envelope.to);
+    const Route *route = Router_RouteTo(&self->router, message->envelope.to);
     outbox->count = 0U;
     switch (route->kind) {
     case ACTOR_KIND_GAME:
@@ -139,10 +94,10 @@ static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *
         break;
     case ACTOR_KIND_EXTERNAL:
     case ACTOR_KIND_NONE:
-        GameShell_CountDropped(self);
+        Router_CountDropped(&self->router);
         break;
     }
-    GameShell_Deliver(self, outbox);
+    Router_Deliver(&self->router, outbox);
 }
 
 /* For the task that hosts the pinsetter's game, what the pinsetter counted, before a message
@@ -182,11 +137,8 @@ static void GameShellTask_Start(GameShellTask *host, Message *outbox_storage, ui
 static void GameShell_Route(ActorId id, ActorKind kind, uint8_t instance,
                             const GameShellTask *host)
 {
-    GameShellRoute *route = &s_shell.routes[id];
-    route->kind = kind;
-    route->instance = instance;
-    route->mailbox = host->mailbox;
-    route->task = host->task;
+    const Route route = { kind, instance, host->mailbox, host->task };
+    Router_Bind(&s_shell.router, id, route);
 }
 
 /* A game at `id`, and the task of its own that hosts it. */
@@ -227,18 +179,15 @@ static void GameShell_RequireObserversOutrankEveryGame(const GameShell *self)
 void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
 {
     GameShell *self = &s_shell;
+    Router_Reset(&self->router);
     self->game_count = 0U;
-    for (uint8_t id = 0U; id < GAME_SHELL_ACTORS; id++) {
-        self->routes[id] = s_no_route;
-    }
     self->scoreboard_count = 0U;
     self->running_average_count = 0U;
-    atomic_init(&self->outputs_dropped, 0U);
     GameShell_StartAGame(self, GAME_SHELL_GAME_ID, game_priority);
     GameShell_StartTheObserversTask(self, observer_priority);
     GameShell_RequireObserversOutrankEveryGame(self);
     Pinsetter_Start(&self->pinsetter, GAME_SHELL_GAME_ID,
-                    GameShell_RouteTo(self, GAME_SHELL_GAME_ID)->task);
+                    Router_RouteTo(&self->router, GAME_SHELL_GAME_ID)->task);
 }
 
 static uint8_t GameShell_StartScoreboard(GameShell *self, ActorId id)
@@ -279,10 +228,8 @@ void GameShell_HostRunningAverage(ActorId id)
 void GameShell_Bind(ActorId id, QueueHandle_t queue)
 {
     configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
-    s_shell.routes[id].kind = ACTOR_KIND_EXTERNAL;
-    s_shell.routes[id].instance = 0U;
-    s_shell.routes[id].mailbox = queue;
-    s_shell.routes[id].task = NULL;
+    const Route external = { ACTOR_KIND_EXTERNAL, 0U, queue, NULL };
+    Router_Bind(&s_shell.router, id, external);
 }
 
 Pinsetter *GameShell_Pinsetter(void)
@@ -292,16 +239,16 @@ Pinsetter *GameShell_Pinsetter(void)
 
 uint16_t GameShell_OutputsDropped(void)
 {
-    return (uint16_t)atomic_load_explicit(&s_shell.outputs_dropped, memory_order_relaxed);
+    return Router_Dropped(&s_shell.router);
 }
 
 size_t GameShell_TaskStackUsed(void)
 {
-    const uint8_t game = GameShell_RouteTo(&s_shell, GAME_SHELL_GAME_ID)->instance;
+    const uint8_t game = Router_RouteTo(&s_shell.router, GAME_SHELL_GAME_ID)->instance;
     return PosixStack_DeepestUse(&s_shell.game_tasks[game].task.stack_paint);
 }
 
 BaseType_t GameShell_Send(const Message *message, TickType_t wait)
 {
-    return GameShell_Post(&s_shell, message, wait) ? pdPASS : pdFAIL;
+    return Router_Post(&s_shell.router, message, wait) ? pdPASS : pdFAIL;
 }

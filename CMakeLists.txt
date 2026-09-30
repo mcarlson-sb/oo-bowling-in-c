@@ -167,6 +167,7 @@ if(OO_C_RTOS)
         rtos/game_shell.c
         rtos/pinsetter.c
         rtos/pinsetter_isr.c
+        rtos/router.c
         rtos/posix_stack.c
     )
     # src/ for the actors' state headers: the shell hosts the instances, so it sees inside.

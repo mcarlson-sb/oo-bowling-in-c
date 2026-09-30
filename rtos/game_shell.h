@@ -1,10 +1,11 @@
 #ifndef GAME_SHELL_H
 #define GAME_SHELL_H
 
-/* The RTOS shell, an actor host. Actors address each other by id; the shell's routing table
- * binds each id to a kind and an instance, hosted in a task of its own with a mailbox, or to the
- * queue of an external actor that reads its own. A message goes to whoever is bound at its "to"
- * when it is sent, and the kind bound there decides what it means. */
+/* The RTOS shell, an actor host: where the kinds' instances, the tasks that host them, the
+ * routing table and the pinsetter are created and wired. Actors address each other by id. The
+ * routing table binds each id to a kind and an instance, in a hosting task with a mailbox, or to
+ * the queue of an external actor that reads its own. A message goes to whoever is bound at its
+ * "to" when it is sent, and the kind bound there decides what it means. */
 
 #include <stddef.h>
 
