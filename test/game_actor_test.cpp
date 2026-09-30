@@ -1007,3 +1007,11 @@ TEST(GameActorPracticeTest, should_refuse_to_end_a_practice_that_isnt_going_on)
     EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
     EXPECT_EQ(GAME_ERR_NOT_IN_PRACTICE, outbox.items[0].payload.reply.status);
 }
+
+TEST(GameActorPracticeTest, should_refuse_a_new_game_during_practice_as_a_game_in_progress)
+{
+    GameActor actor = MakePracticingActor();
+    TestOutbox outbox;
+    Send(&actor, NewGameRequest(1U, rules::kCandlepin), &outbox);
+    EXPECT_EQ(GAME_ERR_GAME_IN_PROGRESS, outbox.items[0].payload.reply.status);
+}
