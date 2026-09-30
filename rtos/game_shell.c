@@ -18,7 +18,7 @@
 
 /* The instances of each kind the shell can host. Each game has a task of its own; the observers
  * share one. */
-#define GAME_SHELL_GAMES 1U
+#define GAME_SHELL_GAMES 2U
 #define GAME_SHELL_SCOREBOARDS 1U
 #define GAME_SHELL_RUNNING_AVERAGES 1U
 
@@ -51,6 +51,7 @@ typedef struct {
  * that message's sends go to, in storage its role sizes. Actors are not tasks. */
 typedef struct {
     bool takes_the_pinsetter;
+    UBaseType_t priority;
     QueueHandle_t mailbox;
     StaticQueue_t mailbox_queue;
     uint8_t mailbox_storage[GAME_SHELL_MAILBOX * sizeof(Message)];
@@ -79,6 +80,7 @@ typedef struct {
     GameShellGameTask game_tasks[GAME_SHELL_GAMES];
     GameShellObserverTask observer_task;
     GameActor games[GAME_SHELL_GAMES];
+    uint8_t game_count;
     Scoreboard scoreboards[GAME_SHELL_SCOREBOARDS];
     uint8_t scoreboard_count;
     RunningAverage running_averages[GAME_SHELL_RUNNING_AVERAGES];
@@ -210,6 +212,7 @@ static void GameShellTask_Start(GameShellTask *host, Message *outbox_storage, ui
                                 UBaseType_t priority)
 {
     Outbox_Init(&host->outbox, outbox_storage, most_sent);
+    host->priority = priority;
     host->mailbox = xQueueCreateStatic(GAME_SHELL_MAILBOX, sizeof(Message), host->mailbox_storage,
                                        &host->mailbox_queue);
     /* FUNCTION POINTER EXEMPTION: FreeRTOS takes a task's entry function by address. */
@@ -228,14 +231,18 @@ static void GameShell_Route(ActorId id, ActorKind kind, uint8_t instance,
     route->task = host->task;
 }
 
-static void GameShell_StartTheGame(GameShell *self, UBaseType_t priority)
+/* A game at `id`, and the task of its own that hosts it. */
+static void GameShell_StartAGame(GameShell *self, ActorId id, UBaseType_t priority)
 {
-    GameShellGameTask *game_task = &self->game_tasks[0];
-    game_task->task.takes_the_pinsetter = true;
+    configASSERT(self->game_count < GAME_SHELL_GAMES);
+    const uint8_t instance = self->game_count;
+    self->game_count++;
+    GameShellGameTask *game_task = &self->game_tasks[instance];
+    game_task->task.takes_the_pinsetter = (id == GAME_SHELL_GAME_ID);
     GameShellTask_Start(&game_task->task, game_task->outbox_storage, GAME_OUTBOX_CAPACITY,
                         priority);
-    GameActor_Init(&self->games[0], GAME_SHELL_GAME_ID);
-    GameShell_Route(GAME_SHELL_GAME_ID, ACTOR_KIND_GAME, 0U, &game_task->task);
+    GameActor_Init(&self->games[instance], id);
+    GameShell_Route(id, ACTOR_KIND_GAME, instance, &game_task->task);
 }
 
 static void GameShell_StartTheObserversTask(GameShell *self, UBaseType_t priority)
@@ -246,24 +253,25 @@ static void GameShell_StartTheObserversTask(GameShell *self, UBaseType_t priorit
                         GAME_SHELL_OBSERVER_MOST_SENT, priority);
 }
 
-/* The observers share one mailbox of GAME_SHELL_MAILBOX, and a game sends up to
+/* The observers share one mailbox of GAME_SHELL_MAILBOX, and each game sends up to
  * GAME_OUTBOX_CAPACITY for one message, with no wait. Above every game, the observers' task
  * preempts it after each post, so the mailbox never holds more than one of its events. Level
  * with a game or below it, it would hold everything the game sends until the game blocks, which
  * only a busy period bounds. The price is deadline order: an observer's work delays a game. */
-static void GameShell_RequireObserversOutrank(UBaseType_t game_priority,
-                                              UBaseType_t observer_priority)
+static void GameShell_RequireObserversOutrankEveryGame(const GameShell *self)
 {
-    if (observer_priority <= game_priority) {
-        Fault_Stop("GameShell: the observers' task must outrank every game's, or a game's burst "
-                   "overflows their mailbox");
+    for (uint8_t i = 0U; i < self->game_count; i++) {
+        if (self->observer_task.task.priority <= self->game_tasks[i].task.priority) {
+            Fault_Stop("GameShell: the observers' task must outrank every game's, or a game's "
+                       "burst overflows their mailbox");
+        }
     }
 }
 
 void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
 {
-    GameShell_RequireObserversOutrank(game_priority, observer_priority);
     GameShell *self = &s_shell;
+    self->game_count = 0U;
     for (uint8_t id = 0U; id < GAME_SHELL_ACTORS; id++) {
         self->routes[id] = s_no_route;
     }
@@ -274,8 +282,9 @@ void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
                                          self->pinsetter_storage, &self->pinsetter_queue);
     self->lost_report = xQueueCreateStatic(1U, sizeof(uint16_t), self->lost_report_storage,
                                            &self->lost_report_queue);
-    GameShell_StartTheGame(self, game_priority);
+    GameShell_StartAGame(self, GAME_SHELL_GAME_ID, game_priority);
     GameShell_StartTheObserversTask(self, observer_priority);
+    GameShell_RequireObserversOutrankEveryGame(self);
     self->ports.pinsetter = self->pinsetter;
     self->ports.lost_report = self->lost_report;
     self->ports.game_task = self->game_tasks[0].task.task;
@@ -294,6 +303,13 @@ static uint8_t GameShell_StartRunningAverage(GameShell *self, ActorId id)
     configASSERT(self->running_average_count < GAME_SHELL_RUNNING_AVERAGES);
     RunningAverage_Init(&self->running_averages[self->running_average_count], id);
     return self->running_average_count++;
+}
+
+void GameShell_HostGame(ActorId id, UBaseType_t priority)
+{
+    configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
+    GameShell_StartAGame(&s_shell, id, priority);
+    GameShell_RequireObserversOutrankEveryGame(&s_shell);
 }
 
 void GameShell_HostScoreboard(ActorId id)

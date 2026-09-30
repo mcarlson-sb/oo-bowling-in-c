@@ -50,6 +50,9 @@ OutputQueue s_second_subscriber;
 constexpr ActorId kClient = 2U;
 constexpr ActorId kSubscriber = 3U;
 constexpr ActorId kSecondSubscriber = 4U;
+/* The second lane's game, hosted only by the tests that ask for it. */
+constexpr ActorId kSecondLane = 6U;
+bool s_second_lane = false;
 UBaseType_t s_subscriber_queue_length = OutputQueue::kMaxLength;
 /* What sits at kSubscriber and kSecondSubscriber: external queues the test reads, unless a test
  * hosts a kind there. */
@@ -143,6 +146,9 @@ void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
     s_subscriber.Create(s_subscriber_queue_length);
     s_second_subscriber.Create();
     GameShell_Bind(kClient, s_replies.handle);
+    if (s_second_lane) {
+        GameShell_HostGame(kSecondLane, kGamePriority);
+    }
     BindOrHost(kSubscriber, s_subscriber_kind, s_subscriber.handle);
     BindOrHost(kSecondSubscriber, s_second_subscriber_kind, s_second_subscriber.handle);
     s_interrupt = xTaskCreateStatic(&InterruptTask, "interrupt", configMINIMAL_STACK_SIZE,
@@ -570,4 +576,70 @@ TEST(GameShellObserverDeathTest, should_refuse_to_start_observers_that_do_not_ou
      * every post (the test above). Level with it or below it, their backlog is bounded only by how
      * long the game runs, so the shell stops rather than start that way. */
     EXPECT_DEATH(GameShell_Start(kGamePriority, kGamePriority), "must outrank every game");
+}
+
+/* ---- Two lanes: two games, each in a task of its own ----------------------------------------- */
+
+namespace {
+
+Message ToLane(ActorId lane, Message message)
+{
+    message.envelope.to = lane;
+    return message;
+}
+
+Message NewGameAt(ActorId lane, RequestSeq seq, const ScorerRules &rules)
+{
+    Message message = {};
+    message.envelope.selector = MSG_NEW_GAME;
+    message.envelope.from = kClient;
+    message.envelope.to = lane;
+    message.envelope.seq = seq;
+    message.payload.new_game.rules = rules;
+    return message;
+}
+
+/* Sends to a lane and waits for its reply. */
+Message Ask(const Message &message)
+{
+    Message reply = {};
+    (void)GameShell_Send(&message, kPatience);
+    (void)xQueueReceive(s_replies.handle, &reply, kPatience);
+    return reply;
+}
+
+Message s_second_lane_new_game;
+Message s_first_lane_last;
+Message s_second_lane_last;
+
+} // namespace
+
+TEST(GameShellLanesTest, should_play_two_lanes_each_by_its_own_rules_in_tasks_of_their_own)
+{
+    /* Lane 1 was started as ten-pin by every test's client; lane 2 is started as candlepin. */
+    s_second_lane = true;
+    RunClient([] {
+        s_second_lane_new_game = Ask(NewGameAt(kSecondLane, 1U, rules::kCandlepin));
+        (void)Ask(ToLane(kSecondLane, RollRequest(2U, 3U)));
+        (void)Ask(ToLane(kSecondLane, RollRequest(3U, 3U)));
+        s_second_lane_last = Ask(ToLane(kSecondLane, RollRequest(4U, 3U)));
+        (void)Ask(RollRequest(5U, 3U));
+        s_first_lane_last = Ask(RollRequest(6U, 4U));
+    });
+    EXPECT_EQ(GAME_OK, s_second_lane_new_game.payload.reply.status);
+    EXPECT_EQ(kSecondLane, s_second_lane_last.envelope.from);
+    EXPECT_EQ(9U, s_second_lane_last.payload.reply.score); /* candlepin: 3, 3, 3 is a frame */
+    EXPECT_EQ(GAME_SHELL_GAME_ID, s_first_lane_last.envelope.from);
+    EXPECT_EQ(7U, s_first_lane_last.payload.reply.score); /* ten-pin: 3, 4 is a frame */
+}
+
+TEST(GameShellObserverDeathTest, should_refuse_a_second_lane_the_observers_do_not_outrank)
+{
+    /* Every game, not only the first: the observers must preempt each of them. */
+    EXPECT_DEATH(
+        {
+            GameShell_Start(kGamePriority, kObserverPriority);
+            GameShell_HostGame(kSecondLane, kObserverPriority);
+        },
+        "must outrank every game");
 }

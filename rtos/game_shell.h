@@ -45,6 +45,11 @@ typedef enum {
  * `observer_priority`: above the game's, it takes each event as the game sends it. */
 void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority);
 
+/* After GameShell_Start, before the scheduler starts: another game at `id`, a lane of its own,
+ * in a task of its own at `priority`, with no game yet. The pinsetter's interrupt feeds only the
+ * game at GAME_SHELL_GAME_ID. The observers' task must outrank it too. */
+void GameShell_HostGame(ActorId id, UBaseType_t priority);
+
 /* After GameShell_Start, before the scheduler starts: a scoreboard, or a running average, at
  * `id`, hosted by the observers' task. */
 void GameShell_HostScoreboard(ActorId id);
