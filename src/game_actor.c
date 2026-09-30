@@ -298,6 +298,7 @@ typedef enum {
     GAME_STATE_PRACTICE,
     GAME_STATE_IN_PLAY,
     GAME_STATE_HOLDING, /* in play, with rolls held */
+    GAME_STATE_OVER,    /* in play, nothing held, and the scorer says it's over */
     GAME_STATE_CERTIFIED,
     GAME_STATES
 } GameState;
@@ -313,7 +314,10 @@ static GameState GameActor_State(const GameActor *self)
     if (self->lifecycle == GAME_CERTIFIED) {
         return GAME_STATE_CERTIFIED;
     }
-    return HeldRolls_IsEmpty(&self->held) ? GAME_STATE_IN_PLAY : GAME_STATE_HOLDING;
+    if (!HeldRolls_IsEmpty(&self->held)) {
+        return GAME_STATE_HOLDING;
+    }
+    return Scorer_IsOver(&self->scorer) ? GAME_STATE_OVER : GAME_STATE_IN_PLAY;
 }
 
 /* What a message means to the game in each state: an answer, which leaves the game as it is; a
@@ -409,6 +413,29 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
     },
     [GAME_STATE_IN_PLAY] = {
+        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME, GAME_OK },
+        [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL, GAME_NO_MOVE, GAME_OK },
+        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_EDIT] = { GAME_NO_ANSWER, GAME_EDIT, GAME_NO_MOVE, GAME_OK },
+        [MSG_PINSETTER_ROLL] = { GAME_NO_ANSWER, GAME_PLAY_OR_HOLD, GAME_NO_MOVE, GAME_OK },
+        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_DISCARD_HELD] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NO_SUCH_ROLL },
+        [MSG_ROLLS_LOST] = { GAME_NO_ANSWER, GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
+        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NOT_IN_PRACTICE },
+        [MSG_PINSETTER_DOWN] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_DOWN, GAME_OK },
+        [MSG_PINSETTER_UP] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_PINSETTER_UP, GAME_OK },
+        [MSG_CERTIFY] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NOT_OVER },
+        [MSG_CERTIFIED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
+    },
+    [GAME_STATE_OVER] = {
         [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME, GAME_OK },
         [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL, GAME_NO_MOVE, GAME_OK },
         [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
@@ -570,13 +597,9 @@ static void GameActor_SetThePinsetter(GameActor *self, bool down, const Message 
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
 }
 
-/* Only once the scorer says the game is over: that is its to say. */
+/* Only once the game is over, which its state says. */
 static void GameActor_Certify(GameActor *self, const Message *message, Outbox *outbox)
 {
-    if (!Scorer_IsOver(&self->scorer)) {
-        GameActor_Refuse(message, GAME_ERR_NOT_OVER, outbox);
-        return;
-    }
     self->lifecycle = GAME_CERTIFIED;
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
     const Message certified = GameActor_EventForItsSubscribers(self, MSG_CERTIFIED);
