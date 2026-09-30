@@ -133,7 +133,6 @@ static void GameShellTask_Start(GameShellTask *host, Message *outbox_storage, ui
                                    priority, host->stack, &host->task_buffer);
 }
 
-/* An id the routing table can bind: not no one's, and within the table. */
 static void GameShell_RequireBindableId(ActorId id)
 {
     configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
@@ -190,8 +189,7 @@ static void GameShell_RequireObserversOutrankEveryGame(const GameShell *self)
     }
 }
 
-/* Every id unbound, and no instance of any kind started. */
-static void GameShell_Reset(GameShell *self)
+static void GameShell_UnbindEveryIdAndForgetEveryInstance(GameShell *self)
 {
     Router_Reset(&self->router);
     self->game_count = 0U;
@@ -199,21 +197,19 @@ static void GameShell_Reset(GameShell *self)
     self->running_average_count = 0U;
 }
 
-/* Feeding the game at GAME_SHELL_GAME_ID, woken in the task that hosts it. */
-static void GameShell_StartThePinsetter(GameShell *self)
+static void GameShell_StartThePinsetterFeeding(GameShell *self, ActorId game)
 {
-    Pinsetter_Start(&self->pinsetter, GAME_SHELL_GAME_ID,
-                    Router_RouteTo(&self->router, GAME_SHELL_GAME_ID)->task);
+    Pinsetter_Start(&self->pinsetter, game, Router_RouteTo(&self->router, game)->task);
 }
 
 void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
 {
     GameShell *self = &s_shell;
-    GameShell_Reset(self);
+    GameShell_UnbindEveryIdAndForgetEveryInstance(self);
     GameShell_HostAGame(self, GAME_SHELL_GAME_ID, game_priority);
     GameShell_StartTheObserversTask(self, observer_priority);
     GameShell_RequireObserversOutrankEveryGame(self);
-    GameShell_StartThePinsetter(self);
+    GameShell_StartThePinsetterFeeding(self, GAME_SHELL_GAME_ID);
 }
 
 static uint8_t GameShell_StartScoreboard(GameShell *self, ActorId id)
