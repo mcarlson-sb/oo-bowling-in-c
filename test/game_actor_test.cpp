@@ -1194,3 +1194,20 @@ TEST(GameActorCertifiedTest, should_tell_its_subscribers_it_is_certified)
     EXPECT_EQ(kSubscriber, outbox.items[1].envelope.to);
     EXPECT_EQ(kGame, outbox.items[1].envelope.from);
 }
+
+TEST(GameActorCertifiedTest, should_still_answer_questions_and_start_the_next_game_once_certified)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    TestOutbox outbox;
+    Send(&actor, RollRequest(1U, 3U), &outbox);
+    Send(&actor, RollRequest(2U, 4U), &outbox);
+    for (int i = 0; i < 18; i++) {
+        Send(&actor, RollRequest(static_cast<RequestSeq>(3 + i), 0U), &outbox);
+    }
+    Send(&actor, CertifyRequest(30U), &outbox);
+    EXPECT_EQ(7U, ScoreOf(&actor));
+    Send(&actor, StatsQuery(31U), &outbox);
+    EXPECT_EQ(10U, outbox.items[0].payload.stats.complete_frames);
+    Send(&actor, NewGameRequest(32U, rules::kCandlepin), &outbox);
+    EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
+}
