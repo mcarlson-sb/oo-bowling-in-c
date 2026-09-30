@@ -31,11 +31,6 @@ typedef struct {
     uint8_t fill_balls_left;
 } Lane;
 
-static const ScorerRules *Scorer_Rules(const Scorer *self)
-{
-    return &self->rules;
-}
-
 static bool Lane_NeedsNewFrame(const Lane *lane)
 {
     return (lane->frames_started == 0U) || lane->frames[lane->frames_started - 1U].closed;
@@ -172,7 +167,7 @@ static bool ScorerRules_CountsAsAClear(const ScorerRules *rules, Pins standing, 
 
 static Pins Scorer_CountPins(const Scorer *self, Pins standing, Pins pins)
 {
-    return ScorerRules_CountsAsAClear(Scorer_Rules(self), standing, pins) ? standing : pins;
+    return ScorerRules_CountsAsAClear(&self->rules, standing, pins) ? standing : pins;
 }
 
 static void Lane_Start(Lane *lane, const ScorerRules *rules)
@@ -191,7 +186,7 @@ static void Lane_TakeBall(Lane *lane, const ScorerRules *rules, uint8_t ball_ind
 
 static Lane Scorer_Lane(const Scorer *self)
 {
-    const ScorerRules *rules = Scorer_Rules(self);
+    const ScorerRules *rules = &self->rules;
     Lane lane;
     Lane_Start(&lane, rules);
     for (uint8_t i = 0U; i < self->ball_count; i++) {
