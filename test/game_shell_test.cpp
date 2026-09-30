@@ -662,6 +662,35 @@ TEST(GameShellLanesTest, should_feed_each_lanes_game_from_its_own_pinsetter)
     EXPECT_EQ(0U, s_first_lanes_figure.payload.reply.score);
 }
 
+namespace {
+
+Message StatsOf(ActorId lane, RequestSeq seq)
+{
+    Message message = QueryTo(lane, seq);
+    message.envelope.selector = MSG_QUERY_STATS;
+    return message;
+}
+
+Message s_first_lanes_stats;
+Message s_second_lanes_stats;
+
+} // namespace
+
+TEST(GameShellLanesTest, should_count_the_rolls_each_lanes_pinsetter_loses_as_that_lanes_own)
+{
+    /* Lane 1's interrupt outruns its game: 33 rolls into its queue of 32. Lane 0's loses none. */
+    s_second_lane = true;
+    RunClient([] {
+        (void)Ask(NewGameAt(kSecondLane, 1U, rules::kTenPin));
+        s_interrupt_lane = 1U;
+        FirePinsetter(33, 0U);
+        s_second_lanes_stats = Ask(StatsOf(kSecondLane, 2U));
+        s_first_lanes_stats = Ask(StatsOf(GAME_SHELL_GAME_ID, 3U));
+    });
+    EXPECT_EQ(1U, s_second_lanes_stats.payload.stats.rolls_lost);
+    EXPECT_EQ(0U, s_first_lanes_stats.payload.stats.rolls_lost);
+}
+
 TEST(GameShellLanesDeathTest, should_stop_on_a_roll_counted_at_a_lane_no_game_is_hosted_at)
 {
     EXPECT_DEATH(
