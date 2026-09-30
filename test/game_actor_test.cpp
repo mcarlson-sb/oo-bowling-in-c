@@ -1211,3 +1211,14 @@ TEST(GameActorCertifiedTest, should_still_answer_questions_and_start_the_next_ga
     Send(&actor, NewGameRequest(32U, rules::kCandlepin), &outbox);
     EXPECT_EQ(GAME_OK, outbox.items[0].payload.reply.status);
 }
+
+TEST(GameActorCertifiedTest, should_refuse_to_certify_a_game_twice)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    BowlAGutterGame(&actor);
+    TestOutbox outbox;
+    Send(&actor, CertifyRequest(1U), &outbox);
+    Send(&actor, CertifyRequest(2U), &outbox);
+    EXPECT_EQ(MSG_REPLY, outbox.items[0].envelope.selector);
+    EXPECT_EQ(GAME_ERR_CERTIFIED, outbox.items[0].payload.reply.status);
+}
