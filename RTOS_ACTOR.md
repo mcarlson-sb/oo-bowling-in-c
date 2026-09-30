@@ -1692,3 +1692,142 @@ score of 96.6%, in 15 m 9 s. Release had the same 495 and the same 17 survivors,
 - **CI:** the target stage from the gated-CI section's plan, as a gate beside the host's builds.
 
 **Stop.** Phase 4 ends here, as the brief asks.
+
+## A picky clean-up, before phase 5
+
+One item per commit, in the brief's order: owners first, then tell-don't-ask, then composed
+methods, then the dead-simple items, then comments. Each commit passed every gate, and each batch
+was pushed and promoted as usual. The pass took 30 commits, this report's included: 29
+`[clean-up]` and one `[make-change]`, a bug the pass found (below). One item, 5d, was added during
+the pass: comments that state intent became names that reveal it.
+
+**Metrics, before and after** (lizard and clang-tidy over `src/`, `include/` and `rtos/`):
+
+| | Before (77db082) | After |
+|---|---|---|
+| NLOC | 1,792 | 1,875 |
+| Functions | 165 | 183 |
+| Average lines / cyclomatic complexity per function | 7.7 / 1.9 | 7.2 / 1.7 |
+| Highest cyclomatic complexity (limit 10) | 10, `GameActor_Receive` | 10, `GameActor_Receive` |
+| Largest function | `GameActor_Receive`, 32 lines | `GameActor_Receive`, 32 lines |
+| Highest cognitive complexity (limit 7) | 5, the pinsetter's interrupt | 5, the pinsetter's interrupt |
+| `scorer.c` / `game_actor.c` / `game_shell.c`, lines | 484 / 385 / 356 | 442 / 367 / 277 |
+| Tests | 149 | 149: one deleted with its hazard, one added for the bug |
+| Stack contract, game task, release / debug (budget 4608) | 3984 / 4320 | 4048 / 4320 |
+| Stack contract, interrupt, release / debug (budget 3584) | 3232 / 3344 | 3232 / 3376 |
+| The shell's static RAM, two lanes | 55,760 | 55,736 |
+| Release line coverage | 99.1% | 99.1% |
+
+The code grew by 83 NLOC while its functions shrank: 18 more of them, each shorter and simpler.
+The largest function is unchanged. `GameActor_Receive` is one switch over the game's requests,
+which the brief leaves alone. The game task's release stack grew 80 bytes, because each event is
+now built once on the stack before the subscribers copy it. The interrupt's grew 32 bytes in
+debug, from the call into the pinsetter.
+
+**Every module touched, its job before and after:**
+
+| Module | Before | After |
+|---|---|---|
+| `src/scorer.c` | Scores a game, and judges whether a variant's rules can be played | Scores a game, and tells its frames: rolled, edited, complete, and reopened |
+| `src/rules.c` (new), `include/rules.h` | The vocabulary, with no code | Also judges whether rules can be played, and converts frame numbers to indexes and back |
+| `src/message.c` (new) | – | Addresses events and replies, and decides who hears NOT_UNDERSTOOD |
+| `src/outbox.c` | Stores what one message sends, and addresses each kind of answer itself | Stores what one message sends, with a shortcut for each way every kind answers |
+| `src/game_actor.c` | The game's requests and lifecycle, plus loops over its subscribers, walks over the scorer's frames, and the held list's lost count | The game's requests and lifecycle: it decides what to tell, and its values and the scorer do the telling |
+| `src/held_rolls.c` | A list the game asked field by field | Holds a roll or counts it lost, and describes a held roll |
+| `src/subscribers.c` | A list the game looped over | Sends an event to each subscriber |
+| `src/roll_edit.c` | An edit's arithmetic, and a guard for kay-oo's pointer API | An edit's arithmetic |
+| `src/frame_board.c` | Rebuilds a game's frames from its events | Unchanged, through the frame-number helper |
+| `rtos/game_shell.c` | The host: the routing table, posting, the drop count, the pinsetter's queues and ports, the tasks, the instance pools, and dispatch | Creates and wires the instances, the tasks, the router and the pinsetter, and dispatches |
+| `rtos/router.c` (new) | – | Posts a message to whoever is bound at its id, and counts what it can't |
+| `rtos/pinsetter.c`, `rtos/pinsetter_isr.c` (was `game_shell_isr.c`) | The interrupt's half, with the shell holding the rest | Feeds one game's task with the rolls and loss counts its interrupt takes |
+
+**Tell, don't ask.**
+- **Enforced by actor boundaries.** Between actors there is nothing to ask but a message. The game
+  tells its subscribers every frame, held roll and loss; they never query it. The pinsetter tells
+  the game what it counted, and never asks. Even the statistics are a question by message, which
+  the asked kind answers as it chooses. The compiler can't see an actor's state from outside
+  (`actor_state_is_hidden`), so tell-don't-ask between actors is structure, not discipline.
+- **Still a discipline inside an actor.** The game calls its values and its scorer directly, and
+  nothing stops it asking where it should tell. After this pass it asks only for decisions that
+  are its own:
+  - whether a held roll is waiting, to let them through;
+  - whether the game is over, to refuse a NEW_GAME;
+  - the score, for a reply;
+  - the next ball's number, for a held roll's report;
+  - whether the subscriber list is full, to refuse a subscription.
+- **Letting held rolls through stays in the game** (item 2e). The decision needs the scorer: each
+  held roll is played, and the first the scorer refuses stops the rest. Moving it into the held
+  rolls would hand them the scorer, and a value that plays a game is the game.
+- **Why kay-oo's phase 2 reason for declining it no longer applies.** Kay-oo declined because
+  telling would have reshaped the core protocol with no failing test to pull it: a rejection
+  outcome, the rule inside the frames, a reversed roll order, and frame creation moved out of
+  `Game`. It named the feature that would pull it in: a validity rule only the frame can know,
+  such as candlepin's three balls. That feature arrived in this experiment's phase 1, and it
+  moved validation into the scorer then. What is left here needs no new protocol. The places to
+  tell into already exist: `FrameEvents`, the outbox and messages. So each change is local,
+  keeps behavior, and is done under green tests as a `[clean-up]`, and the principle and the
+  discipline now point the same way. Each one deletes a question: a loop over the list, a walk
+  over the scorer's frames, a full-list check, four field reads. Not lines, though: the four
+  tell-don't-ask commits changed the code by −4, +1, +4 and +5 lines.
+
+**The bug the pass found.** Moving the frame walks into the scorer (item 2c) showed that answering
+QUERY_STATS before a game, added at the end of phase 4 (921165c), counted frames on a scorer never
+started. It replayed whatever ball count and balls its memory held. The shell's instances are
+static, so zeroed, and the protocol test's stack memory happened to pass. A test starting the game
+in memory full of junk hit the scorer's assert. Before a game, the statistics now give the
+counters only (45d56c1, `[make-change]`).
+
+**Not worth doing as written, and why.**
+- **2b folded into 1f.** Once the held rolls count their own overflow, the game has to call
+  `HeldRolls_Hold` and read its answer, and the full-list check goes in the same change.
+- **4d had two conversions left, not four.** The game's two went with its frame walks in 2c.
+- **3f routes through `(id, Route)`,** not one `Route(...)` taking the kind, instance, mailbox and
+  task. That would take five parameters, past ENG-3.1's four. `GameShell_HostedBy` builds a
+  hosted route, and `Bind` builds an external one.
+- **1b keeps NOT_UNDERSTOOD from the kind's own id.** `Envelope_ReplyTo` would address it from
+  the request's `to`, which the host always makes the kind's id. But the observers' tests pin
+  "from its own id", so the outbox overrides `from`, and behavior is unchanged.
+- **2a changes the outbox's interleaving.** Events go out event by event now, not subscriber by
+  subscriber. Each subscriber hears the same messages in the same order. No test pins the
+  interleaving, and no host depends on it.
+- **4e: the NULL-edit guards were deleted, not kept.** Power of Ten's rule 7 asks each function to
+  check its parameters. Here it is applied where values arrive from outside, in messages. No
+  function in the core NULL-checks a pointer its caller owns. The edit's pins are inline in the
+  message, and its only caller passes a local.
+- **`Scorer_Frame` and `Scorer_FramesStarted` stay,** now used only by the scorer's own tests,
+  which ask about frames by example.
+- **`Subscribers_Count` and `Subscribers_At` went,** since only the loops that 2a removed used
+  them.
+
+**Brought to you, not decided.**
+- **A pinsetter per lane.** After 1d the pinsetter is bound by id: `Pinsetter_Start(pinsetter,
+  game, task)`. A second one needs a pool of pinsetters in the shell and a way for an interrupt to
+  say which lane it counted, such as `GameShell_PinsetterCountedFromIsr(lane, pins)`. That changes
+  the public API, so it's a `[make-change]`, and it waits for your answer.
+- **The held-roll policy in a pinsetter actor.** The pinsetter would send ROLL, hear the REPLY,
+  and hold a refused roll itself. That is the natural Kay split: the game would stop holding what
+  it refused, and "hold and retry" would belong to whoever has the rolls. The costs:
+  - The pinsetter would need to learn when a correction is accepted, from a new event or a
+    subscription to the game, before retrying.
+  - Several rolls could be in flight, so replies would need matching by seq, and a roll sent while
+    an earlier one waits could overtake it.
+  - It would become an actor with a mailbox and a task, or a share of one, where it is an
+    interrupt and two queues today.
+  - The held rolls' order guarantee, which the game gets from its own list today, would have to
+    hold across messages.
+
+  Recorded, not built.
+- **Naming, with a recommendation for each:**
+  - **`SCORER_MAX_*` in `rules.h`:** the limits are the vocabulary's, not the scorer's. I'd rename
+    them `GAME_MAX_*`, as one mechanical commit. It touches nearly every file.
+  - **`FrameEvent` in `rules.h`:** it's the FRAME_CHANGED payload and the scorer's report, the
+    shared vocabulary, so it stays.
+  - **`RollEdit` in `bowling_types.h`:** it's the scorer's edit API, with a pointer, which only
+    the scorer and the game use. The protocol's `EditPayload` doesn't use it. I'd move it to
+    `scorer.h`.
+  - **`GAME_OK` as the status an observer replies with:** `GameStatus` is the game's enum, and an
+    observer borrows its OK. A protocol-level status, a small enum in `message.h` with the game's
+    errors kept in `bowling_status.h`, would give every kind its own word. It changes the
+    payload's type, so I'd bring it with phase 5 rather than here.
+
+**Stop.** The clean-up pass ends here, for your review.
