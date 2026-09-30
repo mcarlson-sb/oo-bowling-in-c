@@ -2154,16 +2154,16 @@ kind composing by message, the center-wide figure's shape from phase 4, not `bec
 
 | | Phase 4 | Baseline | Interim (step 2) | Phase 5 |
 |---|---|---|---|---|
-| Tests | 149 | 152 | 152 | 179 |
-| NLOC, `src/`, `include/`, `rtos/` | 1,792 | 1,876 | 1,940 | 2,141 |
-| Functions | 165 | 182 | 184 | 192 |
+| Tests | 149 | 152 | 152 | 180 |
+| NLOC, `src/`, `include/`, `rtos/` | 1,792 | 1,876 | 1,940 | 2,146 |
+| Functions | 165 | 182 | 184 | 193 |
 | Highest cyclomatic complexity (limit 10) | 10 | 10 | 9 | 10, `GameActor_MakeThePlay` |
 | Highest cognitive complexity (limit 7) | 5 | 5 | 5 | 5 |
 | `game_actor.c`: NLOC / functions | 385 / – | 323 / 33 | 385 / 35 | 546 / 41 |
 | `game_actor.c`: `case` labels / `if`s | – | 11 / 17 | 16 / 10 | 22 / 17 |
 | States / tables' ROM | 2 / 60 bytes | 2 / 60 | 3 / 384 | 5 and a flag / 1,680 |
 | The shell's dispatch cases | 5 | 5 | 5 | 5 |
-| Stack contract, game task, release / debug (budget 4608) | 3984 / 4320 | 4048 / 4320 | 4048 / 4336 | 4064 / 4336 |
+| Stack contract, game task, release / debug (budget 4608) | 3984 / 4320 | 4048 / 4320 | 4048 / 4336 | 4064 / 4352 |
 | The game's state / an observer's | 96 / 34 | 96 / 34 | 96 / 34 | 104 / 32 |
 | The shell's static RAM, two lanes | 55,760 | 56,120 | 56,120 | 56,128 |
 | Release line coverage | 99.1% | 99.0% | 99.0% | 99.1% |
