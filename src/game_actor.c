@@ -266,6 +266,23 @@ static void GameActor_ReopenEveryFrame(const GameActor *self, FrameEvents *reope
     Scorer_ReportReopened(&self->scorer, reopened);
 }
 
+/* By these rules: the old game's frames reopened for the subscribers, and the rolls held since
+ * let through. Refused, changing nothing, if the scorer can't play them. */
+static GameStatus GameActor_StartNextGame(GameActor *self, const ScorerRules *rules,
+                                          Outbox *outbox)
+{
+    FrameEvents reopened;
+    GameActor_ReopenEveryFrame(self, &reopened);
+    const GameStatus status = Scorer_Start(&self->scorer, rules);
+    if (status != GAME_OK) {
+        return status;
+    }
+    self->lifecycle = GAME_IN_PLAY;
+    GameActor_Publish(self, &reopened, outbox);
+    GameActor_LetHeldRollsThrough(self, outbox);
+    return GAME_OK;
+}
+
 static void GameActor_NewGame(GameActor *self, const Message *message, Outbox *outbox)
 {
     if (GameActor_IsPlayingAGame(self)) {
@@ -273,17 +290,9 @@ static void GameActor_NewGame(GameActor *self, const Message *message, Outbox *o
         return;
     }
     Message *reply = Outbox_BeginReply(outbox, message);
-    FrameEvents reopened;
-    GameActor_ReopenEveryFrame(self, &reopened);
-    const GameStatus status = Scorer_Start(&self->scorer, &message->payload.new_game.rules);
-    if (status != GAME_OK) {
-        Outbox_FinishReply(reply, status, 0U);
-        return;
-    }
-    self->lifecycle = GAME_IN_PLAY;
-    GameActor_Publish(self, &reopened, outbox);
-    GameActor_LetHeldRollsThrough(self, outbox);
-    Outbox_FinishReply(reply, GAME_OK, Scorer_Score(&self->scorer));
+    const GameStatus status =
+        GameActor_StartNextGame(self, &message->payload.new_game.rules, outbox);
+    Outbox_FinishReply(reply, status, (status == GAME_OK) ? Scorer_Score(&self->scorer) : 0U);
 }
 
 static void GameActor_Receive(GameActor *self, const Message *message, Outbox *outbox)
