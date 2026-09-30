@@ -1,9 +1,9 @@
 #ifndef RULES_H
 #define RULES_H
 
-/* The game's shared vocabulary: its limits, a variant's rules, and the news of one frame. The
- * scorer plays by these, and the protocol and every kind speak them, without depending on the
- * scorer itself. */
+/* The game's shared vocabulary: its limits, a variant's rules and whether they can be played,
+ * and the news of one frame. The scorer plays by these, and the protocol and every kind speak
+ * them, without depending on the scorer itself. */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -43,6 +43,12 @@ typedef struct {
     Score frame_score;
     bool frame_complete;
 } FrameEvent;
+
+/* Rules the scorer can hold and play. */
+bool ScorerRules_AreValid(const ScorerRules *rules);
+
+/* The most balls a game by these rules can take, fill balls included. Only for valid rules. */
+unsigned ScorerRules_LongestGame(const ScorerRules *rules);
 
 #ifdef __cplusplus
 }
