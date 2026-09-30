@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "scorer.h"
+#include "rules.h"
 
 #ifdef __cplusplus
 extern "C" {

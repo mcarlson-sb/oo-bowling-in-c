@@ -109,6 +109,14 @@ set_tests_properties(actor_state_is_hidden PROPERTIES ENVIRONMENT "LC_ALL=C"
 ]*never completed.*RunningAverage[^
 ]*never completed")
 
+# The protocol depends on the rules and frames, not on the scorer that plays them: with the
+# protocol's and the observers' headers included, the scorer's type must be unknown.
+add_test(NAME protocol_is_free_of_the_scorer
+         COMMAND ${CMAKE_C_COMPILER} -std=c11 -fsyntax-only -I ${CMAKE_CURRENT_SOURCE_DIR}/include
+                 -I ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/test/scorer_free_probe.c)
+set_tests_properties(protocol_is_free_of_the_scorer PROPERTIES ENVIRONMENT "LC_ALL=C"
+    PASS_REGULAR_EXPRESSION "unknown type name .Scorer.")
+
 # ---- The RTOS shell (FreeRTOS on its POSIX port) ----------------------------
 # The POSIX port runs on Linux only, so this is on there (WSL, CI) and off elsewhere; the Windows
 # builds keep testing the pure core. Its integration tests are an executable of their own: each

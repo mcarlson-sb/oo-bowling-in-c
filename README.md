@@ -77,6 +77,7 @@ stop. It is not a gate.
 | Part | Where | What it is |
 |---|---|---|
 | The scorer core | `include/scorer.h`, `src/scorer.c`, `src/roll_edit.c` | A pure value: the rules it was started with, and the balls. It plays any rules the scorer can hold: frames, balls a frame, pins a rack, bonus balls by clearing ball, and a count rule, the pins still standing, off a full rack, that count as a clear. Rolls, edits (replacing, inserting or deleting balls) and questions about the frames |
+| The vocabulary | `include/bowling_types.h`, `include/rules.h` | What every part speaks: pins, scores, a variant's rules, the news of one frame, and the limits. The protocol and the observers depend on these, not on the scorer |
 | The protocol | `include/message.h`, `include/outbox.h`, `src/outbox.c` | One message type for every actor: an envelope (selector, from, to, seq) and a payload of that selector's fields. How every kind replies, and answers NOT_UNDERSTOOD |
 | The game actor | `include/game_actor.h`, `src/game_actor.c` | One game, and everything that may change it, as messages. NEW_GAME carries the rules. It holds pinsetter rolls the game refuses, until a correction lets them through, and tells its subscribers every frame that changes |
 | The scoreboard and the running average | `include/scoreboard.h`, `include/running_average.h`, `src/` | Two kinds of subscriber. Each rebuilds the frames from the events it hears, and answers QUERY_SCORE its own way: the total, or the average |

@@ -11,7 +11,7 @@
 #include "actor_id.h"
 #include "bowling_status.h"
 #include "bowling_types.h"
-#include "scorer.h"
+#include "rules.h"
 
 #ifdef __cplusplus
 extern "C" {
