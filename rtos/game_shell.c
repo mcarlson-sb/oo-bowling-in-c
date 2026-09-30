@@ -133,16 +133,26 @@ static void GameShellTask_Start(GameShellTask *host, Message *outbox_storage, ui
                                    priority, host->stack, &host->task_buffer);
 }
 
-/* An actor of `kind`, its instance already started, at `id`, hosted by `host`. */
-static void GameShell_Route(ActorId id, ActorKind kind, uint8_t instance,
-                            const GameShellTask *host)
+/* An id the routing table can bind: not no one's, and within the table. */
+static void GameShell_RequireBindableId(ActorId id)
 {
-    const Route route = { kind, instance, host->mailbox, host->task };
-    Router_Bind(&s_shell.router, id, route);
+    configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
 }
 
-/* A game at `id`, and the task of its own that hosts it. */
-static void GameShell_StartAGame(GameShell *self, ActorId id, UBaseType_t priority)
+/* An actor of `kind`, its instance already started, hosted by `host`. */
+static Route GameShell_HostedBy(ActorKind kind, uint8_t instance, const GameShellTask *host)
+{
+    const Route route = { kind, instance, host->mailbox, host->task };
+    return route;
+}
+
+static void GameShell_Route(GameShell *self, ActorId id, Route route)
+{
+    Router_Bind(&self->router, id, route);
+}
+
+/* A game at `id`, and the task of its own that hosts it: which instance it is. */
+static uint8_t GameShell_StartAGame(GameShell *self, ActorId id, UBaseType_t priority)
 {
     configASSERT(self->game_count < GAME_SHELL_GAMES);
     const uint8_t instance = self->game_count;
@@ -151,7 +161,15 @@ static void GameShell_StartAGame(GameShell *self, ActorId id, UBaseType_t priori
     GameShellTask_Start(&game_task->task, game_task->outbox_storage, GAME_OUTBOX_CAPACITY,
                         priority);
     GameActor_Init(&self->games[instance], id);
-    GameShell_Route(id, ACTOR_KIND_GAME, instance, &game_task->task);
+    return instance;
+}
+
+static void GameShell_HostAGame(GameShell *self, ActorId id, UBaseType_t priority)
+{
+    GameShell_RequireBindableId(id);
+    const uint8_t instance = GameShell_StartAGame(self, id, priority);
+    const GameShellTask *host = &self->game_tasks[instance].task;
+    GameShell_Route(self, id, GameShell_HostedBy(ACTOR_KIND_GAME, instance, host));
 }
 
 static void GameShell_StartTheObserversTask(GameShell *self, UBaseType_t priority)
@@ -196,7 +214,7 @@ void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
 {
     GameShell *self = &s_shell;
     GameShell_Reset(self);
-    GameShell_StartAGame(self, GAME_SHELL_GAME_ID, game_priority);
+    GameShell_HostAGame(self, GAME_SHELL_GAME_ID, game_priority);
     GameShell_StartTheObserversTask(self, observer_priority);
     GameShell_RequireObserversOutrankEveryGame(self);
     GameShell_StartThePinsetter(self);
@@ -218,30 +236,31 @@ static uint8_t GameShell_StartRunningAverage(GameShell *self, ActorId id)
 
 void GameShell_HostGame(ActorId id, UBaseType_t priority)
 {
-    configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
-    GameShell_StartAGame(&s_shell, id, priority);
+    GameShell_HostAGame(&s_shell, id, priority);
     GameShell_RequireObserversOutrankEveryGame(&s_shell);
 }
 
 void GameShell_HostScoreboard(ActorId id)
 {
-    configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
+    GameShell_RequireBindableId(id);
     const uint8_t instance = GameShell_StartScoreboard(&s_shell, id);
-    GameShell_Route(id, ACTOR_KIND_SCOREBOARD, instance, &s_shell.observer_task.task);
+    GameShell_Route(&s_shell, id, GameShell_HostedBy(ACTOR_KIND_SCOREBOARD, instance,
+                                                     &s_shell.observer_task.task));
 }
 
 void GameShell_HostRunningAverage(ActorId id)
 {
-    configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
+    GameShell_RequireBindableId(id);
     const uint8_t instance = GameShell_StartRunningAverage(&s_shell, id);
-    GameShell_Route(id, ACTOR_KIND_RUNNING_AVERAGE, instance, &s_shell.observer_task.task);
+    GameShell_Route(&s_shell, id, GameShell_HostedBy(ACTOR_KIND_RUNNING_AVERAGE, instance,
+                                                     &s_shell.observer_task.task));
 }
 
 void GameShell_Bind(ActorId id, QueueHandle_t queue)
 {
-    configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
+    GameShell_RequireBindableId(id);
     const Route external = { ACTOR_KIND_EXTERNAL, 0U, queue, NULL };
-    Router_Bind(&s_shell.router, id, external);
+    GameShell_Route(&s_shell, id, external);
 }
 
 Pinsetter *GameShell_Pinsetter(void)
