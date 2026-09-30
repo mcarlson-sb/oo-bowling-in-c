@@ -23,7 +23,7 @@ constexpr ActorId kAsker = 4U;
 RunningAverage MakeAverage()
 {
     RunningAverage average;
-    RunningAverage_Init(&average, kAverage);
+    RunningAverage_Init(&average);
     return average;
 }
 
@@ -118,21 +118,10 @@ TEST(RunningAverageTest, should_start_empty_whatever_memory_it_is_given)
 {
     RunningAverage average;
     std::memset(&average, 0xFF, sizeof(average));
-    RunningAverage_Init(&average, kAverage);
+    RunningAverage_Init(&average);
     const TestOutbox outbox = Send(&average, {FrameChanged(1, 8, true), Query(1U)});
     EXPECT_EQ(8U, outbox.items[0].payload.reply.score); /* one frame: nothing left over */
     EXPECT_EQ(0U, NotUnderstoodCount(&average));
-}
-
-TEST(RunningAverageTest, should_say_not_understood_from_its_own_id)
-{
-    RunningAverage average = MakeAverage();
-    Message roll = {};
-    roll.envelope.selector = MSG_ROLL;
-    roll.envelope.from = kAsker;
-    roll.envelope.to = kAverage;
-    const TestOutbox outbox = Send(&average, {roll});
-    EXPECT_EQ(kAverage, outbox.items[0].envelope.from);
 }
 
 TEST(RunningAverageTest, should_take_the_rest_of_what_a_game_tells_subscribers_in_silence)

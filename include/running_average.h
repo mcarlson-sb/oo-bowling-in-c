@@ -23,7 +23,7 @@ extern "C" {
 /* Its state is its own: only the shell, which hosts it, and the tests see inside. */
 typedef struct RunningAverage RunningAverage;
 
-void RunningAverage_Init(RunningAverage *self, ActorId id);
+void RunningAverage_Init(RunningAverage *self);
 
 /* Handles one message, adding what it sends to the outbox, which the host empties. */
 void RunningAverage_Handle(RunningAverage *self, const Message *message, Outbox *outbox);

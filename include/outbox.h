@@ -38,9 +38,9 @@ void Outbox_Reply(Outbox *self, const Message *request, GameStatus status, Score
  * fill in what it knows. */
 StatsPayload *Outbox_BeginStats(Outbox *self, const Message *request);
 
-/* Answers that the request's selector isn't one its kind responds to, from `from`, the kind's own
- * id, if the request wants an answer at all (see Envelope_WantsAnAnswer). */
-void Outbox_NotUnderstood(Outbox *self, ActorId from, const Message *request);
+/* Answers that the request's selector isn't one its kind responds to, if the request wants an
+ * answer at all (see Envelope_WantsAnAnswer). */
+void Outbox_NotUnderstood(Outbox *self, const Message *request);
 
 #ifdef __cplusplus
 }

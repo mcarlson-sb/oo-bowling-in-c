@@ -22,7 +22,7 @@ extern "C" {
 /* Its state is its own: only the shell, which hosts it, and the tests see inside. */
 typedef struct Scoreboard Scoreboard;
 
-void Scoreboard_Init(Scoreboard *self, ActorId id);
+void Scoreboard_Init(Scoreboard *self);
 
 /* Handles one message, adding what it sends to the outbox, which the host empties. */
 void Scoreboard_Handle(Scoreboard *self, const Message *message, Outbox *outbox);

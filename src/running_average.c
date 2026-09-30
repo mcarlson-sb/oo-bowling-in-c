@@ -21,9 +21,8 @@ static const AverageRequest k_average_protocol[MSG_SELECTOR_COUNT] = {
     [MSG_ROLLS_LOST] = AVERAGE_NOTHING_TO_DO,
 };
 
-void RunningAverage_Init(RunningAverage *self, ActorId id)
+void RunningAverage_Init(RunningAverage *self)
 {
-    self->id = id;
     self->not_understood = 0U;
     FrameBoard_Init(&self->board);
 }
@@ -73,7 +72,7 @@ void RunningAverage_Handle(RunningAverage *self, const Message *message, Outbox 
         break;
     case AVERAGE_DOES_NOT_UNDERSTAND:
         self->not_understood++;
-        Outbox_NotUnderstood(outbox, self->id, message);
+        Outbox_NotUnderstood(outbox, message);
         break;
     }
 }

@@ -107,8 +107,8 @@ can see it; everywhere else it is an incomplete type.
 | Actor | Its state | Bytes |
 |---|---|---|
 | Game | Its id; its lifecycle (awaiting rules, or in play); a `Scorer` value (the rules, the longest game, the balls); its subscribers' ids (a `Subscribers` value); the held rolls and why the first was refused (a `HeldRolls` value); lost counts; a not-understood count | 96 |
-| Scoreboard | Its id, a `FrameBoard` (each frame's score and whether it is complete), a not-understood count | 34 |
-| Running average | The same as a scoreboard; only its answer differs | 34 |
+| Scoreboard | A `FrameBoard` (each frame's score and whether it is complete), a not-understood count. No id: the routing table binds it to one, and its answers are addressed from the message they answer | 32 |
+| Running average | The same as a scoreboard; only its answer differs | 32 |
 
 The scorer keeps only the balls, and works everything else out by walking them through the
 rules each time it is asked. So it is a plain value: copying it copies the game, and an edit

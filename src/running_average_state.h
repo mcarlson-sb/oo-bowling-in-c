@@ -13,7 +13,6 @@ extern "C" {
 #endif
 
 struct RunningAverage {
-    ActorId id;
     FrameBoard board;
     uint16_t not_understood;
 };

@@ -57,13 +57,13 @@ TEST(ProtocolTest, should_have_every_kind_answer_its_statistics_as_it_starts_eve
     ExpectStatsIn(to_the_game, 1U, "a game");
     TestOutbox to_the_board;
     Scoreboard board;
-    Scoreboard_Init(&board, kKind);
+    Scoreboard_Init(&board);
     const Message to_board = StatsQuery(2U);
     Scoreboard_Handle(&board, &to_board, &to_the_board);
     ExpectStatsIn(to_the_board, 2U, "a scoreboard");
     TestOutbox to_the_average;
     RunningAverage average;
-    RunningAverage_Init(&average, kKind);
+    RunningAverage_Init(&average);
     const Message to_average = StatsQuery(3U);
     RunningAverage_Handle(&average, &to_average, &to_the_average);
     ExpectStatsIn(to_the_average, 3U, "a running average");
@@ -151,4 +151,21 @@ TEST(ProtocolTest, should_want_an_answer_only_for_a_request_from_someone)
     EXPECT_TRUE(Envelope_WantsAnAnswer(&request));
     EXPECT_FALSE(Envelope_WantsAnAnswer(&from_no_one));
     EXPECT_FALSE(Envelope_WantsAnAnswer(&answer));
+}
+
+TEST(ProtocolTest, should_address_a_not_understood_to_the_request_it_answers)
+{
+    /* Every kind answers through the outbox, so its addressing is checked here, once. */
+    Message request = {};
+    request.envelope = Envelope_Event(MSG_ROLL, kAsker, kKind);
+    request.envelope.seq = 5U;
+    TestOutbox outbox;
+    Outbox_NotUnderstood(&outbox, &request);
+    ASSERT_EQ(1U, outbox.count);
+    const Message &answer = outbox.items[0];
+    EXPECT_EQ(MSG_NOT_UNDERSTOOD, answer.envelope.selector);
+    EXPECT_EQ(kKind, answer.envelope.from);
+    EXPECT_EQ(kAsker, answer.envelope.to);
+    EXPECT_EQ(5U, answer.envelope.seq);
+    EXPECT_EQ(MSG_ROLL, answer.payload.not_understood.selector);
 }

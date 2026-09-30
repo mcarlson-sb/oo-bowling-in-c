@@ -45,12 +45,11 @@ StatsPayload *Outbox_BeginStats(Outbox *self, const Message *request)
     return &stats->payload.stats;
 }
 
-void Outbox_NotUnderstood(Outbox *self, ActorId from, const Message *request)
+void Outbox_NotUnderstood(Outbox *self, const Message *request)
 {
     if (!Envelope_WantsAnAnswer(&request->envelope)) {
         return;
     }
-    Envelope answer = Envelope_ReplyTo(&request->envelope, MSG_NOT_UNDERSTOOD);
-    answer.from = from;
-    Outbox_Next(self, answer)->payload.not_understood.selector = request->envelope.selector;
+    Message *answer = Outbox_Next(self, Envelope_ReplyTo(&request->envelope, MSG_NOT_UNDERSTOOD));
+    answer->payload.not_understood.selector = request->envelope.selector;
 }

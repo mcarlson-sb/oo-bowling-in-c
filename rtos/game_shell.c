@@ -211,17 +211,17 @@ void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
     GameShell_RequireObserversOutrankEveryGame(self);
 }
 
-static uint8_t GameShell_StartScoreboard(GameShell *self, ActorId id)
+static uint8_t GameShell_StartScoreboard(GameShell *self)
 {
     configASSERT(self->scoreboard_count < GAME_SHELL_SCOREBOARDS);
-    Scoreboard_Init(&self->scoreboards[self->scoreboard_count], id);
+    Scoreboard_Init(&self->scoreboards[self->scoreboard_count]);
     return self->scoreboard_count++;
 }
 
-static uint8_t GameShell_StartRunningAverage(GameShell *self, ActorId id)
+static uint8_t GameShell_StartRunningAverage(GameShell *self)
 {
     configASSERT(self->running_average_count < GAME_SHELL_RUNNING_AVERAGES);
-    RunningAverage_Init(&self->running_averages[self->running_average_count], id);
+    RunningAverage_Init(&self->running_averages[self->running_average_count]);
     return self->running_average_count++;
 }
 
@@ -234,7 +234,7 @@ void GameShell_HostGame(ActorId id, UBaseType_t priority)
 void GameShell_HostScoreboard(ActorId id)
 {
     GameShell_RequireBindableId(id);
-    const uint8_t instance = GameShell_StartScoreboard(&s_shell, id);
+    const uint8_t instance = GameShell_StartScoreboard(&s_shell);
     GameShell_Route(&s_shell, id, GameShell_HostedBy(ACTOR_KIND_SCOREBOARD, instance,
                                                      &s_shell.observer_task.task));
 }
@@ -242,7 +242,7 @@ void GameShell_HostScoreboard(ActorId id)
 void GameShell_HostRunningAverage(ActorId id)
 {
     GameShell_RequireBindableId(id);
-    const uint8_t instance = GameShell_StartRunningAverage(&s_shell, id);
+    const uint8_t instance = GameShell_StartRunningAverage(&s_shell);
     GameShell_Route(&s_shell, id, GameShell_HostedBy(ACTOR_KIND_RUNNING_AVERAGE, instance,
                                                      &s_shell.observer_task.task));
 }

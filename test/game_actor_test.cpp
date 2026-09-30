@@ -798,6 +798,7 @@ TEST(GameActorTest, should_not_understand_a_selector_past_the_protocols_end)
         ASSERT_EQ(1U, outbox.count) << "selector " << past;
         EXPECT_EQ(MSG_NOT_UNDERSTOOD, outbox.items[0].envelope.selector) << "selector " << past;
     }
+    EXPECT_EQ(2U, NotUnderstoodCount(&actor));
 }
 
 TEST(GameActorLifecycleTest, should_keep_the_pinsetters_lost_count_from_before_any_game)

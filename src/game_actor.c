@@ -209,7 +209,7 @@ static void GameActor_DoesNotUnderstand(GameActor *self, const Message *message,
                                         Outbox *outbox)
 {
     self->not_understood++;
-    Outbox_NotUnderstood(outbox, self->id, message);
+    Outbox_NotUnderstood(outbox, message);
 }
 
 static bool GameActor_IsPlayingAGame(const GameActor *self)

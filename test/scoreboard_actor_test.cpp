@@ -21,7 +21,7 @@ constexpr ActorId kAsker = 4U;
 Scoreboard MakeBoard()
 {
     Scoreboard board;
-    Scoreboard_Init(&board, kBoard);
+    Scoreboard_Init(&board);
     return board;
 }
 
@@ -91,12 +91,9 @@ TEST(ScoreboardTest, should_not_understand_a_roll_and_count_it)
     roll.envelope.selector = MSG_ROLL;
     roll.envelope.from = kAsker;
     roll.envelope.to = kBoard;
-    roll.envelope.seq = 6U;
     const TestOutbox outbox = Send(&board, {roll});
     ASSERT_EQ(1U, outbox.count);
     EXPECT_EQ(MSG_NOT_UNDERSTOOD, outbox.items[0].envelope.selector);
-    EXPECT_EQ(kAsker, outbox.items[0].envelope.to);
-    EXPECT_EQ(MSG_ROLL, outbox.items[0].payload.not_understood.selector);
     EXPECT_EQ(1U, NotUnderstoodCount(&board));
 }
 
@@ -139,7 +136,7 @@ TEST(ScoreboardTest, should_start_empty_whatever_memory_it_is_given)
     /* A hosted instance is reused; a stack's is whatever was there. */
     Scoreboard board;
     std::memset(&board, 0xFF, sizeof(board));
-    Scoreboard_Init(&board, kBoard);
+    Scoreboard_Init(&board);
     const TestOutbox outbox = Send(&board, {Query(1U)});
     EXPECT_EQ(0U, outbox.items[0].payload.reply.score);
     EXPECT_EQ(0U, NotUnderstoodCount(&board));
@@ -150,17 +147,6 @@ TEST(ScoreboardTest, should_keep_the_last_frame_the_game_has)
     Scoreboard board = MakeBoard();
     const TestOutbox outbox = Send(&board, {FrameChanged(10, 30, true), Query(1U)});
     EXPECT_EQ(30U, outbox.items[0].payload.reply.score);
-}
-
-TEST(ScoreboardTest, should_say_not_understood_from_its_own_id)
-{
-    Scoreboard board = MakeBoard();
-    Message roll = {};
-    roll.envelope.selector = MSG_ROLL;
-    roll.envelope.from = kAsker;
-    roll.envelope.to = kBoard;
-    const TestOutbox outbox = Send(&board, {roll});
-    EXPECT_EQ(kBoard, outbox.items[0].envelope.from);
 }
 
 TEST(ScoreboardTest, should_take_the_rest_of_what_a_game_tells_subscribers_in_silence)

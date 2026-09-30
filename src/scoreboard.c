@@ -21,9 +21,8 @@ static const ScoreboardRequest k_scoreboard_protocol[MSG_SELECTOR_COUNT] = {
     [MSG_ROLLS_LOST] = SCOREBOARD_NOTHING_TO_DO,
 };
 
-void Scoreboard_Init(Scoreboard *self, ActorId id)
+void Scoreboard_Init(Scoreboard *self)
 {
-    self->id = id;
     self->not_understood = 0U;
     FrameBoard_Init(&self->board);
 }
@@ -62,7 +61,7 @@ void Scoreboard_Handle(Scoreboard *self, const Message *message, Outbox *outbox)
         break;
     case SCOREBOARD_DOES_NOT_UNDERSTAND:
         self->not_understood++;
-        Outbox_NotUnderstood(outbox, self->id, message);
+        Outbox_NotUnderstood(outbox, message);
         break;
     }
 }
