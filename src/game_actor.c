@@ -568,8 +568,13 @@ static void GameActor_SetThePinsetter(GameActor *self, bool down, const Message 
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
 }
 
+/* Only once the scorer says the game is over: that is its to say. */
 static void GameActor_Certify(GameActor *self, const Message *message, Outbox *outbox)
 {
+    if (!Scorer_IsOver(&self->scorer)) {
+        GameActor_Refuse(message, GAME_ERR_NOT_OVER, outbox);
+        return;
+    }
     self->lifecycle = GAME_CERTIFIED;
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
 }

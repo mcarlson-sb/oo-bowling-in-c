@@ -1148,3 +1148,14 @@ TEST(GameActorCertifiedTest, should_refuse_every_change_to_a_certified_game)
     }
     EXPECT_EQ(0U, ScoreOf(&actor));
 }
+
+TEST(GameActorCertifiedTest, should_refuse_to_certify_a_game_that_isnt_over)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    TestOutbox outbox;
+    Send(&actor, RollRequest(1U, 3U), &outbox);
+    Send(&actor, CertifyRequest(2U), &outbox);
+    EXPECT_EQ(GAME_ERR_NOT_OVER, outbox.items[0].payload.reply.status);
+    Send(&actor, RollRequest(3U, 4U), &outbox); /* still in play */
+    EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
+}
