@@ -6,7 +6,9 @@
 
 #include "test_outbox.h"
 
+#include <algorithm>
 #include <deque>
+#include <vector>
 
 #include "rules_presets.h"
 
@@ -119,4 +121,34 @@ TEST(ProtocolTest, should_have_a_game_awaiting_rules_answer_no_answer_with_no_ga
         GameActor_Handle(&game, &message, &outbox);
         EXPECT_EQ(0U, outbox.count) << "selector " << answer;
     }
+}
+
+TEST(ProtocolTest, should_class_every_selector_as_a_request_or_an_answer)
+{
+    const std::vector<Selector> answers = {MSG_REPLY,          MSG_FRAME_CHANGED, MSG_ROLL_HELD,
+                                           MSG_ROLLS_LOST,     MSG_NOT_UNDERSTOOD, MSG_STATS};
+    for (int value = 0; value < static_cast<int>(MSG_SELECTOR_COUNT); value++) {
+        const Selector selector = static_cast<Selector>(value);
+        const bool is_an_answer =
+            std::find(answers.begin(), answers.end(), selector) != answers.end();
+        EXPECT_EQ(!is_an_answer, Selector_IsARequest(selector)) << "selector " << value;
+    }
+}
+
+TEST(ProtocolTest, should_class_a_selector_past_the_protocols_end_as_a_request)
+{
+    /* A sender asked for something no kind knows: its answer is NOT_UNDERSTOOD. */
+    for (const int past : {static_cast<int>(MSG_SELECTOR_COUNT), 200}) {
+        EXPECT_TRUE(Selector_IsARequest(static_cast<Selector>(past))) << "selector " << past;
+    }
+}
+
+TEST(ProtocolTest, should_want_an_answer_only_for_a_request_from_someone)
+{
+    const Envelope request = Envelope_Event(MSG_ROLL, kAsker, kKind);
+    const Envelope from_no_one = Envelope_Event(MSG_ROLL, ACTOR_ID_NONE, kKind);
+    const Envelope answer = Envelope_Event(MSG_REPLY, kAsker, kKind);
+    EXPECT_TRUE(Envelope_WantsAnAnswer(&request));
+    EXPECT_FALSE(Envelope_WantsAnAnswer(&from_no_one));
+    EXPECT_FALSE(Envelope_WantsAnAnswer(&answer));
 }
