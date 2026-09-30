@@ -246,7 +246,7 @@ static void FrameEvents_Add(FrameEvents *events, uint8_t index, Score score, boo
 {
     assert(events->count < SCORER_MAX_EVENTS);
     FrameEvent *event = &events->events[events->count];
-    event->frame_number = (FrameNumber)(index + 1U);
+    event->frame_number = FrameNumber_OfIndex(index);
     event->frame_score = score;
     event->frame_complete = complete;
     events->count++;

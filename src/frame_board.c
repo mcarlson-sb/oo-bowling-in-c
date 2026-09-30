@@ -18,7 +18,7 @@ void FrameBoard_Hear(FrameBoard *self, const FrameEvent *frame)
     if (!FrameEvent_IsOfAFrameKept(frame)) {
         return;
     }
-    const uint8_t index = (uint8_t)(frame->frame_number - 1U);
+    const uint8_t index = FrameNumber_ToIndex(frame->frame_number);
     self->scores[index] = frame->frame_score;
     self->complete[index] = frame->frame_complete;
 }

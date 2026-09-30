@@ -44,6 +44,17 @@ typedef struct {
     bool frame_complete;
 } FrameEvent;
 
+/* Frames count from 1, as a scorer counts them; an index into a game's frames counts from 0. */
+static inline FrameNumber FrameNumber_OfIndex(uint8_t index)
+{
+    return (FrameNumber)(index + 1U);
+}
+
+static inline uint8_t FrameNumber_ToIndex(FrameNumber number)
+{
+    return (uint8_t)(number - 1U);
+}
+
 /* Rules the scorer can hold and play. */
 bool ScorerRules_AreValid(const ScorerRules *rules);
 
