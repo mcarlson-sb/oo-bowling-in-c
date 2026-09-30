@@ -175,14 +175,10 @@ static void GameActor_AnswerStats(const GameActor *self, const Message *message,
     }
 }
 
-/* A question about the game: its score, or its statistics. */
-static void GameActor_Answer(const GameActor *self, const Message *message, Outbox *outbox)
+/* The game's figure: its total. */
+static void GameActor_AnswerFigure(const GameActor *self, const Message *message, Outbox *outbox)
 {
-    if (message->envelope.selector == MSG_QUERY_STATS) {
-        GameActor_AnswerStats(self, message, outbox);
-    } else {
-        Outbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
-    }
+    Outbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
 }
 
 static void GameActor_SendCompleteFrames(const GameActor *self, ActorId subscriber,
@@ -229,7 +225,7 @@ typedef enum {
     GAME_UNSUBSCRIBE,
     GAME_EDIT,
     GAME_PINSETTER_ROLL,
-    GAME_QUERY,
+    GAME_QUERY_FIGURE,
     GAME_DISCARD_HELD,
     GAME_ROLLS_LOST
 } GameRequest;
@@ -240,8 +236,7 @@ static const GameRequest k_game_requests[MSG_SELECTOR_COUNT] = {
     [MSG_UNSUBSCRIBE] = GAME_UNSUBSCRIBE,
     [MSG_EDIT] = GAME_EDIT,
     [MSG_PINSETTER_ROLL] = GAME_PINSETTER_ROLL,
-    [MSG_QUERY_FIGURE] = GAME_QUERY,
-    [MSG_QUERY_STATS] = GAME_QUERY,
+    [MSG_QUERY_FIGURE] = GAME_QUERY_FIGURE,
     [MSG_DISCARD_HELD] = GAME_DISCARD_HELD,
     [MSG_ROLLS_LOST] = GAME_ROLLS_LOST,
 };
@@ -312,8 +307,8 @@ static void GameActor_Receive(GameActor *self, const Message *message, Outbox *o
     case GAME_ROLLS_LOST:
         GameActor_RollsLost(self, message, outbox);
         break;
-    case GAME_QUERY:
-        GameActor_Answer(self, message, outbox);
+    case GAME_QUERY_FIGURE:
+        GameActor_AnswerFigure(self, message, outbox);
         break;
     case GAME_ROLL:
         GameActor_Roll(self, message, outbox);
@@ -324,9 +319,8 @@ static void GameActor_Receive(GameActor *self, const Message *message, Outbox *o
     }
 }
 
-/* Before any game: the pinsetter's rolls wait for the first, and its losses are counted. Its
- * statistics are answered, as every kind's are, whatever its state. Any other request is answered
- * "no game". */
+/* Before any game: the pinsetter's rolls wait for the first, and its losses are counted. Any
+ * other request is answered "no game". */
 static void GameActor_BeforeAGame(GameActor *self, const Message *message, Outbox *outbox)
 {
     const GameRequest request = GameActor_RequestOf(message);
@@ -334,18 +328,21 @@ static void GameActor_BeforeAGame(GameActor *self, const Message *message, Outbo
         GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
     } else if (request == GAME_ROLLS_LOST) {
         GameActor_RollsLost(self, message, outbox);
-    } else if (message->envelope.selector == MSG_QUERY_STATS) {
-        GameActor_AnswerStats(self, message, outbox);
     } else {
         Outbox_Reply(outbox, message, GAME_ERR_NO_GAME, 0U);
     }
 }
 
-/* The lifecycle's own message first, then what the lifecycle makes of the rest. */
+/* What every state treats alike first: the lifecycle's own message, and the statistics, which
+ * every kind answers whatever its state. Then what the lifecycle makes of the rest. */
 void GameActor_Handle(GameActor *self, const Message *message, Outbox *outbox)
 {
     if (message->envelope.selector == MSG_NEW_GAME) {
         GameActor_NewGame(self, message, outbox);
+        return;
+    }
+    if (message->envelope.selector == MSG_QUERY_STATS) {
+        GameActor_AnswerStats(self, message, outbox);
         return;
     }
     switch (self->lifecycle) {
