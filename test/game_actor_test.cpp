@@ -800,3 +800,39 @@ TEST(GameActorLifecycleTest, should_keep_the_pinsetters_lost_count_from_before_a
     Send(&actor, RollsLostReport(2U), &outbox);
     EXPECT_EQ((std::vector<int>{}), LostEventsIn(outbox));
 }
+
+/* ---- Its statistics: counters and facts, asked for, not read from its state -------------------- */
+
+namespace {
+
+Message StatsQuery(RequestSeq seq)
+{
+    Message message = ScoreQuery(seq);
+    message.envelope.selector = MSG_QUERY_STATS;
+    return message;
+}
+
+} // namespace
+
+TEST(GameActorTest, should_answer_its_statistics_with_its_counters_and_facts)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    BowlAGutterGame(&actor);
+    TestOutbox outbox;
+    Send(&actor, PinsetterRoll(3U), &outbox);  /* held: the game is over */
+    Send(&actor, RollsLostReport(2U), &outbox); /* the pinsetter lost two */
+    Message frame_changed = {};
+    frame_changed.envelope.selector = MSG_FRAME_CHANGED;
+    frame_changed.envelope.from = kReplyTo;
+    Send(&actor, frame_changed, &outbox);       /* not understood */
+    Send(&actor, StatsQuery(9U), &outbox);
+    ASSERT_EQ(1U, outbox.count);
+    const Message &stats = outbox.items[0];
+    EXPECT_EQ(MSG_STATS, stats.envelope.selector);
+    EXPECT_EQ(9U, stats.envelope.seq);
+    EXPECT_EQ(1U, stats.payload.stats.not_understood);
+    EXPECT_EQ(2U, stats.payload.stats.rolls_lost);
+    EXPECT_EQ(1U, stats.payload.stats.rolls_held);
+    EXPECT_EQ(10U, stats.payload.stats.complete_frames);
+    EXPECT_EQ(0U, stats.payload.stats.total);
+}

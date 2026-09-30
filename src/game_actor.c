@@ -239,10 +239,33 @@ static void GameActor_RollsLost(GameActor *self, const Message *message, Outbox 
     }
 }
 
-static void GameActor_QueryScore(const GameActor *self, const Message *message,
-                                 Outbox *outbox)
+static uint8_t GameActor_CompleteFrames(const GameActor *self)
 {
-    Outbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
+    uint8_t complete = 0U;
+    for (uint8_t i = 0U; i < SCORER_MAX_FRAMES; i++) {
+        complete = (uint8_t)(complete + (Scorer_Frame(&self->scorer, i).complete ? 1U : 0U));
+    }
+    return complete;
+}
+
+static void GameActor_AnswerStats(const GameActor *self, const Message *message, Outbox *outbox)
+{
+    StatsPayload *stats = Outbox_BeginStats(outbox, message);
+    stats->not_understood = self->not_understood;
+    stats->rolls_lost = (uint16_t)(self->lost_to_full_queue + self->lost_to_full_held_list);
+    stats->rolls_held = self->held.count;
+    stats->complete_frames = GameActor_CompleteFrames(self);
+    stats->total = Scorer_Score(&self->scorer);
+}
+
+/* A question about the game: its score, or its statistics. */
+static void GameActor_Answer(const GameActor *self, const Message *message, Outbox *outbox)
+{
+    if (message->envelope.selector == MSG_QUERY_STATS) {
+        GameActor_AnswerStats(self, message, outbox);
+    } else {
+        Outbox_Reply(outbox, message, GAME_OK, Scorer_Score(&self->scorer));
+    }
 }
 
 static void GameActor_SendCompleteFrames(const GameActor *self, ActorId subscriber,
@@ -292,7 +315,7 @@ typedef enum {
     GAME_UNSUBSCRIBE,
     GAME_EDIT,
     GAME_PINSETTER_ROLL,
-    GAME_QUERY_SCORE,
+    GAME_QUERY,
     GAME_DISCARD_HELD,
     GAME_ROLLS_LOST
 } GameRequest;
@@ -303,7 +326,8 @@ static const GameRequest k_game_requests[MSG_SELECTOR_COUNT] = {
     [MSG_UNSUBSCRIBE] = GAME_UNSUBSCRIBE,
     [MSG_EDIT] = GAME_EDIT,
     [MSG_PINSETTER_ROLL] = GAME_PINSETTER_ROLL,
-    [MSG_QUERY_SCORE] = GAME_QUERY_SCORE,
+    [MSG_QUERY_SCORE] = GAME_QUERY,
+    [MSG_QUERY_STATS] = GAME_QUERY,
     [MSG_DISCARD_HELD] = GAME_DISCARD_HELD,
     [MSG_ROLLS_LOST] = GAME_ROLLS_LOST,
 };
@@ -380,8 +404,8 @@ static void GameActor_Receive(GameActor *self, const Message *message, Outbox *o
     case GAME_ROLLS_LOST:
         GameActor_RollsLost(self, message, outbox);
         break;
-    case GAME_QUERY_SCORE:
-        GameActor_QueryScore(self, message, outbox);
+    case GAME_QUERY:
+        GameActor_Answer(self, message, outbox);
         break;
     case GAME_ROLL:
         GameActor_Roll(self, message, outbox);
