@@ -1083,3 +1083,16 @@ TEST(GameActorPinsetterDownTest, should_score_the_pinsetters_rolls_again_once_it
     Send(&actor, PinsetterRoll(4U), &outbox);
     EXPECT_EQ(7U, ScoreOf(&actor));
 }
+
+TEST(GameActorPinsetterDownTest, should_go_back_to_practice_when_the_pinsetter_comes_back_up)
+{
+    GameActor actor = MakePracticingActor();
+    TestOutbox outbox;
+    Send(&actor, PinsetterDown(1U), &outbox);
+    Send(&actor, PinsetterRoll(3U), &outbox); /* refused: not a practice ball */
+    Send(&actor, PinsetterUp(2U), &outbox);
+    Send(&actor, PinsetterRoll(4U), &outbox); /* practice again */
+    Send(&actor, StatsQuery(3U), &outbox);
+    EXPECT_EQ(1U, outbox.items[0].payload.stats.rolls_refused);
+    EXPECT_EQ(1U, outbox.items[0].payload.stats.practice_balls);
+}
