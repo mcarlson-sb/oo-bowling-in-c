@@ -326,7 +326,8 @@ typedef enum {
 
 typedef enum {
     GAME_NO_MOVE = 0,
-    GAME_NEW_GAME
+    GAME_NEW_GAME,
+    GAME_END_PRACTICE
 } GameMove;
 
 typedef struct {
@@ -374,7 +375,7 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
         [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_PLAY, GAME_NO_MOVE },
         [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
-        [MSG_END_PRACTICE] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
+        [MSG_END_PRACTICE] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_END_PRACTICE },
         [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE },
     },
     [GAME_STATE_IN_PLAY] = {
@@ -485,6 +486,12 @@ static void GameActor_MakeThePlay(GameActor *self, GamePlay play, const Message 
     }
 }
 
+static void GameActor_EndPractice(GameActor *self, const Message *message, Outbox *outbox)
+{
+    self->lifecycle = GAME_IN_PLAY;
+    Outbox_Reply(outbox, message, REPLY_OK, 0U);
+}
+
 static void GameActor_MakeTheMove(GameActor *self, GameMove move, const Message *message,
                                   Outbox *outbox)
 {
@@ -493,6 +500,9 @@ static void GameActor_MakeTheMove(GameActor *self, GameMove move, const Message 
         break;
     case GAME_NEW_GAME:
         GameActor_NewGame(self, message, outbox);
+        break;
+    case GAME_END_PRACTICE:
+        GameActor_EndPractice(self, message, outbox);
         break;
     }
 }

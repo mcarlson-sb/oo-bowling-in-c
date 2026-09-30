@@ -922,3 +922,26 @@ TEST(GameActorPracticeTest, should_count_its_practice_balls_in_its_statistics)
     Send(&actor, StatsQuery(3U), &outbox);
     EXPECT_EQ(2U, outbox.items[0].payload.stats.practice_balls);
 }
+
+namespace {
+
+Message EndPracticeRequest(RequestSeq seq)
+{
+    Message message = RollRequest(seq, 0U);
+    message.envelope.selector = MSG_END_PRACTICE;
+    return message;
+}
+
+} // namespace
+
+TEST(GameActorPracticeTest, should_score_the_balls_after_practice_ends_and_none_before)
+{
+    GameActor actor = MakePracticingActor();
+    TestOutbox outbox;
+    Send(&actor, RollRequest(1U, 10U), &outbox); /* practice: a strike that earns nothing */
+    Send(&actor, EndPracticeRequest(2U), &outbox);
+    EXPECT_EQ(REPLY_OK, outbox.items[0].payload.reply.status);
+    Send(&actor, RollRequest(3U, 3U), &outbox);
+    Send(&actor, RollRequest(4U, 4U), &outbox);
+    EXPECT_EQ(7U, outbox.items[0].payload.reply.score);
+}
