@@ -40,18 +40,17 @@ static void GameActor_Publish(const GameActor *self, const FrameEvents *events,
     }
 }
 
-static RollNumber GameActor_HeldBallNumber(const GameActor *self, uint8_t index)
+/* The ball the oldest held roll would be: the next the scorer takes. */
+static RollNumber GameActor_FirstHeldBallNumber(const GameActor *self)
 {
-    return (RollNumber)(Scorer_BallCount(&self->scorer) + index + 1U);
+    return (RollNumber)(Scorer_BallCount(&self->scorer) + 1U);
 }
 
 static void GameActor_PublishHeld(const GameActor *self, uint8_t index, Outbox *outbox)
 {
     Message event = GameActor_Event(self, MSG_ROLL_HELD);
-    event.payload.roll_held.pins = HeldRolls_PinsAt(&self->held, index);
-    event.payload.roll_held.position = GameActor_HeldBallNumber(self, index);
-    event.payload.roll_held.held = HeldRolls_Count(&self->held);
-    event.payload.roll_held.status = HeldRolls_WhyFirstRefused(&self->held);
+    event.payload.roll_held =
+        HeldRolls_Report(&self->held, index, GameActor_FirstHeldBallNumber(self));
     Subscribers_Tell(&self->subscribers, outbox, &event);
 }
 
@@ -66,7 +65,7 @@ static void GameActor_PublishLost(const GameActor *self, Outbox *outbox)
 static void GameActor_HoldOrLose(GameActor *self, Pins pins, Outbox *outbox)
 {
     if (HeldRolls_Hold(&self->held, pins)) {
-        GameActor_PublishHeld(self, HeldRolls_Newest(&self->held), outbox);
+        GameActor_PublishHeld(self, HeldRolls_NewestIndex(&self->held), outbox);
     } else {
         GameActor_PublishLost(self, outbox);
     }
@@ -83,7 +82,7 @@ static GameStatus GameActor_Play(GameActor *self, Pins pins, Outbox *outbox)
 static void GameActor_LetHeldRollsThrough(GameActor *self, Outbox *outbox)
 {
     while (!HeldRolls_IsEmpty(&self->held)) {
-        const GameStatus status = GameActor_Play(self, HeldRolls_PinsAt(&self->held, 0U), outbox);
+        const GameStatus status = GameActor_Play(self, HeldRolls_Oldest(&self->held), outbox);
         if (status != GAME_OK) {
             HeldRolls_RefuseFirst(&self->held, status);
             GameActor_PublishHeld(self, 0U, outbox);

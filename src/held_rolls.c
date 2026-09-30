@@ -17,14 +17,21 @@ uint8_t HeldRolls_Count(const HeldRolls *self)
     return self->count;
 }
 
-Pins HeldRolls_PinsAt(const HeldRolls *self, uint8_t index)
+Pins HeldRolls_Oldest(const HeldRolls *self)
 {
-    return self->pins[index];
+    return self->pins[0];
 }
 
-uint8_t HeldRolls_Newest(const HeldRolls *self)
+uint8_t HeldRolls_NewestIndex(const HeldRolls *self)
 {
     return (uint8_t)(self->count - 1U);
+}
+
+RollHeldPayload HeldRolls_Report(const HeldRolls *self, uint8_t index, RollNumber first_ball_number)
+{
+    const RollHeldPayload report = { self->pins[index], (RollNumber)(first_ball_number + index),
+                                     self->count, self->first_refused_for };
+    return report;
 }
 
 bool HeldRolls_Hold(HeldRolls *self, Pins pins)
@@ -41,11 +48,6 @@ bool HeldRolls_Hold(HeldRolls *self, Pins pins)
 uint16_t HeldRolls_Lost(const HeldRolls *self)
 {
     return self->lost;
-}
-
-GameStatus HeldRolls_WhyFirstRefused(const HeldRolls *self)
-{
-    return self->first_refused_for;
 }
 
 void HeldRolls_RefuseFirst(HeldRolls *self, GameStatus why)
