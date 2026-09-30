@@ -31,7 +31,7 @@ typedef struct GameActor GameActor;
 /* The game at `id`, which its events come from. */
 void GameActor_Init(GameActor *self, ActorId id);
 
-/* Handles one message. The outbox is emptied first, then filled. */
+/* Handles one message, adding what it sends to the outbox, which the host empties. */
 void GameActor_Handle(GameActor *self, const Message *message, Outbox *outbox);
 
 #ifdef __cplusplus

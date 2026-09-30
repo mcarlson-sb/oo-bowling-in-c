@@ -369,7 +369,6 @@ static void GameActor_BeforeAGame(GameActor *self, const Message *message, Outbo
 /* The lifecycle's own message first, then what the lifecycle makes of the rest. */
 void GameActor_Handle(GameActor *self, const Message *message, Outbox *outbox)
 {
-    outbox->count = 0U;
     if (message->envelope.selector == MSG_NEW_GAME) {
         GameActor_NewGame(self, message, outbox);
         return;

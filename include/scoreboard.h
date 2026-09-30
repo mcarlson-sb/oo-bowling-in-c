@@ -24,7 +24,7 @@ typedef struct Scoreboard Scoreboard;
 
 void Scoreboard_Init(Scoreboard *self, ActorId id);
 
-/* Handles one message. The outbox is filled from where it stands. */
+/* Handles one message, adding what it sends to the outbox, which the host empties. */
 void Scoreboard_Handle(Scoreboard *self, const Message *message, Outbox *outbox);
 
 #ifdef __cplusplus

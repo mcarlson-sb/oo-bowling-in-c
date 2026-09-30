@@ -63,6 +63,7 @@ TEST(GameActorTest, should_reply_to_a_roll_with_its_sequence_number_status_and_s
     const Message first = RollRequest(7U, 3U);
     const Message second = RollRequest(8U, 4U);
     GameActor_Handle(&actor, &first, &outbox);
+    outbox.count = 0U; /* as the host does, once it has posted them */
     GameActor_Handle(&actor, &second, &outbox);
     ASSERT_EQ(1U, outbox.count);
     const Message &reply = outbox.items[0];
@@ -116,8 +117,10 @@ std::vector<Sent> FrameEventsIn(const Outbox &outbox)
     return sent;
 }
 
+/* As the host delivers it: into an empty outbox. */
 void Send(GameActor *actor, const Message &message, Outbox *outbox)
 {
+    outbox->count = 0U;
     GameActor_Handle(actor, &message, outbox);
 }
 
