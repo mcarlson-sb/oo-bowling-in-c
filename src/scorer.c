@@ -113,11 +113,9 @@ static void FrameShape_TakeBall(FrameShape *frame)
     frame->own_balls++;
 }
 
-static void FrameShape_CloseIfDone(FrameShape *frame, const ScorerRules *rules, bool cleared)
+static void FrameShape_CloseIfOutOfBalls(FrameShape *frame, const ScorerRules *rules)
 {
-    if (cleared) {
-        FrameShape_CloseClearingTheRack(frame, rules);
-    } else if (frame->own_balls == rules->balls_per_frame) {
+    if (frame->own_balls == rules->balls_per_frame) {
         frame->closed = true;
     }
 }
@@ -127,7 +125,11 @@ static void Lane_ThrowInFrame(Lane *lane, const ScorerRules *rules, uint8_t ball
     FrameShape *frame = Lane_FrameTakingBall(lane, ball_index);
     FrameShape_TakeBall(frame);
     Lane_KnockDown(lane, pins);
-    FrameShape_CloseIfDone(frame, rules, Lane_IsRackCleared(lane));
+    if (Lane_IsRackCleared(lane)) {
+        FrameShape_CloseClearingTheRack(frame, rules);
+    } else {
+        FrameShape_CloseIfOutOfBalls(frame, rules);
+    }
     if (frame->closed) {
         Lane_AfterFrameCloses(lane, rules, frame);
     }
