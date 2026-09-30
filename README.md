@@ -91,7 +91,7 @@ to is answered NOT_UNDERSTOOD and counted.
 
 ## Follow one roll
 
-1. The pinsetter's interrupt calls `GameShell_PinsetterCountedFromIsr(7)`. The roll goes into
+1. The pinsetter's interrupt calls `GameShell_PinsetterCountedFromIsr(0, 7)`, for lane 0. The roll goes into
    the pinsetter's queue, and the game task gets a notification.
 2. The game task wakes. It takes the roll as a `MSG_PINSETTER_ROLL` from no one, to the game's
    id, and dispatches it: the kind bound at that id is `ACTOR_KIND_GAME`, so

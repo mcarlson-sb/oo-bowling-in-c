@@ -64,8 +64,12 @@ void GameShell_Bind(ActorId id, QueueHandle_t queue);
 /* To whoever is bound at the message's "to". */
 BaseType_t GameShell_Send(const Message *message, TickType_t wait);
 
-/* From the pinsetter's interrupt: a roll it counted. */
-void GameShell_PinsetterCountedFromIsr(Pins pins);
+/* A lane is a hosted game, counted from 0 in the order the games were hosted: lane 0 is the game
+ * at GAME_SHELL_GAME_ID. */
+typedef uint8_t GameShellLane;
+
+/* From a lane's pinsetter interrupt: a roll it counted. Only lane 0 has a pinsetter yet. */
+void GameShell_PinsetterCountedFromIsr(GameShellLane lane, Pins pins);
 
 /* Replies and events not delivered, so far: to an id nothing is bound to, or can be, or to a
  * full queue. */

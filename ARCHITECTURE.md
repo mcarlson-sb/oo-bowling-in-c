@@ -116,7 +116,7 @@ replays into a copy, so a refused edit changes nothing.
 
 ```
  pinsetter interrupt
-   GameShell_PinsetterCountedFromIsr(7)
+   GameShell_PinsetterCountedFromIsr(0, 7)
      xQueueSendFromISR(pinsetter queue)   full? count it lost, overwrite the lost report
      vTaskNotifyGiveFromISR(game task)
  game task (GameShell_Task)

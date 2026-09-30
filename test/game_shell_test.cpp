@@ -82,6 +82,7 @@ StaticTask_t s_interrupt_task;
 StackType_t s_interrupt_stack[configMINIMAL_STACK_SIZE];
 TaskHandle_t s_interrupt;
 std::vector<Pins> s_interrupt_rolls;
+GameShellLane s_interrupt_lane = 0U;
 
 void InterruptTask(void *parameter)
 {
@@ -89,7 +90,7 @@ void InterruptTask(void *parameter)
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         for (const Pins pins : s_interrupt_rolls) {
-            GameShell_PinsetterCountedFromIsr(pins);
+            GameShell_PinsetterCountedFromIsr(s_interrupt_lane, pins);
         }
     }
 }

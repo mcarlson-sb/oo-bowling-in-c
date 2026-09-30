@@ -12,7 +12,8 @@ void Pinsetter_CountedFromIsr(Pinsetter *self, Pins pins)
     portYIELD_FROM_ISR(woken);
 }
 
-void GameShell_PinsetterCountedFromIsr(Pins pins)
+void GameShell_PinsetterCountedFromIsr(GameShellLane lane, Pins pins)
 {
+    (void)lane;
     Pinsetter_CountedFromIsr(GameShell_Pinsetter(), pins);
 }
