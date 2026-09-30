@@ -578,6 +578,8 @@ static void GameActor_Certify(GameActor *self, const Message *message, Outbox *o
     }
     self->lifecycle = GAME_CERTIFIED;
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
+    const Message certified = GameActor_EventForItsSubscribers(self, MSG_CERTIFIED);
+    Subscribers_Tell(&self->subscribers, outbox, &certified);
 }
 
 static void GameActor_MakeTheMove(GameActor *self, GameMove move, const Message *message,
