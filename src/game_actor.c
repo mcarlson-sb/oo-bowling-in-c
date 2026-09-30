@@ -229,6 +229,9 @@ static void GameActor_ReopenTheOldGamesFrames(const GameActor *self, FrameEvents
  * play them. */
 static void GameActor_LoseTheRollsOnADeadLane(GameActor *self, Outbox *outbox)
 {
+    if (HeldRolls_IsEmpty(&self->held)) {
+        return;
+    }
     HeldRolls_LoseAll(&self->held);
     GameActor_PublishLost(self, outbox);
 }

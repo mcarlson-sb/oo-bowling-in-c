@@ -988,3 +988,13 @@ TEST(GameActorPracticeTest, should_count_the_rolls_held_before_a_practice_lost_a
     EXPECT_EQ(2U, outbox.items[0].payload.stats.rolls_lost);
     EXPECT_EQ(0U, outbox.items[0].payload.stats.total);
 }
+
+TEST(GameActorPracticeTest, should_tell_no_loss_when_a_practice_starts_with_nothing_held)
+{
+    GameActor actor = MakeActor(rules::kTenPin);
+    TestOutbox outbox;
+    Send(&actor, SubscribeRequest(1U, kSubscriber), &outbox);
+    BowlAGutterGame(&actor);
+    Send(&actor, PracticeGameRequest(2U, rules::kTenPin), &outbox);
+    EXPECT_EQ((std::vector<int>{}), LostEventsIn(outbox));
+}
