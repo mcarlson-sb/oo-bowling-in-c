@@ -123,3 +123,17 @@ TEST(RunningAverageTest, should_say_not_understood_from_its_own_id)
     const TestOutbox outbox = Send(&average, {roll});
     EXPECT_EQ(kAverage, outbox.items[0].envelope.from);
 }
+
+TEST(RunningAverageTest, should_take_the_rest_of_what_a_game_tells_subscribers_in_silence)
+{
+    RunningAverage average = MakeAverage();
+    Message held = {};
+    held.envelope.selector = MSG_ROLL_HELD;
+    held.envelope.from = kGame;
+    held.envelope.to = kAverage;
+    Message lost = held;
+    lost.envelope.selector = MSG_ROLLS_LOST;
+    const TestOutbox outbox = Send(&average, {held, lost});
+    EXPECT_EQ(0U, outbox.count);
+    EXPECT_EQ(0U, average.not_understood);
+}
