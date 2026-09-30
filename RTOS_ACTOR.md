@@ -1831,3 +1831,80 @@ counters only (45d56c1, `[make-change]`).
     payload's type, so I'd bring it with phase 5 rather than here.
 
 **Stop.** The clean-up pass ends here, for your review.
+
+### The clean-up pass's decisions, applied (2026-09-29)
+
+1. **A pinsetter per lane.** Each game's task holds its lane's pinsetter, with its own queues and
+   its own lost count. A lane is a hosted game, counted from 0 in hosting order. The interrupt
+   entry, `GameShell_PinsetterCountedFromIsr(lane, pins)`, finds the pinsetter with a bounds check
+   and an index, and fault-stops for a lane no game is hosted at. Three tests:
+   - lane 1's pinsetter feeds lane 1's game only, which failed before the change;
+   - an unbound lane stops with the reason, which died on the kernel's assert before;
+   - each lane counts its own losses, whose teeth were proved against a lookup that feeds every
+     lane to lane 0.
+
+   The interrupt's figures, before and after:
+
+   | | Before | After |
+   |---|---|---|
+   | Its frames, `-O0` (the counting, the entry) | 48, 48 bytes | 48, 48 |
+   | Its frames, `-O2` | 64, 16 | 64, 16 |
+   | Stack contract, release / debug (budget 3584) | 3232 / 3376 | 3232 / 3376 |
+   | Cognitive complexity (limit 7) | 5 | 5 |
+   | Stack tripwire (96 bytes) | passes | passes |
+
+   The shell's static RAM rose from 55,736 bytes to 56,120: the second lane's pinsetter.
+2. **The held-roll policy stays in the game,** with the trade-offs recorded in the clean-up
+   report.
+3. **Names.** `SCORER_MAX_*` is `BOWLING_MAX_*`, except `SCORER_MAX_EVENTS`: it sizes the
+   scorer's own report buffer, so it moved to `scorer.h` with its name. `RollEdit` moved to
+   `scorer.h`. `FrameEvent` stays in `rules.h`. The protocol's own OK status comes with phase 5.
+
+## Phase 5: a league night
+
+**The QEMU target stage moves to phase 6.** Phase 5 changes what a target should measure: states
+may become kinds, with different data and a different dispatch. The target's stack, RAM and
+latency figures are worth taking once, of the design that survives phase 5.
+
+**The driving feature: a league night on one lane.**
+- **Practice.** After a new game starts, balls are counted but not scored, until a message ends
+  practice. The practice count is in QUERY_STATS.
+- **Pinsetter down.** A message says the machine is down. Pinsetter rolls are refused and
+  counted; manual rolls and edits still work. A resume message brings the lane back.
+- **Holding** becomes an explicit state, where today it's implied by a non-empty held list. No
+  behavior changes.
+- **Certified.** Once the scorer says the game is over and nothing is held, a certify message
+  locks it. Edits are refused, and questions are still answered. Certifying is a decision, not a
+  fact the scorer can work out, so it is stored. "Over" stays the scorer's to say.
+
+Out of scope: a disputed ball awaiting a manager's approval, recorded as the next state if this
+phase argues for more.
+
+**The hypothesis, stated before it is tested.**
+- **A protocol table per state replaces the lifecycle's conditionals.** Every (state, selector)
+  pair gets an explicit answer, and the largest game function's complexity falls, even with four
+  or five states.
+- **The threshold.** The same selector means different things in three or more states. The
+  pinsetter's roll is counted in practice, scored in play, queued while holding, refused while
+  down, and refused once certified. That is where tables pay off over a switch.
+- **`become:` pays only if states need different data.** A state as a kind at the id: practice
+  needs no scorer, and a certified game could shrink to a read-only record.
+- **Expected to fail:** pinsetter-down and holding stay separate states. If they want to merge,
+  that is recorded.
+
+**The baseline, at 27b7567:**
+
+| | |
+|---|---|
+| NLOC, `src/`, `include/`, `rtos/` | 1,876 |
+| Functions | 182 |
+| `game_actor.c`: NLOC / functions | 323 / 33 |
+| Highest cyclomatic complexity (limit 10) | 10, `GameActor_Receive`, 32 lines |
+| The game's other dispatch functions | `GameActor_Handle` 5, `GameActor_BeforeAGame` 3 |
+| `case` labels / `if`s in `game_actor.c` | 11 / 17 |
+| Highest cognitive complexity (limit 7) | 5, the pinsetter's interrupt |
+| The shell's dispatch cases | 5, one per kind |
+| Stack contract, game task, release / debug | 4048 / 4320 |
+| The shell's static RAM | 56,120 bytes |
+| The game's state | 96 bytes |
+| Tests | 152 |
