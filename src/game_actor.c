@@ -20,7 +20,7 @@ void GameActor_Init(GameActor *self, ActorId id)
 static void GameOutbox_FrameChanged(Outbox *outbox, ActorId from, ActorId to,
                                     const FrameEvent *frame)
 {
-    Outbox_Next(outbox, MSG_FRAME_CHANGED, from, to)->payload.frame = *frame;
+    Outbox_Next(outbox, Envelope_Event(MSG_FRAME_CHANGED, from, to))->payload.frame = *frame;
 }
 
 static void GameActor_Publish(const GameActor *self, const FrameEvents *events,
@@ -43,7 +43,7 @@ static void GameActor_PublishHeld(const GameActor *self, uint8_t index, Outbox *
 {
     for (uint8_t s = 0U; s < Subscribers_Count(&self->subscribers); s++) {
         const ActorId subscriber = Subscribers_At(&self->subscribers, s);
-        Message *out = Outbox_Next(outbox, MSG_ROLL_HELD, self->id, subscriber);
+        Message *out = Outbox_Next(outbox, Envelope_Event(MSG_ROLL_HELD, self->id, subscriber));
         out->payload.roll_held.pins = HeldRolls_PinsAt(&self->held, index);
         out->payload.roll_held.position = GameActor_HeldBallNumber(self, index);
         out->payload.roll_held.held = HeldRolls_Count(&self->held);
@@ -55,7 +55,7 @@ static void GameActor_PublishLost(const GameActor *self, Outbox *outbox)
 {
     for (uint8_t s = 0U; s < Subscribers_Count(&self->subscribers); s++) {
         const ActorId subscriber = Subscribers_At(&self->subscribers, s);
-        Message *out = Outbox_Next(outbox, MSG_ROLLS_LOST, self->id, subscriber);
+        Message *out = Outbox_Next(outbox, Envelope_Event(MSG_ROLLS_LOST, self->id, subscriber));
         out->payload.rolls_lost.lost =
             (uint16_t)(self->lost_to_full_queue + self->lost_to_full_held_list);
     }

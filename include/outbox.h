@@ -23,8 +23,8 @@ typedef struct {
 
 void Outbox_Init(Outbox *self, Message *storage, uint8_t capacity);
 
-/* The next message out, from `from` to `to`, with no seq. */
-Message *Outbox_Next(Outbox *self, Selector selector, ActorId from, ActorId to);
+/* The next message out, so addressed, for its sender to fill in the payload. */
+Message *Outbox_Next(Outbox *self, Envelope envelope);
 
 /* A reply to `request`: from the id it was sent to, to its sender, with its seq. */
 Message *Outbox_BeginReply(Outbox *self, const Message *request);
@@ -38,8 +38,8 @@ void Outbox_Reply(Outbox *self, const Message *request, GameStatus status, Score
  * fill in what it knows. */
 StatsPayload *Outbox_BeginStats(Outbox *self, const Message *request);
 
-/* The request's selector isn't one its kind responds to. Answered, from `from`, unless it came
- * from no one, who can't hear it, or is a NOT_UNDERSTOOD itself, which two kinds would echo. */
+/* The request's selector isn't one its kind responds to: answered from `from`, the kind's own id,
+ * if the request wants it (see Envelope_WantsNotUnderstood). */
 void Outbox_NotUnderstood(Outbox *self, ActorId from, const Message *request);
 
 #ifdef __cplusplus

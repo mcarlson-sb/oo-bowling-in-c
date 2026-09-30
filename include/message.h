@@ -135,6 +135,16 @@ typedef struct {
     } payload;
 } Message;
 
+/* An event: from `from` to `to`, with no seq. */
+Envelope Envelope_Event(Selector selector, ActorId from, ActorId to);
+
+/* The answer to a request: from the id it was sent to, to its sender, with its seq. */
+Envelope Envelope_ReplyTo(const Envelope *request, Selector selector);
+
+/* Whether a request whose selector isn't understood should hear so: not if it came from no one,
+ * who can't hear it, nor if it is a NOT_UNDERSTOOD itself, which two kinds would echo. */
+bool Envelope_WantsNotUnderstood(const Envelope *request);
+
 /* A selector is an enum any sender can fill in: only one of the protocol's indexes a kind's
  * protocol table. */
 static inline bool Selector_IsInProtocol(Selector selector)

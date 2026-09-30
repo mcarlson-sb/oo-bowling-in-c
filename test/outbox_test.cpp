@@ -16,5 +16,5 @@ TEST(OutboxTest, should_start_empty_whatever_its_storage_and_memory_held)
     Outbox_Init(&outbox, storage, 2U);
     EXPECT_EQ(0U, outbox.count);
     EXPECT_EQ(2U, outbox.capacity);
-    EXPECT_EQ(&storage[0], Outbox_Next(&outbox, MSG_REPLY, 1U, 2U));
+    EXPECT_EQ(&storage[0], Outbox_Next(&outbox, Envelope_Event(MSG_REPLY, 1U, 2U)));
 }
