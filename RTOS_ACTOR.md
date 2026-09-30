@@ -1397,3 +1397,46 @@ clone build from scratch, so neither is affected. Measurements now delete the ob
 
 **Stop.** The task/actor split ends here, for your review. Next: the two lanes, and the
 statistics selector.
+
+### Settled before the lanes: the observers outrank every game
+
+**The choice.** The observers share one mailbox of 4, and a game sends up to 43 messages for one
+of its own, with no wait. There were two options:
+- **Observers below the games.** A mailbox sized for one message's burst doesn't bound it: a
+  game drains everything waiting before it blocks, up to 32 pinsetter rolls, a lost report and 4
+  commands. So the observers' backlog is bounded only by a whole busy period. That means
+  kilobytes of mailbox, or counted drops.
+- **Observers above every game, which is what's built.** The observers' task preempts a game
+  after each post, so the mailbox holds one of its events at a time.
+
+**The cost is deadline order.** An observer's work delays the game, and the game drains the
+pinsetter. It's bounded only because an observer's work per event is a few frames' arithmetic.
+
+**So a condition goes on every observer kind:** its handling must be short and bounded, or it
+doesn't go in the observers' task. A future observer that does real I/O, such as writing a UART,
+a log or a display, breaks the bound, and belongs in a task of its own below the games, with
+its mailbox sized for what it may fall behind by. Phase 5 has something concrete to measure on
+the target: an observer's worst-case handling time against the game's latency budget.
+
+**Enforced, and tested:**
+- **The check.** `GameShell_Start` stops, with the reason, unless the observers' priority is
+  above the game's. With two lanes it checks every game's task.
+- **The death test,** which fails if the check goes.
+- **The burst test.** The game's worst burst, 21 events to each of two hosted observers,
+  drops nothing. With the observers below the game, 74 are dropped.
+
+**Host only:** on the POSIX port, preemption is simulated with signals, so "nothing dropped" is
+good evidence on this host, not proof. Phase 5 checks it on the target.
+
+**Found by the burst test.** Its first run dropped 22 messages with the observers above the
+game. The 13 held pinsetter rolls reached both observers as ROLL_HELD events, and neither
+listed that selector, so they answered 26 NOT_UNDERSTOODs into the game's own mailbox of 4,
+while the game was still busy. So every subscriber is sent the whole subscriber protocol. The
+observers now list ROLL_HELD and ROLLS_LOST, next to the subscription's reply, as heard, with
+nothing to do. Answering an event with NOT_UNDERSTOOD turns a burst into a burst the other
+way.
+
+**A correction to the interim report:** "each further observer costs 32 bytes" holds up to the
+compile-time count of each kind (`GAME_SHELL_SCOREBOARDS`, `GAME_SHELL_RUNNING_AVERAGES`).
+Beyond it, hosting another is refused. Raising the count costs each extra instance's state,
+statically, whether it's used or not.
