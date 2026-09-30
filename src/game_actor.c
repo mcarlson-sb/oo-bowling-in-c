@@ -54,11 +54,17 @@ static void GameActor_PublishHeld(const GameActor *self, uint8_t index, Outbox *
     Subscribers_Tell(&self->subscribers, outbox, &event);
 }
 
+/* Every roll lost so far: the pinsetter's, to its full queue, and the game's, to no room to hold
+ * it. */
+static uint16_t GameActor_RollsLost(const GameActor *self)
+{
+    return (uint16_t)(self->lost_to_full_queue + HeldRolls_Lost(&self->held));
+}
+
 static void GameActor_PublishLost(const GameActor *self, Outbox *outbox)
 {
     Message event = GameActor_Event(self, MSG_ROLLS_LOST);
-    event.payload.rolls_lost.lost =
-        (uint16_t)(self->lost_to_full_queue + HeldRolls_Lost(&self->held));
+    event.payload.rolls_lost.lost = GameActor_RollsLost(self);
     Subscribers_Tell(&self->subscribers, outbox, &event);
 }
 
@@ -153,7 +159,7 @@ static void GameActor_DiscardHeld(GameActor *self, const Message *message,
     Outbox_FinishReply(reply, GAME_OK, Scorer_Score(&self->scorer));
 }
 
-static void GameActor_RollsLost(GameActor *self, const Message *message, Outbox *outbox)
+static void GameActor_HearLostReport(GameActor *self, const Message *message, Outbox *outbox)
 {
     if (message->payload.rolls_lost.lost != self->lost_to_full_queue) {
         self->lost_to_full_queue = message->payload.rolls_lost.lost;
@@ -165,7 +171,7 @@ static void GameActor_AnswerStats(const GameActor *self, const Message *message,
 {
     StatsPayload *stats = Outbox_BeginStats(outbox, message);
     stats->not_understood = self->not_understood;
-    stats->rolls_lost = (uint16_t)(self->lost_to_full_queue + HeldRolls_Lost(&self->held));
+    stats->rolls_lost = GameActor_RollsLost(self);
     stats->rolls_held = HeldRolls_Count(&self->held);
     if (self->lifecycle == GAME_IN_PLAY) { /* before a game, the scorer holds no game at all */
         FrameEvents complete;
@@ -314,7 +320,7 @@ static void GameActor_Receive(GameActor *self, const Message *message, Outbox *o
         GameActor_DiscardHeld(self, message, outbox);
         break;
     case GAME_ROLLS_LOST:
-        GameActor_RollsLost(self, message, outbox);
+        GameActor_HearLostReport(self, message, outbox);
         break;
     case GAME_QUERY_FIGURE:
         GameActor_AnswerFigure(self, message, outbox);
@@ -336,7 +342,7 @@ static void GameActor_BeforeAGame(GameActor *self, const Message *message, Outbo
     if (request == GAME_PINSETTER_ROLL) {
         GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
     } else if (request == GAME_ROLLS_LOST) {
-        GameActor_RollsLost(self, message, outbox);
+        GameActor_HearLostReport(self, message, outbox);
     } else {
         Outbox_Reply(outbox, message, GAME_ERR_NO_GAME, 0U);
     }
