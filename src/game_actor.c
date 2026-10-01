@@ -254,8 +254,7 @@ static void GameActor_NewGame(GameActor *self, const Message *message, Outbox *o
                        (status == GAME_OK) ? Scorer_Score(&self->scorer) : 0U);
 }
 
-/* A request this state refuses, for its reason: "no game" before a game, "no such roll" to a
- * discard with nothing held. */
+/* A request its state refuses, for the reason its row gives. */
 static void GameActor_Refuse(const Message *message, GameStatus why, Outbox *outbox)
 {
     Outbox_Reply(outbox, message, ReplyStatus_OfGame(why), 0U);

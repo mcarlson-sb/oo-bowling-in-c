@@ -9,7 +9,8 @@
 #include "bowling_status.h"
 #include "message.h"
 
-/* The state a message is read in: the lifecycle's decision, and what the held list says. */
+/* The state a message is read in: the lifecycle's decision, and the facts, whether rolls are held
+ * and whether the scorer says the game is over. */
 typedef enum {
     GAME_STATE_AWAITING_RULES,
     GAME_STATE_PRACTICE,

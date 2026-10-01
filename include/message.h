@@ -44,9 +44,10 @@ typedef enum {
     /* An edit (see RollEdit), with its new balls carried in the message. A correction is an
      * edit of one ball out and one in. */
     MSG_EDIT,
-    /* A roll the pinsetter counted, from its interrupt: from no one, and no reply. One the
-     * game rejects is held, with every pinsetter roll after it, until a correction lets it
-     * through; see GameActor. */
+    /* A roll the pinsetter counted, from its interrupt: from no one, and no reply. Mid-game,
+     * one the game rejects is held, with every pinsetter roll after it, until a correction lets
+     * it through. Outside a game or a practice, it is refused and counted: a roll on a dead
+     * lane. See GameActor. */
     MSG_PINSETTER_ROLL,
     /* The figure the kind at "to" reports, in the reply's score: a game's total, a scoreboard's
      * total, a running average's average. What the figure means is the kind's to say, and the

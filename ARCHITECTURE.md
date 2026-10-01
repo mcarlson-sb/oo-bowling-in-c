@@ -106,7 +106,7 @@ can see it; everywhere else it is an incomplete type.
 
 | Actor | Its state | Bytes |
 |---|---|---|
-| Game | Its id; its lifecycle (awaiting rules, or in play); a `Scorer` value (the rules, the longest game, the balls); its subscribers' ids (a `Subscribers` value); the held rolls and why the first was refused (a `HeldRolls` value); lost counts; a not-understood count | 96 |
+| Game | Its id; its lifecycle's decision (awaiting rules, practice, in play or certified); a `Scorer` value (the rules, the longest game, the balls); its subscribers' ids (a `Subscribers` value); the rolls held mid-game and why the first was refused (a `HeldRolls` value); whether the pinsetter is down; lost, refused, practice and not-understood counts. Holding and over are derived, not stored | 104 |
 | Scoreboard | A `FrameBoard` (each frame's score and whether it is complete), a not-understood count. No id: the routing table binds it to one, and its answers are addressed from the message they answer | 32 |
 | Running average | The same as a scoreboard; only its answer differs | 32 |
 
