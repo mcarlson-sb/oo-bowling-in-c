@@ -165,6 +165,16 @@ add_test(NAME protocol_is_free_of_the_scorer
 set_tests_properties(protocol_is_free_of_the_scorer PROPERTIES ENVIRONMENT "LC_ALL=C"
     PASS_REGULAR_EXPRESSION "unknown type name .Scorer.")
 
+# Each component uses only what CMake links it to: with the scoreboard's own include paths, the
+# game's header can't be found. Fails if the scoreboard ever links the game.
+add_test(NAME components_use_only_what_they_may
+         COMMAND ${CMAKE_C_COMPILER} -std=c11 -fsyntax-only
+                 "-I$<JOIN:$<TARGET_PROPERTY:scoreboard,INCLUDE_DIRECTORIES>,;-I>"
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test/probes/scoreboard_sees_no_game_probe.c
+         COMMAND_EXPAND_LISTS)
+set_tests_properties(components_use_only_what_they_may PROPERTIES ENVIRONMENT "LC_ALL=C"
+    PASS_REGULAR_EXPRESSION "game_actor\.h'?:? (No such file|file not found)")
+
 # ---- The RTOS shell (FreeRTOS on its POSIX port) ----------------------------
 # The POSIX port runs on Linux only, so this is on there (WSL, CI) and off elsewhere; the Windows
 # builds keep testing the pure core. Its integration tests are an executable of their own: each
