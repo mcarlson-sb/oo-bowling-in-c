@@ -283,7 +283,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-      actions: write # earlier runs, for the time to green; and starting the target stage
+      actions: read # earlier runs, for the time to green
     concurrency:
       group: promote-rtos-actor
       cancel-in-progress: false
@@ -351,12 +351,12 @@ jobs:
             exit 1
           fi
           echo "Promoted \`${GITHUB_SHA}\` to rtos-actor." >> "$GITHUB_STEP_SUMMARY" || true
-      # The target stage, target.yml, on the commit just promoted: it reports, so it can't fail
-      # this. A dispatch is the one event GITHUB_TOKEN's can start a run with.
-      - name: Start the target stage
-        if: steps.already.outputs.done == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh workflow run target.yml --ref rtos-actor -f sha="$GITHUB_SHA" \
-            || echo "::warning title=Target stage::not started; run target.yml by hand"
+
+  # The target stage, target.yml, on the commit just promoted: after promote, and reporting. Its
+  # job continues on error, so a red result shows in it without turning this run red. A workflow
+  # of its own can't start from here: a workflow_run or workflow_dispatch trigger works only for a
+  # workflow on the default branch, and promote's push, with GITHUB_TOKEN, starts nothing.
+  target:
+    name: target
+    needs: promote
+    uses: ./.github/workflows/target.yml

@@ -1,16 +1,10 @@
 # The target stage: after each promotion to rtos-actor, the QEMU image runs what the host can't
-# show, on a Cortex-M4F. It reports, and blocks nothing: Gate's promote starts it once rtos-actor
-# has moved, and rtos-actor's ruleset doesn't require it. Promote dispatches it, since the push it
-# makes with GITHUB_TOKEN starts no workflow, and a workflow_run trigger fires only for a workflow
-# on the default branch.
+# show, on a Cortex-M4F. It reports, and blocks nothing: Gate calls it after promote, on the same
+# commit, its job continues on error, and rtos-actor's ruleset doesn't require it.
 name: Target
 
 on:
-  workflow_dispatch:
-    inputs:
-      sha:
-        description: The commit to run the target stage on
-        required: true
+  workflow_call:
 
 permissions:
   contents: read
@@ -19,10 +13,9 @@ jobs:
   qemu:
     name: qemu-mps2-an386
     runs-on: ubuntu-24.04
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.sha }}
       - name: Install GNU Arm Embedded and QEMU
         run: |
           sudo apt-get update -q
