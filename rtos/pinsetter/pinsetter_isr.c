@@ -1,4 +1,3 @@
-#include "game_shell.h"
 #include "pinsetter.h"
 
 void Pinsetter_CountedFromIsr(Pinsetter *self, Pins pins)
@@ -10,9 +9,4 @@ void Pinsetter_CountedFromIsr(Pinsetter *self, Pins pins)
     }
     vTaskNotifyGiveFromISR(self->task, &woken);
     portYIELD_FROM_ISR(woken);
-}
-
-void GameShell_PinsetterCountedFromIsr(GameShellLane lane, Pins pins)
-{
-    Pinsetter_CountedFromIsr(GameShell_PinsetterOfLane(lane), pins);
 }

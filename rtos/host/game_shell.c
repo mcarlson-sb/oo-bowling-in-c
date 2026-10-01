@@ -4,6 +4,7 @@
 
 #include "fault.h"
 
+#include "game_shell_lanes.h"
 #include "pinsetter.h"
 #include "posix_stack.h"
 #include "router.h"
