@@ -27,15 +27,28 @@ jobs:
       matrix:
         include:
           - config: debug
+            cc: gcc
+            cxx: g++
             flags: ""
           - config: release
+            cc: gcc
+            cxx: g++
             flags: "-DCMAKE_BUILD_TYPE=Release"
           - config: ubsan
+            cc: gcc
+            cxx: g++
             flags: "-DOO_C_SANITIZE=ON"
+          # The same warnings under a second compiler. GCC's -Wconversion accepted an implicit
+          # narrowing that clang's refused: from f5e6f7d to 7eecfe6 the tree was releasable only
+          # by GCC, and nothing gated said so. The runner image's own clang 18.
+          - config: clang-debug
+            cc: clang-18
+            cxx: clang++-18
+            flags: ""
     steps:
       - uses: actions/checkout@v7
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ${{ matrix.flags }}
+        run: cmake -S . -B build -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ${{ matrix.flags }}
       - name: Build
         run: cmake --build build --parallel
       # A timeout per test, so a hang fails in minutes, not after ctest's default of 1500 s.

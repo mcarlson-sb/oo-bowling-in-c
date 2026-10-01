@@ -53,7 +53,8 @@ Warnings are errors, in the library and the tests alike.
 GitHub Actions runs every gate on each push to `integration/rtos-actor`
 (`.github/workflows/gate.yml`), and fast-forwards `rtos-actor` to that commit only if all of
 them pass:
-- **Builds:** debug, release, UBSan and TSan.
+- **Builds:** debug, release, UBSan and TSan with GCC, and debug with clang, whose warnings
+  differ.
 - **Every commit:** since the last promotion, each commit is built and tested.
 - **Line coverage, at least 95%:** of the library and the shell, in a release build
   (`tools/coverage_gate.py`).

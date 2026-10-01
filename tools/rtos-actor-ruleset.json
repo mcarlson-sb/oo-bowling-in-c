@@ -37,6 +37,10 @@
             "integration_id": 15368
           },
           {
+            "context": "build-clang-debug",
+            "integration_id": 15368
+          },
+          {
             "context": "tsan",
             "integration_id": 15368
           },
