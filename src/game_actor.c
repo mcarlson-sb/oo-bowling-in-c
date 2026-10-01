@@ -275,6 +275,13 @@ static void GameActor_CountPracticeBall(GameActor *self, const Message *message,
     Outbox_Reply(outbox, message, REPLY_OK, 0U);
 }
 
+/* The pinsetter's roll refused, down or once the game is over or certified: counted, and from no
+ * one, so not answered. */
+static void GameActor_RefuseThePinsettersRoll(GameActor *self)
+{
+    self->rolls_refused++;
+}
+
 static void GameActor_HoldTheRoll(GameActor *self, const Message *message, Outbox *outbox)
 {
     GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
@@ -344,7 +351,7 @@ static void GameActor_DoWhatItAsks(GameActor *self, GameMeaning meaning, const M
         GameActor_CountPracticeBall(self, message, outbox);
         break;
     case GAME_REFUSE_THE_PINSETTERS_ROLL:
-        self->rolls_refused++;
+        GameActor_RefuseThePinsettersRoll(self);
         break;
     }
 }
