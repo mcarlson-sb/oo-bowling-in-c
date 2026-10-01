@@ -2460,3 +2460,89 @@ NOT_UNDERSTOODs, and two went, a one-caller helper and a one-line wrapper.
 reply would be answered to id 0, and dropped and counted by the router. Only the pinsetter sends
 from no one, and neither of its selectors reaches those paths. Gating them would change the
 outbox's API, a decision for later.
+
+## A directory per component (2026-10-01, before phase 6)
+
+Every file moved with `git mv`, so history follows it, then one CMake library per component,
+linked only to what it may use, a probe that proves it, and `game_shell` renamed to
+`actor_host`. Nine commits, all `[clean-up]`, with behavior unchanged and every gate green.
+
+**The rules.** A directory is a component: one job, its public headers in its own `include/`,
+its private parts beside it. `value_objects/` holds only values more than one component shares.
+The tests mirror the source.
+
+**The tree:**
+
+```
+src/
+  value_objects/      include/{bowling_types,bowling_status,rules,frame_board}.h, rules.c, frame_board.c
+  scorer/             include/scorer.h, scorer.c, roll_edit.{h,c}
+  protocol/           include/{actor_id,message,outbox}.h, message.c, outbox.c
+  actors/game/        include/game_actor.h, game_actor.c, game_actor_state.h,
+                      game_protocol.{h,c}, held_rolls.{h,c}, subscribers.{h,c}
+  actors/scoreboard/  include/scoreboard.h, scoreboard.c, scoreboard_state.h
+  actors/running_average/
+                      include/running_average.h, running_average.c, running_average_state.h
+  support/            include/fault.h, fault.c
+rtos/
+  host/               include/actor_host.h, actor_host.c, actor_host_isr.c, actor_host_lanes.h
+  router/             include/{actor_kind,router}.h, router.c
+  pinsetter/          include/pinsetter.h, pinsetter.c, pinsetter_isr.c
+  port/posix/         include/{FreeRTOSConfig,posix_stack}.h, posix_stack.c, rtos_memory.c
+test/
+  scorer/, protocol/, actors/{game,scoreboard,running_average}/, support/,
+  rtos/host/, rtos/port/posix/, probes/, fixtures/
+```
+
+**What each component may use**, as CMake links it (`oo_component` in CMakeLists.txt):
+
+| Component | Uses |
+|---|---|
+| `value_objects` | nothing |
+| `support` | nothing |
+| `scorer` | `value_objects` |
+| `protocol` | `value_objects` |
+| `game_actor` | `protocol`, `scorer`, `value_objects` |
+| `scoreboard`, `running_average` | `protocol`, `value_objects` |
+| `router`, `pinsetter` | `protocol`, FreeRTOS |
+| `port_posix` | FreeRTOS, whose configuration uses `support` for `configASSERT` |
+| `host` | publicly, `router` (for `actor_kind.h`), `game_actor` and FreeRTOS; privately, each actor's state, `pinsetter`, `port_posix` and `support` |
+
+Three probes hold the rules, each a compile that must fail:
+- **`actor_state_is_hidden`:** with every component's public `include/`, an actor's state can't be
+  allocated.
+- **`protocol_is_free_of_the_scorer`:** through the protocol's and the observers' headers, the
+  scorer's type is unknown.
+- **`components_use_only_what_they_may`, new:** with the scoreboard's own include paths, as CMake
+  gives them, `game_actor.h` can't be found. It fails against a scoreboard linked to the game, made
+  by hand.
+
+**What didn't fit the rules, and what was done:**
+1. **Three dependencies ran both ways, or downwards,** and each was fixed in a commit of its own,
+   before the libraries split:
+   - **the router and the host** included each other. `ActorKind` and the table's size are the
+     router's, so they moved there, in `actor_kind.h`, and the size is `ROUTER_IDS`. `router.h`
+     itself, with its C11 atomics, which C++ can't include, stays for the host's source alone;
+   - **the pinsetter and the host** included each other. The host's interrupt entry moved to
+     `rtos/host/actor_host_isr.c`, with the interrupt's stack tripwire, and the lane lookup to a
+     header private to the host;
+   - **the frame board, a value object, used the protocol** for `StatsPayload`, since last round's
+     `FrameBoard_ReportTo`. It returns a `FrameBoardFacts` now, and each observer copies the two
+     facts into its statistics. The layering rule beat last round's tell-don't-ask change.
+2. **The layout listed `value_objects/` without an `include/`.** The first rule gives every
+   component one, so it has one.
+3. **The host needs to see every actor's state,** to allocate the instances statically, which the
+   rules otherwise keep private. Each actor's state is an INTERFACE library of its own directory,
+   which only the host and the tests link.
+4. **The RTOS side uses more than "the actors, protocol and FreeRTOS".** The host uses the
+   fail-stop and the POSIX port, for its stack paint and its FreeRTOS configuration, and the port
+   uses the fail-stop, through `configASSERT`.
+5. **The tests don't mirror three components.** `value_objects`, `router` and `pinsetter` have no
+   tests of their own. The rules and the frame board are tested through the scorer and the
+   observers, and the router and the pinsetter through the host. Their directories under `test/`
+   would be empty, so they aren't made.
+6. **The stack contract moved by 16 bytes:** the interrupt's release path is 3248 bytes where it
+   was 3232, since its entry now calls across files. That's within the 3584 budget.
+7. **The rename, step 4, was done.** The host hosts actors of three kinds, and the router and the
+   pinsetters are components of their own, so `actor_host` says what it is. `RTOS_ACTOR.md` and
+   `KAY.md` keep the names they recorded.
