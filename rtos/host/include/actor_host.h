@@ -14,18 +14,11 @@
 
 #include "actor_kind.h"
 #include "game_actor.h"
+#include "stack_budgets.h" /* the port's: ENG-1.3's budgets for the host */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* ENG-1.3's stack budgets, in bytes, on this host: the game task's, the interrupt side's, and
- * what ActorHost_Send costs its caller. tools/stack_depth.py checks each against the static call
- * graph, deepest path plus a host allowance (RTOS_ACTOR.md), and the painted stack checks the
- * game task's. */
-#define ACTOR_HOST_TASK_STACK_BUDGET 4608U
-#define ACTOR_HOST_ISR_STACK_BUDGET 3584U
-#define ACTOR_HOST_SEND_STACK_BUDGET 3584U
 
 /* The game is at ACTOR_HOST_GAME_ID; the ids the routing table can bind are 1 to ROUTER_IDS - 1. */
 #define ACTOR_HOST_GAME_ID 1U

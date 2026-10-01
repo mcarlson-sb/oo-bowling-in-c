@@ -220,8 +220,11 @@ if(OO_C_RTOS)
     # The RTOS components, each a library under the same warnings. The interrupt side's files
     # have the interrupt's own stack tripwire.
     oo_component(port_posix rtos/port/posix
-        SOURCES rtos/port/posix/posix_stack.c
+        SOURCES rtos/port/posix/port_stack.c
         USES freertos)
+    oo_component(task_stack rtos/task_stack
+        SOURCES rtos/task_stack/task_stack.c
+        USES port_posix)
     oo_component(router rtos/router
         SOURCES rtos/router/router.c
         USES protocol freertos)
@@ -232,9 +235,9 @@ if(OO_C_RTOS)
     # public header, which names the kinds the router binds and the game it hosts.
     oo_component(host rtos/host
         SOURCES rtos/host/actor_host.c rtos/host/actor_host_isr.c
-        USES router game_actor freertos)
+        USES router game_actor port_posix freertos)
     target_link_libraries(host PRIVATE game_actor_state scoreboard_state running_average_state
-                                       pinsetter port_posix support)
+                                       pinsetter task_stack support)
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
         set_source_files_properties(rtos/pinsetter/pinsetter_isr.c rtos/host/actor_host_isr.c
             PROPERTIES COMPILE_OPTIONS -Wstack-usage=96)

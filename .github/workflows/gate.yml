@@ -188,9 +188,9 @@ jobs:
         run: |
           set -o pipefail
           python3 tools/stack_depth.py build --external-allowance 1024 --async-allowance 2048 \
-            --entry ActorHost_Task=rtos/host/include/actor_host.h:ACTOR_HOST_TASK_STACK_BUDGET \
-            --entry ActorHost_PinsetterCountedFromIsr=rtos/host/include/actor_host.h:ACTOR_HOST_ISR_STACK_BUDGET \
-            --entry ActorHost_Send=rtos/host/include/actor_host.h:ACTOR_HOST_SEND_STACK_BUDGET \
+            --entry ActorHost_Task=rtos/port/posix/include/stack_budgets.h:ACTOR_HOST_TASK_STACK_BUDGET \
+            --entry ActorHost_PinsetterCountedFromIsr=rtos/port/posix/include/stack_budgets.h:ACTOR_HOST_ISR_STACK_BUDGET \
+            --entry ActorHost_Send=rtos/port/posix/include/stack_budgets.h:ACTOR_HOST_SEND_STACK_BUDGET \
             | tee -a "$GITHUB_STEP_SUMMARY"
 
   # No function pointers in src/ or rtos/ outside the files still being strangled and

@@ -6,8 +6,8 @@
 
 #include "actor_host_lanes.h"
 #include "pinsetter.h"
-#include "posix_stack.h"
 #include "router.h"
+#include "task_stack.h"
 #include "game_actor_state.h"
 #include "running_average_state.h"
 #include "scoreboard_state.h"
@@ -23,10 +23,6 @@
 
 /* The most one message makes an observer send: the observers' task's outbox holds that. */
 #define ACTOR_HOST_OBSERVER_MOST_SENT 1U
-
-/* The POSIX port sizes a task's pthread stack from this, and a pthread stack is at least
- * PTHREAD_STACK_MIN, so the port's minimum. */
-#define ACTOR_HOST_TASK_STACK_WORDS configMINIMAL_STACK_SIZE
 
 _Static_assert(ACTOR_HOST_TASK_STACK_WORDS * sizeof(StackType_t) >= ACTOR_HOST_TASK_STACK_BUDGET,
                "a hosting task's stack holds its budget");
@@ -46,7 +42,7 @@ typedef struct {
     uint8_t mailbox_storage[ACTOR_HOST_MAILBOX * sizeof(Message)];
     Message message;
     Outbox outbox;
-    PosixStack stack_paint;
+    TaskStack stack_paint;
     TaskHandle_t task;
     StaticTask_t task_buffer;
     StackType_t stack[ACTOR_HOST_TASK_STACK_WORDS];
@@ -112,7 +108,7 @@ static bool ActorHost_TakeMessage(ActorHostTask *host)
 static void ActorHost_Task(void *parameter)
 {
     ActorHostTask *host = (ActorHostTask *)parameter;
-    PosixStack_Paint(&host->stack_paint);
+    TaskStack_Paint(&host->stack_paint);
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         while (ActorHost_TakeMessage(host)) {
@@ -268,7 +264,7 @@ uint16_t ActorHost_OutputsDropped(void)
 size_t ActorHost_TaskStackUsed(void)
 {
     const uint8_t game = Router_RouteTo(&s_shell.router, ACTOR_HOST_GAME_ID)->instance;
-    return PosixStack_DeepestUse(&s_shell.game_tasks[game].task.stack_paint);
+    return TaskStack_DeepestUse(&s_shell.game_tasks[game].task.stack_paint);
 }
 
 BaseType_t ActorHost_Send(const Message *message, TickType_t wait)
