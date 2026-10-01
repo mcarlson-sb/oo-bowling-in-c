@@ -1,0 +1,51 @@
+# The target stage: after each Gate run on integration/rtos-actor, the QEMU image runs what the
+# host can't show, on a Cortex-M4F. It reports, and blocks nothing: Gate's promote doesn't wait
+# for it, and rtos-actor's ruleset doesn't require it. It runs on Gate's completion rather than
+# on promote's push, which GITHUB_TOKEN makes and which so starts no workflow.
+name: Target
+
+on:
+  workflow_run:
+    workflows: [Gate]
+    types: [completed]
+    branches: [integration/rtos-actor]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qemu:
+    name: qemu-mps2-an386
+    # Only for a gate that passed: a red commit's target results would say nothing new.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Install GNU Arm Embedded and QEMU
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc-arm-none-eabi libnewlib-arm-none-eabi \
+            libstdc++-arm-none-eabi-newlib qemu-system-arm
+          arm-none-eabi-gcc --version | head -1
+          qemu-system-arm --version | head -1
+      - name: Build the QEMU image
+        run: |
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-cm4f.cmake \
+            -DOO_C_TARGET=mps2_an386 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+      # The host's pure-core tests, through the GoogleTest shim, on the emulated Cortex-M4F.
+      - name: The pure core's tests on the target
+        run: |
+          set -o pipefail
+          timeout 300 qemu-system-arm -machine mps2-an386 -cpu cortex-m4 -nographic -monitor none \
+            -serial none -semihosting-config enable=on,target=native \
+            -kernel build/core_tests.elf | tee core_tests.txt
+      - name: Report the core's tests
+        if: always()
+        run: |
+          echo "### The pure core's tests on mps2-an386" >> "$GITHUB_STEP_SUMMARY"
+          grep -E 'tests ran|^\[  (PASSED|FAILED)  \]|FAULT' core_tests.txt | sed 's/^/    /' \
+            >> "$GITHUB_STEP_SUMMARY"
