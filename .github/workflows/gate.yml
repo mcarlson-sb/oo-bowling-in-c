@@ -59,7 +59,7 @@ jobs:
       # all but certain, so the RTOS tests run there too, and fail if it comes back.
       - name: The RTOS tests on one CPU
         if: matrix.config == 'debug'
-        run: taskset -c 0 ctest --test-dir build -R 'GameShell|Rtos' --output-on-failure --timeout 60
+        run: taskset -c 0 ctest --test-dir build -R 'ActorHost|Rtos' --output-on-failure --timeout 60
       # The release build's library and headers, handed to promote: the artifact it publishes is
       # the library this gate built and tested, not a rebuild.
       - name: Keep the gated release library
@@ -156,7 +156,7 @@ jobs:
   # so the library's and the RTOS shell's builds fail on any frame over its limit. The largest
   # frames go to the summary. Then the stack contract: tools/stack_depth.py walks GCC's static
   # call graph from each of the shell's entries, the kernel's own functions included, and fails
-  # on a depth over its budget in rtos/host/include/game_shell.h, or on one it can't bound.
+  # on a depth over its budget in rtos/host/include/actor_host.h, or on one it can't bound.
   stack-usage:
     name: stack-usage-${{ matrix.config }}
     runs-on: ubuntu-24.04
@@ -188,9 +188,9 @@ jobs:
         run: |
           set -o pipefail
           python3 tools/stack_depth.py build --external-allowance 1024 --async-allowance 2048 \
-            --entry GameShell_Task=rtos/host/include/game_shell.h:GAME_SHELL_TASK_STACK_BUDGET \
-            --entry GameShell_PinsetterCountedFromIsr=rtos/host/include/game_shell.h:GAME_SHELL_ISR_STACK_BUDGET \
-            --entry GameShell_Send=rtos/host/include/game_shell.h:GAME_SHELL_SEND_STACK_BUDGET \
+            --entry ActorHost_Task=rtos/host/include/actor_host.h:ACTOR_HOST_TASK_STACK_BUDGET \
+            --entry ActorHost_PinsetterCountedFromIsr=rtos/host/include/actor_host.h:ACTOR_HOST_ISR_STACK_BUDGET \
+            --entry ActorHost_Send=rtos/host/include/actor_host.h:ACTOR_HOST_SEND_STACK_BUDGET \
             | tee -a "$GITHUB_STEP_SUMMARY"
 
   # No function pointers in src/ or rtos/ outside the files still being strangled and

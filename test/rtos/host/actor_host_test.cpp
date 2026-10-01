@@ -16,7 +16,7 @@ extern "C" {
 #include "queue.h"
 #include "task.h"
 
-#include "game_shell.h"
+#include "actor_host.h"
 }
 
 #include "rules_presets.h"
@@ -66,11 +66,11 @@ UBaseType_t s_observer_priority = kObserverPriority;
 void BindOrHost(ActorId id, ActorKind kind, QueueHandle_t queue)
 {
     if (kind == ACTOR_KIND_SCOREBOARD) {
-        GameShell_HostScoreboard(id);
+        ActorHost_HostScoreboard(id);
     } else if (kind == ACTOR_KIND_RUNNING_AVERAGE) {
-        GameShell_HostRunningAverage(id);
+        ActorHost_HostRunningAverage(id);
     } else {
-        GameShell_Bind(id, queue);
+        ActorHost_Bind(id, queue);
     }
 }
 
@@ -82,7 +82,7 @@ StaticTask_t s_interrupt_task;
 StackType_t s_interrupt_stack[configMINIMAL_STACK_SIZE];
 TaskHandle_t s_interrupt;
 std::vector<Pins> s_interrupt_rolls;
-GameShellLane s_interrupt_lane = 0U;
+ActorHostLane s_interrupt_lane = 0U;
 
 void InterruptTask(void *parameter)
 {
@@ -90,7 +90,7 @@ void InterruptTask(void *parameter)
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         for (const Pins pins : s_interrupt_rolls) {
-            GameShell_PinsetterCountedFromIsr(s_interrupt_lane, pins);
+            ActorHost_PinsetterCountedFromIsr(s_interrupt_lane, pins);
         }
     }
 }
@@ -119,10 +119,10 @@ void StartATenPinGame()
     Message new_game = {};
     new_game.envelope.selector = MSG_NEW_GAME;
     new_game.envelope.from = kClient;
-    new_game.envelope.to = GAME_SHELL_GAME_ID;
+    new_game.envelope.to = ACTOR_HOST_GAME_ID;
     new_game.payload.new_game.rules = rules::kTenPin;
     Message reply;
-    if ((GameShell_Send(&new_game, kPatience) != pdPASS) ||
+    if ((ActorHost_Send(&new_game, kPatience) != pdPASS) ||
         (xQueueReceive(s_replies.handle, &reply, kPatience) != pdPASS) ||
         (reply.payload.reply.status != GAME_OK)) {
         s_new_game_failed.store(true, std::memory_order_release);
@@ -145,13 +145,13 @@ void ClientTask(void *parameter)
  * messages before the game task runs. */
 void RunClient(void (*body)(), UBaseType_t client_priority = kClientPriority)
 {
-    GameShell_Start(kGamePriority, s_observer_priority);
+    ActorHost_Start(kGamePriority, s_observer_priority);
     s_replies.Create();
     s_subscriber.Create(s_subscriber_queue_length);
     s_second_subscriber.Create();
-    GameShell_Bind(kClient, s_replies.handle);
+    ActorHost_Bind(kClient, s_replies.handle);
     if (s_second_lane) {
-        GameShell_HostGame(kSecondLane, kGamePriority);
+        ActorHost_HostGame(kSecondLane, kGamePriority);
     }
     BindOrHost(kSubscriber, s_subscriber_kind, s_subscriber.handle);
     BindOrHost(kSecondSubscriber, s_second_subscriber_kind, s_second_subscriber.handle);
@@ -177,7 +177,7 @@ Message RollRequest(RequestSeq seq, Pins pins)
     message.envelope.selector = MSG_ROLL;
     message.envelope.seq = seq;
     message.envelope.from = kClient;
-    message.envelope.to = GAME_SHELL_GAME_ID;
+    message.envelope.to = ACTOR_HOST_GAME_ID;
     message.payload.roll.pins = pins;
     return message;
 }
@@ -188,7 +188,7 @@ Message SubscribeRequest(RequestSeq seq)
     message.envelope.selector = MSG_SUBSCRIBE;
     message.envelope.seq = seq;
     message.envelope.from = kSubscriber;
-    message.envelope.to = GAME_SHELL_GAME_ID;
+    message.envelope.to = ACTOR_HOST_GAME_ID;
     return message;
 }
 
@@ -198,7 +198,7 @@ Message FigureQuery(RequestSeq seq)
     message.envelope.selector = MSG_QUERY_FIGURE;
     message.envelope.seq = seq;
     message.envelope.from = kClient;
-    message.envelope.to = GAME_SHELL_GAME_ID;
+    message.envelope.to = ACTOR_HOST_GAME_ID;
     return message;
 }
 
@@ -209,7 +209,7 @@ Message EditRequest(RequestSeq seq, RollNumber first, uint8_t removed,
     message.envelope.selector = MSG_EDIT;
     message.envelope.seq = seq;
     message.envelope.from = kClient;
-    message.envelope.to = GAME_SHELL_GAME_ID;
+    message.envelope.to = ACTOR_HOST_GAME_ID;
     message.payload.edit.first_roll = first;
     message.payload.edit.rolls_removed = removed;
     for (const Pins pins : new_pins) {
@@ -224,11 +224,11 @@ Message s_reply;
 
 } // namespace
 
-TEST(GameShellTest, should_reply_on_the_callers_queue_to_a_roll_sent_to_the_game_task)
+TEST(ActorHostTest, should_reply_on_the_callers_queue_to_a_roll_sent_to_the_game_task)
 {
     RunClient([] {
         const Message roll = RollRequest(7U, 3U);
-        s_sent = GameShell_Send(&roll, 0U);
+        s_sent = ActorHost_Send(&roll, 0U);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
     });
     ASSERT_EQ(pdPASS, s_sent);
@@ -244,11 +244,11 @@ Message s_event;
 
 } // namespace
 
-TEST(GameShellTest, should_tell_a_subscriber_the_frame_the_pinsetters_rolls_complete)
+TEST(ActorHostTest, should_tell_a_subscriber_the_frame_the_pinsetters_rolls_complete)
 {
     RunClient([] {
         const Message subscribe = SubscribeRequest(1U);
-        s_sent = GameShell_Send(&subscribe, 0U);
+        s_sent = ActorHost_Send(&subscribe, 0U);
         Message reply;
         (void)xQueueReceive(s_subscriber.handle, &reply, kPatience);
         FirePinsetter({3U, 4U});
@@ -282,12 +282,12 @@ std::vector<Message> s_heard;
 
 } // namespace
 
-TEST(GameShellTest, should_count_a_roll_lost_to_the_pinsetters_full_queue_and_tell_the_subscriber)
+TEST(ActorHostTest, should_count_a_roll_lost_to_the_pinsetters_full_queue_and_tell_the_subscriber)
 {
     /* The interrupt outruns the game task: 33 rolls into a queue of 32. */
     RunClient([] {
         const Message subscribe = SubscribeRequest(1U);
-        s_sent = GameShell_Send(&subscribe, 0U);
+        s_sent = ActorHost_Send(&subscribe, 0U);
         Message reply;
         (void)xQueueReceive(s_subscriber.handle, &reply, kPatience);
         FirePinsetter(33, 0U);
@@ -304,25 +304,25 @@ uint16_t s_dropped;
 
 } // namespace
 
-TEST(GameShellTest, should_drop_and_count_an_event_for_a_subscriber_whose_queue_is_full)
+TEST(ActorHostTest, should_drop_and_count_an_event_for_a_subscriber_whose_queue_is_full)
 {
     /* The subscriber's queue has room for one, which its subscribe reply takes. */
     s_subscriber_queue_length = 1U;
     RunClient([] {
         const Message subscribe = SubscribeRequest(1U);
-        s_sent = GameShell_Send(&subscribe, 0U);
+        s_sent = ActorHost_Send(&subscribe, 0U);
         FirePinsetter({3U, 4U}); /* completes frame 1: an event it has no room for */
         const Message query = FigureQuery(2U);
-        (void)GameShell_Send(&query, kPatience);
+        (void)ActorHost_Send(&query, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience); /* after the rolls */
-        s_dropped = GameShell_OutputsDropped();
+        s_dropped = ActorHost_OutputsDropped();
     });
     ASSERT_EQ(pdPASS, s_received);
     EXPECT_EQ(7U, s_reply.payload.reply.score);
     EXPECT_EQ(1U, s_dropped);
 }
 
-TEST(GameShellTest, should_play_the_pinsetters_waiting_rolls_before_an_edit_waiting_with_them)
+TEST(ActorHostTest, should_play_the_pinsetters_waiting_rolls_before_an_edit_waiting_with_them)
 {
     /* Above the game task, the client queues a correction of ball 1, and the interrupt then
      * counts two rolls, before the game task runs at all. Rolls first: the correction finds
@@ -330,7 +330,7 @@ TEST(GameShellTest, should_play_the_pinsetters_waiting_rolls_before_an_edit_wait
     RunClient(
         [] {
             const Message correction = EditRequest(1U, 1U, 1U, {5U});
-            s_sent = GameShell_Send(&correction, 0U);
+            s_sent = ActorHost_Send(&correction, 0U);
             FirePinsetter({3U, 4U});
             s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
         },
@@ -347,19 +347,19 @@ std::vector<Message> s_heard_held;
 
 } // namespace
 
-TEST(GameShellTest, should_hold_a_miscounted_roll_until_a_correction_lets_it_through)
+TEST(ActorHostTest, should_hold_a_miscounted_roll_until_a_correction_lets_it_through)
 {
     /* The pinsetter counted 5 when 2 fell, so its true 8 looks impossible: held, with the 3
      * after it. Correcting ball 1 to 2 lets both through: 2, 8, a spare, then 3, is 13. */
     RunClient([] {
         const Message subscribe = SubscribeRequest(1U);
-        s_sent = GameShell_Send(&subscribe, 0U);
+        s_sent = ActorHost_Send(&subscribe, 0U);
         Message reply;
         (void)xQueueReceive(s_subscriber.handle, &reply, kPatience);
         FirePinsetter({5U, 8U, 3U});
         s_heard_held = HearUntil(MSG_ROLL_HELD);
         const Message correction = EditRequest(2U, 1U, 1U, {2U});
-        (void)GameShell_Send(&correction, kPatience);
+        (void)ActorHost_Send(&correction, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
         s_heard = HearUntil(MSG_FRAME_CHANGED);
     });
@@ -382,7 +382,7 @@ size_t s_stack_used;
 
 } // namespace
 
-TEST(GameShellStackTest, should_keep_the_game_task_within_its_stack_budget_through_the_worst_case)
+TEST(ActorHostStackTest, should_keep_the_game_task_within_its_stack_budget_through_the_worst_case)
 {
     /* The painted stack, the cross-check on the static call graph: the outbox's worst case, an
      * edit mid-game that reopens the nine complete frames and lets through held rolls that
@@ -390,52 +390,52 @@ TEST(GameShellStackTest, should_keep_the_game_task_within_its_stack_budget_throu
     RunClient([] {
         for (int i = 0; i < 11; i++) {
             const Message ball = RollRequest(static_cast<RequestSeq>(i + 1), i < 10 ? 10U : 7U);
-            (void)GameShell_Send(&ball, kPatience);
+            (void)ActorHost_Send(&ball, kPatience);
             (void)xQueueReceive(s_replies.handle, &s_reply, kPatience);
         }
         Message subscribe = SubscribeRequest(20U);
-        (void)GameShell_Send(&subscribe, kPatience);
+        (void)ActorHost_Send(&subscribe, kPatience);
         subscribe.envelope.from = kSecondSubscriber;
-        (void)GameShell_Send(&subscribe, kPatience);
+        (void)ActorHost_Send(&subscribe, kPatience);
         FirePinsetter(13, 10U); /* held: 3 standing, too many pins, and then behind it */
         const Message every_ball_out = EditRequest(21U, 1U, 11U, {});
-        (void)GameShell_Send(&every_ball_out, kPatience);
+        (void)ActorHost_Send(&every_ball_out, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
-        s_stack_used = GameShell_TaskStackUsed();
+        s_stack_used = ActorHost_TaskStackUsed();
     });
     ASSERT_EQ(pdPASS, s_received);
     EXPECT_EQ(GAME_OK, s_reply.payload.reply.status);
-    EXPECT_LE(s_stack_used, static_cast<size_t>(GAME_SHELL_TASK_STACK_BUDGET));
+    EXPECT_LE(s_stack_used, static_cast<size_t>(ACTOR_HOST_TASK_STACK_BUDGET));
 }
 
-TEST(GameShellTest, should_drop_and_count_an_output_to_an_id_nothing_is_bound_to)
+TEST(ActorHostTest, should_drop_and_count_an_output_to_an_id_nothing_is_bound_to)
 {
     /* A subscriber at id 5, which no queue is bound to: its subscribe reply has nowhere to go.
      * The game carries on, and the client's own reply still arrives. */
     RunClient([] {
         Message subscribe = SubscribeRequest(1U);
         subscribe.envelope.from = 5U;
-        (void)GameShell_Send(&subscribe, kPatience);
+        (void)ActorHost_Send(&subscribe, kPatience);
         const Message query = FigureQuery(2U);
-        (void)GameShell_Send(&query, kPatience);
+        (void)ActorHost_Send(&query, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
-        s_dropped = GameShell_OutputsDropped();
+        s_dropped = ActorHost_OutputsDropped();
     });
     ASSERT_EQ(pdPASS, s_received);
     EXPECT_EQ(2U, s_reply.envelope.seq);
     EXPECT_EQ(1U, s_dropped);
 }
 
-TEST(GameShellTest, should_drop_and_count_an_output_to_an_id_past_the_routing_table)
+TEST(ActorHostTest, should_drop_and_count_an_output_to_an_id_past_the_routing_table)
 {
     RunClient([] {
         Message subscribe = SubscribeRequest(1U);
         subscribe.envelope.from = 200U;
-        (void)GameShell_Send(&subscribe, kPatience);
+        (void)ActorHost_Send(&subscribe, kPatience);
         const Message query = FigureQuery(2U);
-        (void)GameShell_Send(&query, kPatience);
+        (void)ActorHost_Send(&query, kPatience);
         s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
-        s_dropped = GameShell_OutputsDropped();
+        s_dropped = ActorHost_OutputsDropped();
     });
     ASSERT_EQ(pdPASS, s_received);
     EXPECT_EQ(1U, s_dropped);
@@ -460,15 +460,15 @@ uint16_t s_dropped_after;
 void SubscribeRollAndAsk()
 {
     const Message subscribe = SubscribeRequest(1U);
-    (void)GameShell_Send(&subscribe, kPatience);
+    (void)ActorHost_Send(&subscribe, kPatience);
     RequestSeq seq = 2U;
     for (const Pins pins : std::initializer_list<Pins>{3U, 4U, 5U, 5U, 2U}) {
         const Message roll = RollRequest(seq++, pins);
-        (void)GameShell_Send(&roll, kPatience);
+        (void)ActorHost_Send(&roll, kPatience);
         (void)xQueueReceive(s_replies.handle, &s_reply, kPatience);
     }
     const Message ask = QueryTo(kSubscriber, seq);
-    (void)GameShell_Send(&ask, kPatience);
+    (void)ActorHost_Send(&ask, kPatience);
 }
 
 /* A kind hosted at the subscriber's id answers the client. */
@@ -476,12 +476,12 @@ void SubscribeRollAndAskTheSubscriber()
 {
     SubscribeRollAndAsk();
     s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
-    s_dropped_after = GameShell_OutputsDropped();
+    s_dropped_after = ActorHost_OutputsDropped();
 }
 
 } // namespace
 
-TEST(GameShellRebindingTest, should_answer_the_total_when_a_scoreboard_sits_at_the_subscriber_id)
+TEST(ActorHostRebindingTest, should_answer_the_total_when_a_scoreboard_sits_at_the_subscriber_id)
 {
     s_subscriber_kind = ACTOR_KIND_SCOREBOARD;
     RunClient(&SubscribeRollAndAskTheSubscriber);
@@ -492,7 +492,7 @@ TEST(GameShellRebindingTest, should_answer_the_total_when_a_scoreboard_sits_at_t
     EXPECT_EQ(0U, s_dropped_after);
 }
 
-TEST(GameShellRebindingTest, should_answer_the_average_when_a_running_average_sits_there)
+TEST(ActorHostRebindingTest, should_answer_the_average_when_a_running_average_sits_there)
 {
     s_subscriber_kind = ACTOR_KIND_RUNNING_AVERAGE;
     RunClient(&SubscribeRollAndAskTheSubscriber);
@@ -524,7 +524,7 @@ void SubscribeRollAskAndReadTheRecording()
 
 } // namespace
 
-TEST(GameShellRebindingTest, should_reach_a_recording_double_that_sits_there_with_the_same_messages)
+TEST(ActorHostRebindingTest, should_reach_a_recording_double_that_sits_there_with_the_same_messages)
 {
     /* An external queue the test reads: it records the game's messages, and the question, which
      * nothing there answers. */
@@ -550,23 +550,23 @@ void PlayTheGamesWorstBurst()
 {
     for (int i = 0; i < 11; i++) {
         const Message ball = RollRequest(static_cast<RequestSeq>(i + 1), i < 10 ? 10U : 7U);
-        (void)GameShell_Send(&ball, kPatience);
+        (void)ActorHost_Send(&ball, kPatience);
         (void)xQueueReceive(s_replies.handle, &s_reply, kPatience);
     }
     Message subscribe = SubscribeRequest(20U);
-    (void)GameShell_Send(&subscribe, kPatience);
+    (void)ActorHost_Send(&subscribe, kPatience);
     subscribe.envelope.from = kSecondSubscriber;
-    (void)GameShell_Send(&subscribe, kPatience);
+    (void)ActorHost_Send(&subscribe, kPatience);
     FirePinsetter(13, 10U); /* held: 3 standing, too many pins, and then behind it */
     const Message every_ball_out = EditRequest(21U, 1U, 11U, {});
-    (void)GameShell_Send(&every_ball_out, kPatience);
+    (void)ActorHost_Send(&every_ball_out, kPatience);
     s_received = xQueueReceive(s_replies.handle, &s_reply, kPatience);
-    s_dropped_after = GameShell_OutputsDropped();
+    s_dropped_after = ActorHost_OutputsDropped();
 }
 
 } // namespace
 
-TEST(GameShellObserverTest, should_drop_nothing_of_the_games_worst_burst_to_two_hosted_observers)
+TEST(ActorHostObserverTest, should_drop_nothing_of_the_games_worst_burst_to_two_hosted_observers)
 {
     /* The observers' task outranks the game's, so it takes each event as the game posts it, and
      * their shared mailbox of 4 never fills. */
@@ -577,12 +577,12 @@ TEST(GameShellObserverTest, should_drop_nothing_of_the_games_worst_burst_to_two_
     EXPECT_EQ(0U, s_dropped_after);
 }
 
-TEST(GameShellObserverDeathTest, should_refuse_to_start_observers_that_do_not_outrank_the_game)
+TEST(ActorHostObserverDeathTest, should_refuse_to_start_observers_that_do_not_outrank_the_game)
 {
     /* The observers' mailbox of 4 takes a game's bursts only because they preempt the game after
      * every post (the test above). Level with it or below it, their backlog is bounded only by how
      * long the game runs, so the shell stops rather than start that way. */
-    EXPECT_DEATH(GameShell_Start(kGamePriority, kGamePriority), "must outrank every game");
+    EXPECT_DEATH(ActorHost_Start(kGamePriority, kGamePriority), "must outrank every game");
 }
 
 /* ---- Two lanes: two games, each in a task of its own ----------------------------------------- */
@@ -610,7 +610,7 @@ Message NewGameAt(ActorId lane, RequestSeq seq, const ScorerRules &rules)
 Message Ask(const Message &message)
 {
     Message reply = {};
-    (void)GameShell_Send(&message, kPatience);
+    (void)ActorHost_Send(&message, kPatience);
     (void)xQueueReceive(s_replies.handle, &reply, kPatience);
     return reply;
 }
@@ -621,7 +621,7 @@ Message s_second_lane_last;
 
 } // namespace
 
-TEST(GameShellLanesTest, should_play_two_lanes_each_by_its_own_rules_in_tasks_of_their_own)
+TEST(ActorHostLanesTest, should_play_two_lanes_each_by_its_own_rules_in_tasks_of_their_own)
 {
     /* Lane 1 was started as ten-pin by every test's client; lane 2 is started as candlepin. */
     s_second_lane = true;
@@ -636,7 +636,7 @@ TEST(GameShellLanesTest, should_play_two_lanes_each_by_its_own_rules_in_tasks_of
     EXPECT_EQ(GAME_OK, s_second_lane_new_game.payload.reply.status);
     EXPECT_EQ(kSecondLane, s_second_lane_last.envelope.from);
     EXPECT_EQ(9U, s_second_lane_last.payload.reply.score); /* candlepin: 3, 3, 3 is a frame */
-    EXPECT_EQ(GAME_SHELL_GAME_ID, s_first_lane_last.envelope.from);
+    EXPECT_EQ(ACTOR_HOST_GAME_ID, s_first_lane_last.envelope.from);
     EXPECT_EQ(7U, s_first_lane_last.payload.reply.score); /* ten-pin: 3, 4 is a frame */
 }
 
@@ -647,7 +647,7 @@ Message s_second_lanes_figure;
 
 } // namespace
 
-TEST(GameShellLanesTest, should_feed_each_lanes_game_from_its_own_pinsetter)
+TEST(ActorHostLanesTest, should_feed_each_lanes_game_from_its_own_pinsetter)
 {
     /* Lane 1's pinsetter counts a candlepin frame: 3, 3, 3. Lane 0's game hears none of it. */
     s_second_lane = true;
@@ -656,7 +656,7 @@ TEST(GameShellLanesTest, should_feed_each_lanes_game_from_its_own_pinsetter)
         s_interrupt_lane = 1U;
         FirePinsetter({3U, 3U, 3U});
         s_second_lanes_figure = Ask(QueryTo(kSecondLane, 2U));
-        s_first_lanes_figure = Ask(QueryTo(GAME_SHELL_GAME_ID, 3U));
+        s_first_lanes_figure = Ask(QueryTo(ACTOR_HOST_GAME_ID, 3U));
     });
     EXPECT_EQ(9U, s_second_lanes_figure.payload.reply.score);
     EXPECT_EQ(0U, s_first_lanes_figure.payload.reply.score);
@@ -676,7 +676,7 @@ Message s_second_lanes_stats;
 
 } // namespace
 
-TEST(GameShellLanesTest, should_count_the_rolls_each_lanes_pinsetter_loses_as_that_lanes_own)
+TEST(ActorHostLanesTest, should_count_the_rolls_each_lanes_pinsetter_loses_as_that_lanes_own)
 {
     /* Lane 1's interrupt outruns its game: 33 rolls into its queue of 32. Lane 0's loses none. */
     s_second_lane = true;
@@ -685,29 +685,29 @@ TEST(GameShellLanesTest, should_count_the_rolls_each_lanes_pinsetter_loses_as_th
         s_interrupt_lane = 1U;
         FirePinsetter(33, 0U);
         s_second_lanes_stats = Ask(StatsOf(kSecondLane, 2U));
-        s_first_lanes_stats = Ask(StatsOf(GAME_SHELL_GAME_ID, 3U));
+        s_first_lanes_stats = Ask(StatsOf(ACTOR_HOST_GAME_ID, 3U));
     });
     EXPECT_EQ(1U, s_second_lanes_stats.payload.stats.rolls_lost);
     EXPECT_EQ(0U, s_first_lanes_stats.payload.stats.rolls_lost);
 }
 
-TEST(GameShellLanesDeathTest, should_stop_on_a_roll_counted_at_a_lane_no_game_is_hosted_at)
+TEST(ActorHostLanesDeathTest, should_stop_on_a_roll_counted_at_a_lane_no_game_is_hosted_at)
 {
     EXPECT_DEATH(
         {
-            GameShell_Start(kGamePriority, kObserverPriority);
-            GameShell_PinsetterCountedFromIsr(1U, 3U); /* only lane 0 is hosted */
+            ActorHost_Start(kGamePriority, kObserverPriority);
+            ActorHost_PinsetterCountedFromIsr(1U, 3U); /* only lane 0 is hosted */
         },
         "no game is hosted at");
 }
 
-TEST(GameShellObserverDeathTest, should_refuse_a_second_lane_the_observers_do_not_outrank)
+TEST(ActorHostObserverDeathTest, should_refuse_a_second_lane_the_observers_do_not_outrank)
 {
     /* Every game, not only the first: the observers must preempt each of them. */
     EXPECT_DEATH(
         {
-            GameShell_Start(kGamePriority, kObserverPriority);
-            GameShell_HostGame(kSecondLane, kObserverPriority);
+            ActorHost_Start(kGamePriority, kObserverPriority);
+            ActorHost_HostGame(kSecondLane, kObserverPriority);
         },
         "must outrank every game");
 }
@@ -736,12 +736,12 @@ void AScoreboardAndAnAveragePerLane()
 {
     RequestSeq seq = 1U;
     (void)Ask(NewGameAt(kSecondLane, seq++, rules::kCandlepin));
-    const Message subscriptions[] = {SubscribeTo(GAME_SHELL_GAME_ID, kSubscriber, seq++),
-                                     SubscribeTo(GAME_SHELL_GAME_ID, kSecondSubscriber, seq++),
+    const Message subscriptions[] = {SubscribeTo(ACTOR_HOST_GAME_ID, kSubscriber, seq++),
+                                     SubscribeTo(ACTOR_HOST_GAME_ID, kSecondSubscriber, seq++),
                                      SubscribeTo(kSecondLane, kSecondLaneBoard, seq++),
                                      SubscribeTo(kSecondLane, kSecondLaneAverage, seq++)};
     for (const Message &subscription : subscriptions) {
-        (void)GameShell_Send(&subscription, kPatience);
+        (void)ActorHost_Send(&subscription, kPatience);
     }
     for (const Pins pins : std::initializer_list<Pins>{3U, 4U, 5U, 2U}) {
         (void)Ask(RollRequest(seq++, pins));
@@ -758,7 +758,7 @@ void AScoreboardAndAnAveragePerLane()
 
 } // namespace
 
-TEST(GameShellLanesTest, should_keep_each_lanes_frames_apart_with_an_observer_instance_per_lane)
+TEST(ActorHostLanesTest, should_keep_each_lanes_frames_apart_with_an_observer_instance_per_lane)
 {
     /* One scoreboard of both lanes answered 9, not 16: lane 2's frame 1 overwrote lane 1's,
      * as predicted. An instance per lane keeps them apart, and the observers are unchanged. */
@@ -793,7 +793,7 @@ void EachLanesAverageAskedForItsStatistics()
 
 } // namespace
 
-TEST(GameShellLanesTest, should_combine_two_lanes_statistics_into_the_exact_average_of_both)
+TEST(ActorHostLanesTest, should_combine_two_lanes_statistics_into_the_exact_average_of_both)
 {
     /* Per lane, the averages round: 7 and 9, whose own average would be 8. From the facts
      * behind them, both lanes' totals and complete frames, the average of both is exact and rounds
@@ -837,28 +837,28 @@ void BothLanesWorstBurstsAtOnce()
         (void)Ask(RollRequest(seq++, pins));
         (void)Ask(ToLane(kSecondLane, RollRequest(seq++, pins)));
     }
-    const Message subscriptions[] = {SubscribeTo(GAME_SHELL_GAME_ID, kSubscriber, seq++),
-                                     SubscribeTo(GAME_SHELL_GAME_ID, kSecondSubscriber, seq++),
+    const Message subscriptions[] = {SubscribeTo(ACTOR_HOST_GAME_ID, kSubscriber, seq++),
+                                     SubscribeTo(ACTOR_HOST_GAME_ID, kSecondSubscriber, seq++),
                                      SubscribeTo(kSecondLane, kSecondLaneBoard, seq++),
                                      SubscribeTo(kSecondLane, kSecondLaneAverage, seq++)};
     for (const Message &subscription : subscriptions) {
-        (void)GameShell_Send(&subscription, kPatience);
+        (void)ActorHost_Send(&subscription, kPatience);
     }
     FirePinsetter(13, 10U);
     const Message edits[] = {EditRequest(seq++, 1U, 11U, {}),
                              ToLane(kSecondLane, EditRequest(seq++, 1U, 11U, {}))};
     for (const Message &edit : edits) {
-        (void)GameShell_Send(&edit, kPatience);
+        (void)ActorHost_Send(&edit, kPatience);
     }
     for (int i = 0; i < 2; i++) {
         (void)xQueueReceive(s_replies.handle, &s_lane_edit_replies[i], kPatience);
     }
-    s_dropped_after = GameShell_OutputsDropped();
+    s_dropped_after = ActorHost_OutputsDropped();
 }
 
 } // namespace
 
-TEST(GameShellObserverTest, should_drop_nothing_of_both_lanes_worst_bursts_at_once)
+TEST(ActorHostObserverTest, should_drop_nothing_of_both_lanes_worst_bursts_at_once)
 {
     s_second_lane = true;
     s_subscriber_kind = ACTOR_KIND_SCOREBOARD;

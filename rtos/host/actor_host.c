@@ -1,10 +1,10 @@
-#include "game_shell.h"
+#include "actor_host.h"
 
 #include "task.h"
 
 #include "fault.h"
 
-#include "game_shell_lanes.h"
+#include "actor_host_lanes.h"
 #include "pinsetter.h"
 #include "posix_stack.h"
 #include "router.h"
@@ -13,26 +13,26 @@
 #include "scoreboard_state.h"
 
 /* How many messages a hosting task's mailbox holds, for all the actors it hosts. */
-#define GAME_SHELL_MAILBOX 4U
+#define ACTOR_HOST_MAILBOX 4U
 
 /* The instances of each kind the shell can host. Each game has a task of its own; the observers
  * share one. */
-#define GAME_SHELL_GAMES 2U
-#define GAME_SHELL_SCOREBOARDS 2U
-#define GAME_SHELL_RUNNING_AVERAGES 2U
+#define ACTOR_HOST_GAMES 2U
+#define ACTOR_HOST_SCOREBOARDS 2U
+#define ACTOR_HOST_RUNNING_AVERAGES 2U
 
 /* The most one message makes an observer send: the observers' task's outbox holds that. */
-#define GAME_SHELL_OBSERVER_MOST_SENT 1U
+#define ACTOR_HOST_OBSERVER_MOST_SENT 1U
 
 /* The POSIX port sizes a task's pthread stack from this, and a pthread stack is at least
  * PTHREAD_STACK_MIN, so the port's minimum. */
-#define GAME_SHELL_TASK_STACK_WORDS configMINIMAL_STACK_SIZE
+#define ACTOR_HOST_TASK_STACK_WORDS configMINIMAL_STACK_SIZE
 
-_Static_assert(GAME_SHELL_TASK_STACK_WORDS * sizeof(StackType_t) >= GAME_SHELL_TASK_STACK_BUDGET,
+_Static_assert(ACTOR_HOST_TASK_STACK_WORDS * sizeof(StackType_t) >= ACTOR_HOST_TASK_STACK_BUDGET,
                "a hosting task's stack holds its budget");
-_Static_assert(SCOREBOARD_MOST_SENT <= GAME_SHELL_OBSERVER_MOST_SENT,
+_Static_assert(SCOREBOARD_MOST_SENT <= ACTOR_HOST_OBSERVER_MOST_SENT,
                "the observers' outbox holds a scoreboard's largest burst");
-_Static_assert(RUNNING_AVERAGE_MOST_SENT <= GAME_SHELL_OBSERVER_MOST_SENT,
+_Static_assert(RUNNING_AVERAGE_MOST_SENT <= ACTOR_HOST_OBSERVER_MOST_SENT,
                "the observers' outbox holds a running average's largest burst");
 
 /* A hosting task: one mailbox for every actor it hosts, the message it is handling, and the outbox
@@ -43,45 +43,45 @@ typedef struct {
     UBaseType_t priority;
     QueueHandle_t mailbox;
     StaticQueue_t mailbox_queue;
-    uint8_t mailbox_storage[GAME_SHELL_MAILBOX * sizeof(Message)];
+    uint8_t mailbox_storage[ACTOR_HOST_MAILBOX * sizeof(Message)];
     Message message;
     Outbox outbox;
     PosixStack stack_paint;
     TaskHandle_t task;
     StaticTask_t task_buffer;
-    StackType_t stack[GAME_SHELL_TASK_STACK_WORDS];
-} GameShellTask;
+    StackType_t stack[ACTOR_HOST_TASK_STACK_WORDS];
+} ActorHostTask;
 
 /* A game's task: a game sends up to GAME_OUTBOX_CAPACITY for one message. */
 typedef struct {
-    GameShellTask task;
+    ActorHostTask task;
     Message outbox_storage[GAME_OUTBOX_CAPACITY];
     Pinsetter pinsetter;
-} GameShellGameTask;
+} ActorHostGameTask;
 
 /* The observers' task: every observer, sharing one stack, one mailbox and a small outbox. */
 typedef struct {
-    GameShellTask task;
-    Message outbox_storage[GAME_SHELL_OBSERVER_MOST_SENT];
-} GameShellObserverTask;
+    ActorHostTask task;
+    Message outbox_storage[ACTOR_HOST_OBSERVER_MOST_SENT];
+} ActorHostObserverTask;
 
 typedef struct {
     Router router;
-    GameShellGameTask game_tasks[GAME_SHELL_GAMES];
-    GameShellObserverTask observer_task;
-    GameActor games[GAME_SHELL_GAMES];
+    ActorHostGameTask game_tasks[ACTOR_HOST_GAMES];
+    ActorHostObserverTask observer_task;
+    GameActor games[ACTOR_HOST_GAMES];
     uint8_t game_count;
-    Scoreboard scoreboards[GAME_SHELL_SCOREBOARDS];
+    Scoreboard scoreboards[ACTOR_HOST_SCOREBOARDS];
     uint8_t scoreboard_count;
-    RunningAverage running_averages[GAME_SHELL_RUNNING_AVERAGES];
+    RunningAverage running_averages[ACTOR_HOST_RUNNING_AVERAGES];
     uint8_t running_average_count;
-} GameShell;
+} ActorHost;
 
-static GameShell s_shell;
+static ActorHost s_shell;
 
 /* The one late-binding point: the kind bound at the message's "to" decides what it means, and
  * which instance's receive function hears it. */
-static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *outbox)
+static void ActorHost_Dispatch(ActorHost *self, const Message *message, Outbox *outbox)
 {
     const Route *route = Router_RouteTo(&self->router, message->envelope.to);
     switch (route->kind) {
@@ -101,7 +101,7 @@ static void GameShell_Dispatch(GameShell *self, const Message *message, Outbox *
     }
 }
 
-static bool GameShell_TakeMessage(GameShellTask *host)
+static bool ActorHost_TakeMessage(ActorHostTask *host)
 {
     if ((host->pinsetter != NULL) && Pinsetter_Take(host->pinsetter, &host->message)) {
         return true;
@@ -109,53 +109,53 @@ static bool GameShell_TakeMessage(GameShellTask *host)
     return xQueueReceive(host->mailbox, &host->message, 0U) == pdPASS;
 }
 
-static void GameShell_Task(void *parameter)
+static void ActorHost_Task(void *parameter)
 {
-    GameShellTask *host = (GameShellTask *)parameter;
+    ActorHostTask *host = (ActorHostTask *)parameter;
     PosixStack_Paint(&host->stack_paint);
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        while (GameShell_TakeMessage(host)) {
+        while (ActorHost_TakeMessage(host)) {
             host->outbox.count = 0U;
-            GameShell_Dispatch(&s_shell, &host->message, &host->outbox);
+            ActorHost_Dispatch(&s_shell, &host->message, &host->outbox);
             Router_Deliver(&s_shell.router, &host->outbox);
         }
     }
 }
 
 /* A hosting task, its outbox in `outbox_storage`, of `most_sent` messages, at `priority`. */
-static void GameShellTask_Start(GameShellTask *host, Message *outbox_storage, uint8_t most_sent,
+static void ActorHostTask_Start(ActorHostTask *host, Message *outbox_storage, uint8_t most_sent,
                                 UBaseType_t priority)
 {
     Outbox_Init(&host->outbox, outbox_storage, most_sent);
     host->priority = priority;
-    host->mailbox = xQueueCreateStatic(GAME_SHELL_MAILBOX, sizeof(Message), host->mailbox_storage,
+    host->mailbox = xQueueCreateStatic(ACTOR_HOST_MAILBOX, sizeof(Message), host->mailbox_storage,
                                        &host->mailbox_queue);
     /* FUNCTION POINTER EXEMPTION: FreeRTOS takes a task's entry function by address. */
-    host->task = xTaskCreateStatic(&GameShell_Task, "actors", GAME_SHELL_TASK_STACK_WORDS, host,
+    host->task = xTaskCreateStatic(&ActorHost_Task, "actors", ACTOR_HOST_TASK_STACK_WORDS, host,
                                    priority, host->stack, &host->task_buffer);
 }
 
-static void GameShell_RequireBindableId(ActorId id)
+static void ActorHost_RequireBindableId(ActorId id)
 {
     configASSERT((id != ACTOR_ID_NONE) && (id < ROUTER_IDS));
 }
 
 /* An actor of `kind`, its instance already started, hosted by `host`. */
-static Route GameShell_HostedBy(ActorKind kind, uint8_t instance, const GameShellTask *host)
+static Route ActorHost_HostedBy(ActorKind kind, uint8_t instance, const ActorHostTask *host)
 {
     const Route route = { kind, instance, host->mailbox, host->task };
     return route;
 }
 
 /* A game at `id`, and the task of its own that hosts it: which instance it is. */
-static uint8_t GameShell_StartAGame(GameShell *self, ActorId id, UBaseType_t priority)
+static uint8_t ActorHost_StartAGame(ActorHost *self, ActorId id, UBaseType_t priority)
 {
-    configASSERT(self->game_count < GAME_SHELL_GAMES);
+    configASSERT(self->game_count < ACTOR_HOST_GAMES);
     const uint8_t instance = self->game_count;
     self->game_count++;
-    GameShellGameTask *game_task = &self->game_tasks[instance];
-    GameShellTask_Start(&game_task->task, game_task->outbox_storage, GAME_OUTBOX_CAPACITY,
+    ActorHostGameTask *game_task = &self->game_tasks[instance];
+    ActorHostTask_Start(&game_task->task, game_task->outbox_storage, GAME_OUTBOX_CAPACITY,
                         priority);
     Pinsetter_Start(&game_task->pinsetter, id, game_task->task.task);
     game_task->task.pinsetter = &game_task->pinsetter;
@@ -163,34 +163,34 @@ static uint8_t GameShell_StartAGame(GameShell *self, ActorId id, UBaseType_t pri
     return instance;
 }
 
-static void GameShell_HostAGame(GameShell *self, ActorId id, UBaseType_t priority)
+static void ActorHost_HostAGame(ActorHost *self, ActorId id, UBaseType_t priority)
 {
-    GameShell_RequireBindableId(id);
-    const uint8_t instance = GameShell_StartAGame(self, id, priority);
-    const GameShellTask *host = &self->game_tasks[instance].task;
-    Router_Bind(&self->router, id, GameShell_HostedBy(ACTOR_KIND_GAME, instance, host));
+    ActorHost_RequireBindableId(id);
+    const uint8_t instance = ActorHost_StartAGame(self, id, priority);
+    const ActorHostTask *host = &self->game_tasks[instance].task;
+    Router_Bind(&self->router, id, ActorHost_HostedBy(ACTOR_KIND_GAME, instance, host));
 }
 
-static void GameShell_StartTheObserversTask(GameShell *self, UBaseType_t priority)
+static void ActorHost_StartTheObserversTask(ActorHost *self, UBaseType_t priority)
 {
-    GameShellObserverTask *observers = &self->observer_task;
-    GameShellTask_Start(&observers->task, observers->outbox_storage,
-                        GAME_SHELL_OBSERVER_MOST_SENT, priority);
+    ActorHostObserverTask *observers = &self->observer_task;
+    ActorHostTask_Start(&observers->task, observers->outbox_storage,
+                        ACTOR_HOST_OBSERVER_MOST_SENT, priority);
     observers->task.pinsetter = NULL;
 }
 
 /* Why the observers must outrank every game is in ARCHITECTURE.md, section 3. */
-static void GameShell_RequireObserversOutrankEveryGame(const GameShell *self)
+static void ActorHost_RequireObserversOutrankEveryGame(const ActorHost *self)
 {
     for (uint8_t i = 0U; i < self->game_count; i++) {
         if (self->observer_task.task.priority <= self->game_tasks[i].task.priority) {
-            Fault_Stop("GameShell: the observers' task must outrank every game's, or a game's "
+            Fault_Stop("ActorHost: the observers' task must outrank every game's, or a game's "
                        "burst overflows their mailbox");
         }
     }
 }
 
-static void GameShell_UnbindEveryIdAndForgetEveryInstance(GameShell *self)
+static void ActorHost_UnbindEveryIdAndForgetEveryInstance(ActorHost *self)
 {
     Router_Reset(&self->router);
     self->game_count = 0U;
@@ -198,80 +198,80 @@ static void GameShell_UnbindEveryIdAndForgetEveryInstance(GameShell *self)
     self->running_average_count = 0U;
 }
 
-void GameShell_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
+void ActorHost_Start(UBaseType_t game_priority, UBaseType_t observer_priority)
 {
-    GameShell *self = &s_shell;
-    GameShell_UnbindEveryIdAndForgetEveryInstance(self);
-    GameShell_HostAGame(self, GAME_SHELL_GAME_ID, game_priority);
-    GameShell_StartTheObserversTask(self, observer_priority);
-    GameShell_RequireObserversOutrankEveryGame(self);
+    ActorHost *self = &s_shell;
+    ActorHost_UnbindEveryIdAndForgetEveryInstance(self);
+    ActorHost_HostAGame(self, ACTOR_HOST_GAME_ID, game_priority);
+    ActorHost_StartTheObserversTask(self, observer_priority);
+    ActorHost_RequireObserversOutrankEveryGame(self);
 }
 
-static uint8_t GameShell_StartScoreboard(GameShell *self)
+static uint8_t ActorHost_StartScoreboard(ActorHost *self)
 {
-    configASSERT(self->scoreboard_count < GAME_SHELL_SCOREBOARDS);
+    configASSERT(self->scoreboard_count < ACTOR_HOST_SCOREBOARDS);
     Scoreboard_Init(&self->scoreboards[self->scoreboard_count]);
     return self->scoreboard_count++;
 }
 
-static uint8_t GameShell_StartRunningAverage(GameShell *self)
+static uint8_t ActorHost_StartRunningAverage(ActorHost *self)
 {
-    configASSERT(self->running_average_count < GAME_SHELL_RUNNING_AVERAGES);
+    configASSERT(self->running_average_count < ACTOR_HOST_RUNNING_AVERAGES);
     RunningAverage_Init(&self->running_averages[self->running_average_count]);
     return self->running_average_count++;
 }
 
-void GameShell_HostGame(ActorId id, UBaseType_t priority)
+void ActorHost_HostGame(ActorId id, UBaseType_t priority)
 {
-    GameShell_HostAGame(&s_shell, id, priority);
-    GameShell_RequireObserversOutrankEveryGame(&s_shell);
+    ActorHost_HostAGame(&s_shell, id, priority);
+    ActorHost_RequireObserversOutrankEveryGame(&s_shell);
 }
 
-void GameShell_HostScoreboard(ActorId id)
+void ActorHost_HostScoreboard(ActorId id)
 {
-    GameShell_RequireBindableId(id);
-    const uint8_t instance = GameShell_StartScoreboard(&s_shell);
-    const GameShellTask *host = &s_shell.observer_task.task;
-    const Route route = GameShell_HostedBy(ACTOR_KIND_SCOREBOARD, instance, host);
+    ActorHost_RequireBindableId(id);
+    const uint8_t instance = ActorHost_StartScoreboard(&s_shell);
+    const ActorHostTask *host = &s_shell.observer_task.task;
+    const Route route = ActorHost_HostedBy(ACTOR_KIND_SCOREBOARD, instance, host);
     Router_Bind(&s_shell.router, id, route);
 }
 
-void GameShell_HostRunningAverage(ActorId id)
+void ActorHost_HostRunningAverage(ActorId id)
 {
-    GameShell_RequireBindableId(id);
-    const uint8_t instance = GameShell_StartRunningAverage(&s_shell);
-    const GameShellTask *host = &s_shell.observer_task.task;
-    const Route route = GameShell_HostedBy(ACTOR_KIND_RUNNING_AVERAGE, instance, host);
+    ActorHost_RequireBindableId(id);
+    const uint8_t instance = ActorHost_StartRunningAverage(&s_shell);
+    const ActorHostTask *host = &s_shell.observer_task.task;
+    const Route route = ActorHost_HostedBy(ACTOR_KIND_RUNNING_AVERAGE, instance, host);
     Router_Bind(&s_shell.router, id, route);
 }
 
-void GameShell_Bind(ActorId id, QueueHandle_t queue)
+void ActorHost_Bind(ActorId id, QueueHandle_t queue)
 {
-    GameShell_RequireBindableId(id);
+    ActorHost_RequireBindableId(id);
     const Route external = { ACTOR_KIND_EXTERNAL, 0U, queue, NULL };
     Router_Bind(&s_shell.router, id, external);
 }
 
-Pinsetter *GameShell_PinsetterOfLane(GameShellLane lane)
+Pinsetter *ActorHost_PinsetterOfLane(ActorHostLane lane)
 {
     if (lane >= s_shell.game_count) {
-        Fault_Stop("GameShell: a pinsetter counted a roll at a lane no game is hosted at");
+        Fault_Stop("ActorHost: a pinsetter counted a roll at a lane no game is hosted at");
     }
     return &s_shell.game_tasks[lane].pinsetter;
 }
 
-uint16_t GameShell_OutputsDropped(void)
+uint16_t ActorHost_OutputsDropped(void)
 {
     return Router_Dropped(&s_shell.router);
 }
 
-size_t GameShell_TaskStackUsed(void)
+size_t ActorHost_TaskStackUsed(void)
 {
-    const uint8_t game = Router_RouteTo(&s_shell.router, GAME_SHELL_GAME_ID)->instance;
+    const uint8_t game = Router_RouteTo(&s_shell.router, ACTOR_HOST_GAME_ID)->instance;
     return PosixStack_DeepestUse(&s_shell.game_tasks[game].task.stack_paint);
 }
 
-BaseType_t GameShell_Send(const Message *message, TickType_t wait)
+BaseType_t ActorHost_Send(const Message *message, TickType_t wait)
 {
     return Router_Post(&s_shell.router, message, wait) ? pdPASS : pdFAIL;
 }

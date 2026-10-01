@@ -13,8 +13,8 @@ reasons, with the measurements, are in [RTOS_ACTOR.md](RTOS_ACTOR.md).
  |  (pinsetter.c, _isr.c),  id -> kind, instance,  +--------------+ +--------------+ |
  |  bound to a game's id:   mailbox, task          | a game's     | | observers'   | |
  |  rolls, lost report -->                         | own task     | | shared task  | |
- |                          GameShell_Post         | mailbox      | | mailbox      | |
- |                          GameShell_Dispatch     | outbox (41)  | | outbox (1)   | |
+ |                          ActorHost_Post         | mailbox      | | mailbox      | |
+ |                          ActorHost_Dispatch     | outbox (41)  | | outbox (1)   | |
  |                                                 +------+-------+ +------+-------+ |
  +-----------------------------------------------------|-----------------|-----------+
                                     one switch on the kind at "to"
@@ -81,9 +81,9 @@ task, to wake.
   `message.c` classifies each selector once.
 
 Bindings are made at startup, before the scheduler runs:
-- **`GameShell_Start`** hosts the game at id 1.
-- **`GameShell_HostScoreboard` and `GameShell_HostRunningAverage`** host observers.
-- **`GameShell_Bind`** binds an external actor: a queue the actor reads itself, as a test's
+- **`ActorHost_Start`** hosts the game at id 1.
+- **`ActorHost_HostScoreboard` and `ActorHost_HostRunningAverage`** host observers.
+- **`ActorHost_Bind`** binds an external actor: a queue the actor reads itself, as a test's
   client or a recording double does.
 
 **The hosting tasks, and why the observers outrank every game.** Each game has a task of its
@@ -91,7 +91,7 @@ own, and every observer shares one task, with one mailbox of 4. For one message,
 up to 41, with no wait. With the observers' task above every game, it preempts the game after
 each post, so its mailbox never holds more than one of the game's events. Level with a game, or
 below it, the mailbox would hold everything the game sends until the game blocks, which only a
-busy period bounds. So `GameShell_Start` stops if the observers don't outrank every game. The
+busy period bounds. So `ActorHost_Start` stops if the observers don't outrank every game. The
 price is deadline order: an observer's work delays a game, which is why an observer kind's
 handling must be short and bounded.
 
@@ -118,26 +118,26 @@ replays into a copy, so a refused edit changes nothing.
 
 ```
  pinsetter interrupt
-   GameShell_PinsetterCountedFromIsr(0, 7)
+   ActorHost_PinsetterCountedFromIsr(0, 7)
      xQueueSendFromISR(pinsetter queue)   full? count it lost, overwrite the lost report
      vTaskNotifyGiveFromISR(game task)
- game task (GameShell_Task)
+ game task (ActorHost_Task)
    takes MSG_PINSETTER_ROLL, from no one, to the game's id
-   GameShell_Dispatch: the kind at the game's id is ACTOR_KIND_GAME
+   ActorHost_Dispatch: the kind at the game's id is ACTOR_KIND_GAME
      GameActor_Handle
        in play: the table says "pinsetter roll"
        Scorer_Roll: accepted; frame 1 complete, 7
        the outbox: MSG_FRAME_CHANGED to each subscriber id
-   GameShell_Post, per output: the row at "to" -> its mailbox, wake its task
+   ActorHost_Post, per output: the row at "to" -> its mailbox, wake its task
  scoreboard task
    takes MSG_FRAME_CHANGED
-   GameShell_Dispatch: ACTOR_KIND_SCOREBOARD
+   ActorHost_Dispatch: ACTOR_KIND_SCOREBOARD
      Scoreboard_Handle: the table says "frame changed"; FrameBoard_Hear
 ```
 
 ## 6. The stack
 
-A task's stack is sized from the static call graph. The deepest path from `GameShell_Task` goes
+A task's stack is sized from the static call graph. The deepest path from `ActorHost_Task` goes
 through the dispatch and the game's edit replay: 896 bytes in release, 1392 in debug. On this
 host, allowances for the C library and the port's signal frames are added on top. The budget is
 4608 bytes, checked by `tools/stack_depth.py` in CI.
@@ -153,7 +153,7 @@ switch on the kind. A painted stack cross-checks the budget, measuring 1583 byte
 | `scorer_test.cpp` | The scorer by example. Random games against three independent references (ten-pin, candlepin, and any rules), 5000 to 10000 games each. Edits against fresh games of the edited balls. Every refusal of rules it can't play |
 | `game_actor_test.cpp` | The game by messages alone: subscribers, the held rolls, the lifecycle, NOT_UNDERSTOOD, and the outbox's worst case, which fills it exactly |
 | `scoreboard_actor_test.cpp`, `running_average_test.cpp` | The two observer kinds, by messages alone |
-| `game_shell_test.cpp` | On the POSIX port: the queues, the interrupt, lost and dropped messages, ordering, the painted stack, and the rebinding proof (the same game and sender, with a scoreboard, an average or a recording double at the id) |
+| `actor_host_test.cpp` | On the POSIX port: the queues, the interrupt, lost and dropped messages, ordering, the painted stack, and the rebinding proof (the same game and sender, with a scoreboard, an average or a recording double at the id) |
 | `actor_state_is_hidden` | A compile that must fail: allocating an actor with only the components' public `include/` directories on the path |
 | `protocol_is_free_of_the_scorer` | A compile that must fail: naming the scorer's type with only the protocol's and the observers' headers included |
 | `protocol_test.cpp` | What the protocol promises of every kind: each answers QUERY_STATS, in any state |

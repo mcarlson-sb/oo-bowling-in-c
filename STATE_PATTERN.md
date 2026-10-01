@@ -131,7 +131,7 @@ case ACTOR_KIND_RUNNING_AVERAGE:
     break;
 case ACTOR_KIND_EXTERNAL:
 case ACTOR_KIND_NONE:
-    GameShell_CountDropped(self);
+    ActorHost_CountDropped(self);
     break;
 }
 ```

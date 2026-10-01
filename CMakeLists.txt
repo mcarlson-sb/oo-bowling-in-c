@@ -34,7 +34,7 @@ endif()
 # GCC 16, which builds here too:
 #   - everything but the interrupt side: 320 bytes, over the largest frame today, Scorer_Edit's.
 #   - the interrupt side's own files, rtos/pinsetter/pinsetter_isr.c and
-#     rtos/host/game_shell_isr.c: their own limit, with the RTOS shell.
+#     rtos/host/actor_host_isr.c: their own limit, with the RTOS shell.
 # GCC's option: clang has no -Wstack-usage. Every build that gates on it uses GCC.
 set(OO_C_STACK_LIMIT 320)
 
@@ -231,18 +231,18 @@ if(OO_C_RTOS)
     # The host allocates every actor's instance, so it sees their state; its users see only its
     # public header, which names the kinds the router binds and the game it hosts.
     oo_component(host rtos/host
-        SOURCES rtos/host/game_shell.c rtos/host/game_shell_isr.c
+        SOURCES rtos/host/actor_host.c rtos/host/actor_host_isr.c
         USES router game_actor freertos)
     target_link_libraries(host PRIVATE game_actor_state scoreboard_state running_average_state
                                        pinsetter port_posix support)
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-        set_source_files_properties(rtos/pinsetter/pinsetter_isr.c rtos/host/game_shell_isr.c
+        set_source_files_properties(rtos/pinsetter/pinsetter_isr.c rtos/host/actor_host_isr.c
             PROPERTIES COMPILE_OPTIONS -Wstack-usage=96)
     endif()
 
     add_executable(rtos_tests
         test/rtos/port/posix/rtos_skeleton_test.cpp
-        test/rtos/host/game_shell_test.cpp
+        test/rtos/host/actor_host_test.cpp
     )
     target_include_directories(rtos_tests PRIVATE test/fixtures)
     target_link_libraries(rtos_tests PRIVATE host scoreboard running_average GTest::gtest_main)

@@ -70,7 +70,7 @@ them pass:
   96 on the interrupt side.
 - **The stack contract** (`tools/stack_depth.py`): the deepest path from each task entry,
   through GCC's static call graph and the kernel's, plus measured allowances for the host's C
-  library and signal frames, against the budgets in `rtos/host/include/game_shell.h`. It fails on anything it
+  library and signal frames, against the budgets in `rtos/host/include/actor_host.h`. It fails on anything it
   can't bound: recursion, an unbounded frame, or an indirect call.
 
 Mutation testing (`tools/mutation.sh`, with Mull) is feedback, run by hand at each phase's
@@ -97,7 +97,7 @@ counted, as an answer it doesn't listen to is.
 
 ## Follow one roll
 
-1. The pinsetter's interrupt calls `GameShell_PinsetterCountedFromIsr(0, 7)`, for lane 0. The roll goes into
+1. The pinsetter's interrupt calls `ActorHost_PinsetterCountedFromIsr(0, 7)`, for lane 0. The roll goes into
    the pinsetter's queue, and the game task gets a notification.
 2. The game task wakes. It takes the roll as a `MSG_PINSETTER_ROLL` from no one, to the game's
    id, and dispatches it: the kind bound at that id is `ACTOR_KIND_GAME`, so
