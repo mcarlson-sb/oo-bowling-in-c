@@ -97,8 +97,7 @@ static void GameActor_LetHeldRollsThrough(GameActor *self, Outbox *outbox)
             GameActor_LoseTheRollsOnADeadLane(self, outbox);
             return;
         }
-        if (status != GAME_OK) {
-            HeldRolls_RefuseFirst(&self->held, status);
+        if (status != GAME_OK) { /* too many pins still: the reason it was held */
             GameActor_PublishHeld(self, 0U, outbox);
             return;
         }
