@@ -74,11 +74,4 @@ SECTIONS
         . = ALIGN(4);
         __bss_end = .;
     } > DSRAM1
-
-    /* The test image's heap, for the host tests' std::vector; the firmware has none. */
-    .heap (NOLOAD) :
-    {
-        . = ALIGN(8);
-        *(.heap .heap.*)
-    } > DSRAM1
 }

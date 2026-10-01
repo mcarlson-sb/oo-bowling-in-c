@@ -13,7 +13,8 @@
 void *_sbrk(ptrdiff_t increment);
 void _exit(int status);
 
-__attribute__((section(".heap"), aligned(8))) static uint8_t s_heap[TEST_HEAP_BYTES];
+/* In .bss, as any static: the firmware's link has no heap section to find, and none of this. */
+__attribute__((aligned(8))) static uint8_t s_heap[TEST_HEAP_BYTES];
 static size_t s_heap_used;
 
 void *_sbrk(ptrdiff_t increment)
