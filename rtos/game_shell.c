@@ -147,11 +147,6 @@ static Route GameShell_HostedBy(ActorKind kind, uint8_t instance, const GameShel
     return route;
 }
 
-static void GameShell_Route(GameShell *self, ActorId id, Route route)
-{
-    Router_Bind(&self->router, id, route);
-}
-
 /* A game at `id`, and the task of its own that hosts it: which instance it is. */
 static uint8_t GameShell_StartAGame(GameShell *self, ActorId id, UBaseType_t priority)
 {
@@ -172,7 +167,7 @@ static void GameShell_HostAGame(GameShell *self, ActorId id, UBaseType_t priorit
     GameShell_RequireBindableId(id);
     const uint8_t instance = GameShell_StartAGame(self, id, priority);
     const GameShellTask *host = &self->game_tasks[instance].task;
-    GameShell_Route(self, id, GameShell_HostedBy(ACTOR_KIND_GAME, instance, host));
+    Router_Bind(&self->router, id, GameShell_HostedBy(ACTOR_KIND_GAME, instance, host));
 }
 
 static void GameShell_StartTheObserversTask(GameShell *self, UBaseType_t priority)
@@ -235,23 +230,25 @@ void GameShell_HostScoreboard(ActorId id)
 {
     GameShell_RequireBindableId(id);
     const uint8_t instance = GameShell_StartScoreboard(&s_shell);
-    GameShell_Route(&s_shell, id, GameShell_HostedBy(ACTOR_KIND_SCOREBOARD, instance,
-                                                     &s_shell.observer_task.task));
+    const GameShellTask *host = &s_shell.observer_task.task;
+    const Route route = GameShell_HostedBy(ACTOR_KIND_SCOREBOARD, instance, host);
+    Router_Bind(&s_shell.router, id, route);
 }
 
 void GameShell_HostRunningAverage(ActorId id)
 {
     GameShell_RequireBindableId(id);
     const uint8_t instance = GameShell_StartRunningAverage(&s_shell);
-    GameShell_Route(&s_shell, id, GameShell_HostedBy(ACTOR_KIND_RUNNING_AVERAGE, instance,
-                                                     &s_shell.observer_task.task));
+    const GameShellTask *host = &s_shell.observer_task.task;
+    const Route route = GameShell_HostedBy(ACTOR_KIND_RUNNING_AVERAGE, instance, host);
+    Router_Bind(&s_shell.router, id, route);
 }
 
 void GameShell_Bind(ActorId id, QueueHandle_t queue)
 {
     GameShell_RequireBindableId(id);
     const Route external = { ACTOR_KIND_EXTERNAL, 0U, queue, NULL };
-    GameShell_Route(&s_shell, id, external);
+    Router_Bind(&s_shell.router, id, external);
 }
 
 Pinsetter *GameShell_PinsetterOfLane(GameShellLane lane)
