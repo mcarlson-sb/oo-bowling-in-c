@@ -14,7 +14,7 @@
 #               up with these changes?", in a fraction of the time. Mull skips a file that is
 #               new since <ref> altogether, so for new code use only.
 #   only <regex> debug, mutating only the source files whose path matches <regex> (for example
-#               'src/game_actor\.c'): a new module, all of it.
+#               'src/actors/game/game_actor\.c'): a new module, all of it.
 #
 # Every mutant runs the whole test binary, so the slowest tests decide how long a run takes.
 # By default the long random runs are left out, which take the binary past Mull's timeout under

@@ -69,7 +69,7 @@ jobs:
           name: gated-release-${{ github.sha }}
           path: |
             build/libbowling.a
-            include/*.h
+            src/**/include/*.h
           if-no-files-found: error
           retention-days: 1
 
@@ -120,7 +120,7 @@ jobs:
       # a dispatch can take, and three times it shaped the design (RTOS_ACTOR.md). Cognitive
       # complexity, at 7, stays the readability guard.
       - name: ENG-3.1's limits with lizard
-        run: pipx run --spec lizard==1.24.0 lizard -m -C 10 -L 50 -a 4 -w src include rtos
+        run: pipx run --spec lizard==1.24.0 lizard -m -C 10 -L 50 -a 4 -w src rtos
 
   # ENG-3.1's cognitive-complexity limit, 7, including the inline functions in the headers.
   cognitive-complexity:
@@ -139,8 +139,9 @@ jobs:
           clang-tidy-18
           -checks='-*,readability-function-cognitive-complexity'
           -config='{CheckOptions: {readability-function-cognitive-complexity.Threshold: 7}}'
-          -header-filter='(src|include|rtos)/.*' -warnings-as-errors='*'
-          src/*.c rtos/*.c -- -std=c11 -Iinclude -Isrc -Irtos
+          -header-filter='(src|rtos)/.*' -warnings-as-errors='*'
+          $(find src rtos -name '*.c' | sort)
+          -- -std=c11 $(find src rtos -name '*.h' -exec dirname {} + | sort -u | sed 's/^/-I/')
           -Ibuild/_deps/freertos_kernel-src/include
           -Ibuild/_deps/freertos_kernel-src/portable/ThirdParty/GCC/Posix
 
@@ -149,7 +150,7 @@ jobs:
   # so the library's and the RTOS shell's builds fail on any frame over its limit. The largest
   # frames go to the summary. Then the stack contract: tools/stack_depth.py walks GCC's static
   # call graph from each of the shell's entries, the kernel's own functions included, and fails
-  # on a depth over its budget in rtos/game_shell.h, or on one it can't bound.
+  # on a depth over its budget in rtos/host/include/game_shell.h, or on one it can't bound.
   stack-usage:
     name: stack-usage-${{ matrix.config }}
     runs-on: ubuntu-24.04
@@ -181,12 +182,12 @@ jobs:
         run: |
           set -o pipefail
           python3 tools/stack_depth.py build --external-allowance 1024 --async-allowance 2048 \
-            --entry GameShell_Task=rtos/game_shell.h:GAME_SHELL_TASK_STACK_BUDGET \
-            --entry GameShell_PinsetterCountedFromIsr=rtos/game_shell.h:GAME_SHELL_ISR_STACK_BUDGET \
-            --entry GameShell_Send=rtos/game_shell.h:GAME_SHELL_SEND_STACK_BUDGET \
+            --entry GameShell_Task=rtos/host/include/game_shell.h:GAME_SHELL_TASK_STACK_BUDGET \
+            --entry GameShell_PinsetterCountedFromIsr=rtos/host/include/game_shell.h:GAME_SHELL_ISR_STACK_BUDGET \
+            --entry GameShell_Send=rtos/host/include/game_shell.h:GAME_SHELL_SEND_STACK_BUDGET \
             | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # No function pointers in src/, include/ or rtos/ outside the files still being strangled and
+  # No function pointers in src/ or rtos/ outside the files still being strangled and
   # what FreeRTOS itself requires: over clang's AST, so typedefs and decays can't hide one.
   function-pointers:
     name: function-pointers

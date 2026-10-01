@@ -3,7 +3,7 @@
 JSON AST dump rather than by grepping text, so a typedef, a macro or an implicit decay can't hide
 one.
 
-Flags, in files under src/, include/ or rtos/:
+Flags, in files under src/ or rtos/:
   - a declaration whose type is a function pointer: a variable, struct member, parameter,
     typedef, or a function returning one;
   - taking a function's address: `&f`, or `f` decaying to a pointer anywhere but as the callee
@@ -38,13 +38,13 @@ DECLARATIONS = {"VarDecl", "FieldDecl", "ParmVarDecl", "TypedefDecl", "FunctionD
 
 
 def project_relative(path):
-    """src/..., include/... or rtos/..., or None for anything outside the project's own code."""
+    """src/... or rtos/..., or None for anything outside the project's own code."""
     try:
         relative = Path(path).resolve().relative_to(ROOT)
     except ValueError:
         return None
     parts = relative.parts
-    if parts and parts[0] in ("src", "include", "rtos"):
+    if parts and parts[0] in ("src", "rtos"):
         return relative.as_posix()
     return None
 
@@ -119,13 +119,18 @@ def walk(node, tracker, hits, parent=None, index_in_parent=0):
 
 def freertos_includes(freertos):
     port = Path(freertos) / "portable" / "ThirdParty" / "GCC" / "Posix"
-    return ["-I", str(ROOT / "rtos"), "-I", str(Path(freertos) / "include"),
-            "-I", str(port), "-I", str(port / "utils")]
+    return ["-I", str(Path(freertos) / "include"), "-I", str(port), "-I", str(port / "utils")]
+
+
+def project_includes():
+    """Every directory of the project's own code that holds a header: each component's include/,
+    and its private headers beside its sources."""
+    dirs = sorted({h.parent for top in ("src", "rtos") for h in (ROOT / top).rglob("*.h")})
+    return [flag for d in dirs for flag in ("-I", str(d))]
 
 
 def dump_ast(clang, source, extra_args, as_header):
-    command = [clang, "-fsyntax-only", "-std=c11", "-I", str(ROOT / "include"),
-               "-I", str(ROOT / "src")] + extra_args
+    command = [clang, "-fsyntax-only", "-std=c11"] + project_includes() + extra_args
     if as_header:
         command += ["-x", "c"]
     command += ["-Xclang", "-ast-dump=json", str(source)]
@@ -167,10 +172,10 @@ def main(argv):
     if "--" in argv:
         extra = argv[argv.index("--") + 1:]
 
-    sources = sorted((ROOT / "src").glob("*.c")) + sorted((ROOT / "rtos").glob("*.c"))
-    headers = (sorted((ROOT / "src").glob("*.h")) + sorted((ROOT / "include").glob("*.h")) +
-               sorted(h for h in (ROOT / "rtos").glob("*.h") if h.name != "FreeRTOSConfig.h"))
-    if any((ROOT / "rtos").glob("*.c")):
+    sources = sorted((ROOT / "src").rglob("*.c")) + sorted((ROOT / "rtos").rglob("*.c"))
+    headers = (sorted((ROOT / "src").rglob("*.h")) +
+               sorted(h for h in (ROOT / "rtos").rglob("*.h") if h.name != "FreeRTOSConfig.h"))
+    if any((ROOT / "rtos").rglob("*.c")):
         if "--freertos" not in argv:
             print("check_function_pointers: could not run: rtos/ has sources; "
                   "pass --freertos <FreeRTOS-Kernel source>")

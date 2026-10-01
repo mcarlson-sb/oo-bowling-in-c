@@ -28,22 +28,39 @@ if(OO_C_TSAN)
 endif()
 
 # ---- Library under test ---------------------------------------------------
-add_library(bowling STATIC
-    src/fault.c
-    src/roll_edit.c
-    src/scorer.c
-    src/rules.c
-    src/game_actor.c
-    src/game_protocol.c
-    src/outbox.c
-    src/message.c
-    src/scoreboard.c
-    src/frame_board.c
-    src/held_rolls.c
-    src/running_average.c
-    src/subscribers.c
+# Each component's public headers are in its include/; its private ones sit beside its sources.
+set(OO_C_PUBLIC_INCLUDES
+    src/value_objects/include
+    src/scorer/include
+    src/protocol/include
+    src/actors/game/include
+    src/actors/scoreboard/include
+    src/actors/running_average/include
+    src/support/include
 )
-target_include_directories(bowling PUBLIC include PRIVATE src)
+# The components' private headers: the scorer's arithmetic, and each actor's state and parts.
+set(OO_C_PRIVATE_INCLUDES
+    src/scorer
+    src/actors/game
+    src/actors/scoreboard
+    src/actors/running_average
+)
+add_library(bowling STATIC
+    src/support/fault.c
+    src/scorer/roll_edit.c
+    src/scorer/scorer.c
+    src/value_objects/rules.c
+    src/actors/game/game_actor.c
+    src/actors/game/game_protocol.c
+    src/protocol/outbox.c
+    src/protocol/message.c
+    src/actors/scoreboard/scoreboard.c
+    src/value_objects/frame_board.c
+    src/actors/game/held_rolls.c
+    src/actors/running_average/running_average.c
+    src/actors/game/subscribers.c
+)
+target_include_directories(bowling PUBLIC ${OO_C_PUBLIC_INCLUDES} PRIVATE ${OO_C_PRIVATE_INCLUDES})
 target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
 
 # Stack tripwires (ENG-1.3): -Wstack-usage warns, and -Werror fails the build, on any function
@@ -51,7 +68,8 @@ target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
 # The limits have headroom over the largest frames today, on CI's GCC 13 (the gate) and on
 # GCC 16, which builds here too:
 #   - everything but the interrupt side: 320 bytes, over the largest frame today, Scorer_Edit's.
-#   - the interrupt side's own file, rtos/pinsetter_isr.c: its own limit, with the RTOS shell.
+#   - the interrupt side's own file, rtos/pinsetter/pinsetter_isr.c: its own limit, with the
+#     RTOS shell.
 set(OO_C_STACK_LIMIT 320)
 # GCC's option: clang has no -Wstack-usage. Every build that gates on it uses GCC; clang only
 # builds the mutation-testing configuration below.
@@ -85,27 +103,33 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 add_executable(bowling_tests
-    test/scorer_test.cpp
-    test/fault_test.cpp
-    test/game_actor_test.cpp
-    test/scoreboard_actor_test.cpp
-    test/running_average_test.cpp
-    test/outbox_test.cpp
-    test/protocol_test.cpp
+    test/scorer/scorer_test.cpp
+    test/support/fault_test.cpp
+    test/actors/game/game_actor_test.cpp
+    test/actors/scoreboard/scoreboard_actor_test.cpp
+    test/actors/running_average/running_average_test.cpp
+    test/protocol/outbox_test.cpp
+    test/protocol/protocol_test.cpp
 )
 target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
-# The actors' state headers, in src/: the tests see inside, as the shell does.
-target_include_directories(bowling_tests PRIVATE src)
+# The actors' state headers: the tests see inside, as the shell does. And the tests' fixtures.
+target_include_directories(bowling_tests PRIVATE ${OO_C_PRIVATE_INCLUDES} test/fixtures)
 target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 
 include(GoogleTest)
 gtest_discover_tests(bowling_tests)
 
-# Each actor's state is its own: with include/ alone on the path, the compiler must refuse to
-# allocate one, for want of its definition. Fails if a state struct moves back into include/.
+# The components' public include paths, as compiler flags, for the probes below.
+set(OO_C_PUBLIC_INCLUDE_FLAGS "")
+foreach(dir IN LISTS OO_C_PUBLIC_INCLUDES)
+    list(APPEND OO_C_PUBLIC_INCLUDE_FLAGS -I ${CMAKE_CURRENT_SOURCE_DIR}/${dir})
+endforeach()
+
+# Each actor's state is its own: with the public include paths alone, the compiler must refuse
+# to allocate one, for want of its definition. Fails if a state struct moves into an include/.
 add_test(NAME actor_state_is_hidden
-         COMMAND ${CMAKE_C_COMPILER} -std=c11 -fsyntax-only -I ${CMAKE_CURRENT_SOURCE_DIR}/include
-                 ${CMAKE_CURRENT_SOURCE_DIR}/test/hidden_state_probe.c)
+         COMMAND ${CMAKE_C_COMPILER} -std=c11 -fsyntax-only ${OO_C_PUBLIC_INCLUDE_FLAGS}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test/probes/hidden_state_probe.c)
 # In the C locale, so GCC quotes with ASCII quotes; matched loosely all the same. One pattern for
 # GCC's wording and one for clang's (the mutation build's compiler), each requiring all three.
 set_tests_properties(actor_state_is_hidden PROPERTIES ENVIRONMENT "LC_ALL=C"
@@ -118,8 +142,10 @@ set_tests_properties(actor_state_is_hidden PROPERTIES ENVIRONMENT "LC_ALL=C"
 # The protocol depends on the rules and frames, not on the scorer that plays them: with the
 # protocol's and the observers' headers included, the scorer's type must be unknown.
 add_test(NAME protocol_is_free_of_the_scorer
-         COMMAND ${CMAKE_C_COMPILER} -std=c11 -fsyntax-only -I ${CMAKE_CURRENT_SOURCE_DIR}/include
-                 -I ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/test/scorer_free_probe.c)
+         COMMAND ${CMAKE_C_COMPILER} -std=c11 -fsyntax-only ${OO_C_PUBLIC_INCLUDE_FLAGS}
+                 -I ${CMAKE_CURRENT_SOURCE_DIR}/src/actors/scoreboard
+                 -I ${CMAKE_CURRENT_SOURCE_DIR}/src/actors/running_average
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test/probes/scorer_free_probe.c)
 set_tests_properties(protocol_is_free_of_the_scorer PROPERTIES ENVIRONMENT "LC_ALL=C"
     PASS_REGULAR_EXPRESSION "unknown type name .Scorer.")
 
@@ -154,39 +180,44 @@ if(OO_C_RTOS)
         ${FREERTOS_PORT_DIR}/port.c
         ${FREERTOS_PORT_DIR}/utils/wait_for_event.c
         # The kernel's hooks for its own static memory: it calls them, so they link with it.
-        rtos/rtos_memory.c
+        rtos/port/posix/rtos_memory.c
     )
-    set_source_files_properties(rtos/rtos_memory.c PROPERTIES COMPILE_OPTIONS "${OO_C_WARNINGS}")
+    set_source_files_properties(rtos/port/posix/rtos_memory.c PROPERTIES
+        COMPILE_OPTIONS "${OO_C_WARNINGS}")
     target_include_directories(freertos SYSTEM PUBLIC
-        rtos ${FREERTOS_DIR}/include ${FREERTOS_PORT_DIR} ${FREERTOS_PORT_DIR}/utils)
+        rtos/port/posix/include ${FREERTOS_DIR}/include ${FREERTOS_PORT_DIR}
+        ${FREERTOS_PORT_DIR}/utils)
     target_compile_definitions(freertos PRIVATE _GNU_SOURCE)
     find_package(Threads REQUIRED)
     target_link_libraries(freertos PUBLIC Threads::Threads bowling) # bowling: Fault_Stop
 
     # The RTOS shell: everything that touches FreeRTOS, under the library's warnings.
     add_library(rtos_shell STATIC
-        rtos/game_shell.c
-        rtos/pinsetter.c
-        rtos/pinsetter_isr.c
-        rtos/router.c
-        rtos/posix_stack.c
+        rtos/host/game_shell.c
+        rtos/pinsetter/pinsetter.c
+        rtos/pinsetter/pinsetter_isr.c
+        rtos/router/router.c
+        rtos/port/posix/posix_stack.c
     )
-    # src/ for the actors' state headers: the shell hosts the instances, so it sees inside.
-    target_include_directories(rtos_shell PUBLIC rtos PRIVATE src)
+    # The actors' state headers: the shell hosts the instances, so it sees inside.
+    target_include_directories(rtos_shell
+        PUBLIC rtos/host/include rtos/router/include rtos/pinsetter/include rtos/port/posix/include
+        PRIVATE ${OO_C_PRIVATE_INCLUDES})
     target_compile_options(rtos_shell PRIVATE ${OO_C_WARNINGS})
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
         target_compile_options(rtos_shell PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
         # The shell's interrupt side: the pinsetter's interrupt is 64 bytes in every gated build
         # on GCC 13 (debug, release, UBSan, TSan, coverage), so one limit over it.
-        set_source_files_properties(rtos/pinsetter_isr.c PROPERTIES
+        set_source_files_properties(rtos/pinsetter/pinsetter_isr.c PROPERTIES
             COMPILE_OPTIONS -Wstack-usage=96)
     endif()
     target_link_libraries(rtos_shell PUBLIC freertos bowling)
 
     add_executable(rtos_tests
-        test/rtos_skeleton_test.cpp
-        test/game_shell_test.cpp
+        test/rtos/port/posix/rtos_skeleton_test.cpp
+        test/rtos/host/game_shell_test.cpp
     )
+    target_include_directories(rtos_tests PRIVATE test/fixtures)
     target_link_libraries(rtos_tests PRIVATE rtos_shell GTest::gtest_main)
     target_compile_options(rtos_tests PRIVATE ${OO_TEST_WARNINGS})
     if(OO_C_TSAN)
@@ -208,18 +239,17 @@ if(OO_C_COVERAGE)
     target_link_options(bowling_tests PRIVATE --coverage)
     # A death test's child aborts before gcov saves its data. This Fault_Stop saves it first;
     # defined in the test executable, it keeps the library's fault.c out of the link.
-    target_sources(bowling_tests PRIVATE test/coverage_fault_stop.c)
+    target_sources(bowling_tests PRIVATE test/support/coverage_fault_stop.c)
 
     find_program(GCOV_EXECUTABLE gcov REQUIRED)
-    # Where CMake puts the library's object files, and so gcov's data files.
-    set(COVERAGE_DIR ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/bowling.dir/src)
+    # gcov's data files, beside the library's object files: one for each source's path.
+    set(COVERAGE_DIR ${CMAKE_CURRENT_BINARY_DIR})
     get_target_property(BOWLING_SOURCES bowling SOURCES)
+    list(REMOVE_ITEM BOWLING_SOURCES src/support/fault.c) # not linked: see coverage_fault_stop.c
     set(COVERAGE_DATA "")
     foreach(source IN LISTS BOWLING_SOURCES)
-        get_filename_component(name ${source} NAME)
-        list(APPEND COVERAGE_DATA ${name}.gcda)
+        list(APPEND COVERAGE_DATA ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/bowling.dir/${source}.gcda)
     endforeach()
-    list(REMOVE_ITEM COVERAGE_DATA fault.c.gcda) # not linked: see coverage_fault_stop.c
 
     # Every test executable ctest runs must be built first, or ctest fails on the missing one.
     set(COVERAGE_TEST_TARGETS bowling_tests)

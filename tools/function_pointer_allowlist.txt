@@ -7,4 +7,4 @@
 # RTOS shell files: what FreeRTOS itself requires (task entry functions, timer callbacks), each
 # use on a line marked "FUNCTION POINTER EXEMPTION:" with a reason.
 [rtos-shell]
-rtos/game_shell.c
+rtos/host/game_shell.c

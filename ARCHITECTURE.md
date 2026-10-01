@@ -28,8 +28,8 @@ reasons, with the measurements, are in [RTOS_ACTOR.md](RTOS_ACTOR.md).
  |      |  (values)               |                         |                        |
  |  outbox: replies, NOT_UNDERSTOOD, shared by every kind                            |
  +------------------------------------------------------------------------------------+
- include/  the vocabulary (rules.h), the protocol (message.h, outbox.h), the scorer, each actor's
-           functions: the protocol and the observers depend on the vocabulary, not the scorer
+ each component's include/: the vocabulary (value_objects), the protocol (message.h, outbox.h),
+           the scorer and each actor's functions; the actors depend on the vocabulary, not the scorer
 ```
 
 The core knows nothing of FreeRTOS. It takes a message and an outbox, and writes what it sends
@@ -64,7 +64,7 @@ typedef struct {
 
 ## 3. Routing and dispatch
 
-The router (`rtos/router.c`) holds the routing table, and the shell wires it. Each row is the
+The router (`rtos/router/`) holds the routing table, and the shell wires it. Each row is the
 kind bound at an id, which instance of that kind, the mailbox of the task that hosts it, and that
 task, to wake.
 
@@ -101,7 +101,7 @@ edit's new balls are carried inline for that reason.
 
 ## 4. The state each actor keeps
 
-Each actor's struct is defined in `src/*_state.h`. Only the library, the shell and the tests
+Each actor's struct is defined in a `*_state.h` beside it, in `src/actors/<kind>/`. Only the library, the shell and the tests
 can see it; everywhere else it is an incomplete type.
 
 | Actor | Its state | Bytes |
@@ -154,6 +154,6 @@ switch on the kind. A painted stack cross-checks the budget, measuring 1583 byte
 | `game_actor_test.cpp` | The game by messages alone: subscribers, the held rolls, the lifecycle, NOT_UNDERSTOOD, and the outbox's worst case, which fills it exactly |
 | `scoreboard_actor_test.cpp`, `running_average_test.cpp` | The two observer kinds, by messages alone |
 | `game_shell_test.cpp` | On the POSIX port: the queues, the interrupt, lost and dropped messages, ordering, the painted stack, and the rebinding proof (the same game and sender, with a scoreboard, an average or a recording double at the id) |
-| `actor_state_is_hidden` | A compile that must fail: allocating an actor with only `include/` on the path |
+| `actor_state_is_hidden` | A compile that must fail: allocating an actor with only the components' public `include/` directories on the path |
 | `protocol_is_free_of_the_scorer` | A compile that must fail: naming the scorer's type with only the protocol's and the observers' headers included |
 | `protocol_test.cpp` | What the protocol promises of every kind: each answers QUERY_STATS, in any state |

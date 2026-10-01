@@ -70,7 +70,7 @@ them pass:
   96 on the interrupt side.
 - **The stack contract** (`tools/stack_depth.py`): the deepest path from each task entry,
   through GCC's static call graph and the kernel's, plus measured allowances for the host's C
-  library and signal frames, against the budgets in `rtos/game_shell.h`. It fails on anything it
+  library and signal frames, against the budgets in `rtos/host/include/game_shell.h`. It fails on anything it
   can't bound: recursion, an unbounded frame, or an indirect call.
 
 Mutation testing (`tools/mutation.sh`, with Mull) is feedback, run by hand at each phase's
@@ -80,14 +80,14 @@ stop. It is not a gate.
 
 | Part | Where | What it is |
 |---|---|---|
-| The scorer core | `include/scorer.h`, `src/scorer.c`, `src/roll_edit.c` | A pure value: the rules it was started with, and the balls. It plays any rules the scorer can hold: frames, balls a frame, pins a rack, bonus balls by clearing ball, and a count rule, the pins still standing, off a full rack, that count as a clear. Rolls, edits (replacing, inserting or deleting balls) and questions about the frames |
-| The vocabulary | `include/bowling_types.h`, `include/rules.h`, `src/rules.c` | What every part speaks: pins, scores, a variant's rules and whether they can be played, the news of one frame, and the limits. The protocol and the observers depend on these, not on the scorer |
-| The protocol | `include/message.h`, `src/message.c`, `include/outbox.h`, `src/outbox.c` | One message type for every actor: an envelope (selector, from, to, seq) and a payload of that selector's fields. How a reply is addressed, and who hears NOT_UNDERSTOOD. The outbox stores what one message makes an actor send |
-| The game actor | `include/game_actor.h`, `src/game_actor.c`, `src/held_rolls.c`, `src/subscribers.c` | One game, and everything that may change it, as messages. NEW_GAME carries the rules. It holds pinsetter rolls the game refuses, until a correction lets them through, and tells its subscribers every frame that changes. The held rolls and the subscribers are values of their own |
-| The scoreboard and the running average | `include/scoreboard.h`, `include/running_average.h`, `src/` | Two kinds of subscriber. Each rebuilds the frames from the events it hears, and answers QUERY_FIGURE its own way: the total, or the average |
-| The shell | `rtos/game_shell.h`, `rtos/game_shell.c` | The actor host, on FreeRTOS: where the instances, the hosting tasks, the router and the pinsetter are created and wired. Each game has a task of its own, and the observers share one. One switch, on the kind at a message's `to`, calls that kind's receive function |
-| The router | `rtos/router.h`, `rtos/router.c` | The routing table: which kind and instance sits at each id, and the mailbox and task that host it. It posts to whoever is bound at a message's `to`, and counts what it couldn't |
-| The pinsetter | `rtos/pinsetter.h`, `rtos/pinsetter.c`, `rtos/pinsetter_isr.c` | A feeder bound to a game's id. Its interrupt counts each roll into a queue, and a full queue's losses into a one-slot report, and the task that hosts its game takes them as messages from no one |
+| The scorer core | `src/scorer/` | A pure value: the rules it was started with, and the balls. It plays any rules the scorer can hold: frames, balls a frame, pins a rack, bonus balls by clearing ball, and a count rule, the pins still standing, off a full rack, that count as a clear. Rolls, edits (replacing, inserting or deleting balls) and questions about the frames |
+| The vocabulary | `src/value_objects/` | What more than one component speaks: pins, scores, a variant's rules and whether they can be played, the news of one frame, the limits, and the frame board both observers keep. The protocol and the observers depend on these, not on the scorer |
+| The protocol | `src/protocol/` | One message type for every actor: an envelope (selector, from, to, seq) and a payload of that selector's fields. How a reply is addressed, and who hears NOT_UNDERSTOOD. The outbox stores what one message makes an actor send |
+| The game actor | `src/actors/game/` | One game, and everything that may change it, as messages. NEW_GAME carries the rules. It holds pinsetter rolls the game refuses, until a correction lets them through, and tells its subscribers every frame that changes. The held rolls, the subscribers and the protocol tables are its own parts |
+| The scoreboard and the running average | `src/actors/scoreboard/`, `src/actors/running_average/` | Two kinds of subscriber. Each rebuilds the frames from the events it hears, and answers QUERY_FIGURE its own way: the total, or the average |
+| The shell | `rtos/host/` | The actor host, on FreeRTOS: where the instances, the hosting tasks, the router and the pinsetter are created and wired. Each game has a task of its own, and the observers share one. One switch, on the kind at a message's `to`, calls that kind's receive function |
+| The router | `rtos/router/` | The routing table: which kind and instance sits at each id, and the mailbox and task that host it. It posts to whoever is bound at a message's `to`, and counts what it couldn't |
+| The pinsetter | `rtos/pinsetter/` | A feeder bound to a game's id. Its interrupt counts each roll into a queue, and a full queue's losses into a one-slot report, and the task that hosts its game takes them as messages from no one |
 
 Everything is statically allocated. Every selector is a request or an answer (a reply, an event,
 a NOT_UNDERSTOOD or statistics), and only requests are ever answered, by any kind in any state.
@@ -134,22 +134,27 @@ What Power of Ten overrides, and what it costs, is in RTOS_ACTOR.md's phase 3 re
   Switch Case, whose usual remedy, a function-pointer table, is ruled out.
 - **One message type for every kind** makes a 20-byte event a 44-byte one.
 
-## Public and private headers
+## Components, and their public and private headers
 
-- **`include/`** is the public interface: the scorer, the protocol, and each actor's functions,
-  with an incomplete type for its state.
-- **`src/`** has the private headers: each actor's state (`*_state.h`), the frame board, and
-  the scorer's edit arithmetic.
-- **`rtos/`** is the shell: its public header, and the private one its interrupt side uses.
+A directory is a component, with one job. Its public headers are in its own `include/`, and its
+private parts sit beside its sources. An actor's public header has an incomplete type for its
+state; the state itself is in a `*_state.h` beside the actor, which only the host and the tests
+see. `src/value_objects/` holds only the values more than one component shares; a value one
+component owns lives with it.
 
 ## Files
 
 | Path | Holds |
 |---|---|
-| `include/` | The public headers |
-| `src/` | The pure core, the actors and their private headers: no RTOS, no function pointers, no heap |
-| `rtos/` | The FreeRTOS configuration, the actor host and its interrupt side, and the POSIX port's stand-in for a stack high-water mark |
-| `test/` | GoogleTest suites for the scorer, each actor, and the shell on the POSIX port. Independent references, for ten-pin, candlepin and any rules. The rules presets the tests send. The hidden-state probe |
+| `src/value_objects/` | The values more than one component shares: the types, the statuses, the rules, the frame board |
+| `src/scorer/` | The scorer, and its edit arithmetic |
+| `src/protocol/` | Actor ids, the message, and the outbox |
+| `src/actors/game/`, `src/actors/scoreboard/`, `src/actors/running_average/` | Each kind of actor, its state, and its own parts |
+| `src/support/` | The fail-stop |
+| `rtos/host/` | The actor host on FreeRTOS: the instances, the hosting tasks and the dispatch |
+| `rtos/router/`, `rtos/pinsetter/` | The routing table, and the pinsetter with its interrupt side |
+| `rtos/port/posix/` | The FreeRTOS configuration for the POSIX port, the kernel's static memory, and the port's stand-in for a stack high-water mark |
+| `test/` | The same tree, with GoogleTest suites for each component and the shell on the POSIX port; `test/probes/`, the compiles that must fail; and `test/fixtures/`, the test outbox, the rules presets and the independent references |
 | `tools/` | The gates' scripts, the mutation-testing script and its Mull configuration, and the ruleset that guards `rtos-actor` |
 | `RTOS_ACTOR.md` | The experiment's record: baselines, decisions, and phase reports with their metrics |
 
