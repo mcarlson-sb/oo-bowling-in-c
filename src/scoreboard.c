@@ -42,8 +42,7 @@ static void Scoreboard_AnswerStats(const Scoreboard *self, const Message *messag
 {
     StatsPayload *stats = Outbox_BeginStats(outbox, message);
     stats->not_understood = self->not_understood;
-    stats->complete_frames = FrameBoard_CompleteCount(&self->board);
-    stats->total = FrameBoard_Total(&self->board);
+    FrameBoard_ReportTo(&self->board, stats);
 }
 
 void Scoreboard_Handle(Scoreboard *self, const Message *message, Outbox *outbox)

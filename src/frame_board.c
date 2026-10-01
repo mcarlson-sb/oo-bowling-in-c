@@ -34,6 +34,12 @@ uint8_t FrameBoard_CompleteCount(const FrameBoard *self)
     return count;
 }
 
+void FrameBoard_ReportTo(const FrameBoard *self, StatsPayload *stats)
+{
+    stats->complete_frames = FrameBoard_CompleteCount(self);
+    stats->total = FrameBoard_Total(self);
+}
+
 Score FrameBoard_Total(const FrameBoard *self)
 {
     Score total = 0U;

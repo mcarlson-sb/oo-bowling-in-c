@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "message.h"
 #include "rules.h"
 
 #ifdef __cplusplus
@@ -22,6 +23,9 @@ void FrameBoard_Init(FrameBoard *self);
 
 /* Takes in a frame's news, and ignores a frame number outside those kept. */
 void FrameBoard_Hear(FrameBoard *self, const FrameEvent *frame);
+
+/* Its facts, the complete frames and their total, into a kind's statistics. */
+void FrameBoard_ReportTo(const FrameBoard *self, StatsPayload *stats);
 
 /* The total of the complete frames. */
 Score FrameBoard_Total(const FrameBoard *self);

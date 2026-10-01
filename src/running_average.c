@@ -53,8 +53,7 @@ static void RunningAverage_AnswerStats(const RunningAverage *self, const Message
 {
     StatsPayload *stats = Outbox_BeginStats(outbox, message);
     stats->not_understood = self->not_understood;
-    stats->complete_frames = FrameBoard_CompleteCount(&self->board);
-    stats->total = FrameBoard_Total(&self->board);
+    FrameBoard_ReportTo(&self->board, stats);
 }
 
 void RunningAverage_Handle(RunningAverage *self, const Message *message, Outbox *outbox)
