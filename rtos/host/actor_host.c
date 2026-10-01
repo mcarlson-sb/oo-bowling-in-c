@@ -6,6 +6,7 @@
 
 #include "actor_host_lanes.h"
 #include "pinsetter.h"
+#include "port_memory.h"
 #include "router.h"
 #include "task_stack.h"
 #include "game_actor_state.h"
@@ -73,7 +74,8 @@ typedef struct {
     uint8_t running_average_count;
 } ActorHost;
 
-static ActorHost s_shell;
+/* Every instance, task, stack and queue the host has, in the one region the port places it in. */
+static ActorHost s_shell PORT_SHELL_MEMORY;
 
 /* The one late-binding point: the kind bound at the message's "to" decides what it means, and
  * which instance's receive function hears it. */

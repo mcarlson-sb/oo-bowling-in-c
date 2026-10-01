@@ -3,7 +3,7 @@
  * them. On mps2-an386 the flash is at QEMU's code memory, 0x00000000, and both RAM regions are in
  * its SRAM at 0x20000000.
  *   - PSRAM: the main stack, which exceptions and main before the scheduler run on;
- *   - DSRAM1: .data, .bss and .shell, the actor host's memory, placed by name. */
+ *   - DSRAM1: .data, and .bss with the actor host's memory, .bss.shell, placed first by name. */
 
 MEMORY
 {
@@ -58,18 +58,19 @@ SECTIONS
     } > DSRAM1 AT > FLASH
     __data_load = LOADADDR(.data);
 
-    /* .bss and .shell are zeroed together, from __bss_start to __bss_end. */
-    .bss (NOLOAD) :
-    {
-        . = ALIGN(4);
-        __bss_start = .;
-        *(.bss .bss.* COMMON)
-    } > DSRAM1
-
+    /* The actor host's memory (port_memory.h), and then the rest of .bss: both zeroed, from
+     * __bss_start to __bss_end. */
     .shell (NOLOAD) :
     {
         . = ALIGN(8);
-        *(.shell .shell.*)
+        __bss_start = .;
+        *(.bss.shell)
+    } > DSRAM1
+
+    .bss (NOLOAD) :
+    {
+        . = ALIGN(4);
+        *(.bss .bss.* COMMON)
         . = ALIGN(4);
         __bss_end = .;
     } > DSRAM1
