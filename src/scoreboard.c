@@ -45,6 +45,12 @@ static void Scoreboard_AnswerStats(const Scoreboard *self, const Message *messag
     FrameBoard_ReportTo(&self->board, stats);
 }
 
+static void Scoreboard_DoesNotUnderstand(Scoreboard *self, const Message *message, Outbox *outbox)
+{
+    self->not_understood++;
+    Outbox_NotUnderstood(outbox, message);
+}
+
 void Scoreboard_Handle(Scoreboard *self, const Message *message, Outbox *outbox)
 {
     switch (Scoreboard_RequestOf(message)) {
@@ -60,8 +66,7 @@ void Scoreboard_Handle(Scoreboard *self, const Message *message, Outbox *outbox)
     case SCOREBOARD_NOTHING_TO_DO:
         break;
     case SCOREBOARD_DOES_NOT_UNDERSTAND:
-        self->not_understood++;
-        Outbox_NotUnderstood(outbox, message);
+        Scoreboard_DoesNotUnderstand(self, message, outbox);
         break;
     }
 }

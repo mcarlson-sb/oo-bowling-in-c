@@ -56,6 +56,13 @@ static void RunningAverage_AnswerStats(const RunningAverage *self, const Message
     FrameBoard_ReportTo(&self->board, stats);
 }
 
+static void RunningAverage_DoesNotUnderstand(RunningAverage *self, const Message *message,
+                                            Outbox *outbox)
+{
+    self->not_understood++;
+    Outbox_NotUnderstood(outbox, message);
+}
+
 void RunningAverage_Handle(RunningAverage *self, const Message *message, Outbox *outbox)
 {
     switch (RunningAverage_RequestOf(message)) {
@@ -71,8 +78,7 @@ void RunningAverage_Handle(RunningAverage *self, const Message *message, Outbox 
     case AVERAGE_NOTHING_TO_DO:
         break;
     case AVERAGE_DOES_NOT_UNDERSTAND:
-        self->not_understood++;
-        Outbox_NotUnderstood(outbox, message);
+        RunningAverage_DoesNotUnderstand(self, message, outbox);
         break;
     }
 }
