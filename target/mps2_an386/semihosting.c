@@ -1,5 +1,6 @@
 #include "semihosting.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 /* The semihosting operations, and the reasons SYS_EXIT reports: QEMU exits 0 for an application
@@ -20,6 +21,18 @@ static uint32_t Semihosting_Call(uint32_t operation, uintptr_t argument)
 void Semihosting_Write(const char *text)
 {
     (void)Semihosting_Call(SEMIHOSTING_SYS_WRITE0, (uintptr_t)text);
+}
+
+void Semihosting_WriteNumber(uint32_t value)
+{
+    char digits[11];
+    size_t at = sizeof digits - 1U;
+    digits[at] = '\0';
+    do {
+        digits[--at] = (char)('0' + (value % 10U));
+        value /= 10U;
+    } while (value != 0U);
+    Semihosting_Write(&digits[at]);
 }
 
 _Noreturn void Semihosting_Exit(bool passed)

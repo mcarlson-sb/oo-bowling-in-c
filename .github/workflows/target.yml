@@ -41,3 +41,19 @@ jobs:
           echo "### The pure core's tests on mps2-an386" >> "$GITHUB_STEP_SUMMARY"
           grep -E 'tests ran|^\[  (PASSED|FAILED)  \]|FAULT' core_tests.txt | sed 's/^/    /' \
             >> "$GITHUB_STEP_SUMMARY"
+      # The whole firmware: boots, hosts both lanes, plays a game on each through the shell with
+      # the pinsetters driven by a timer interrupt, reads the results, and drives the game task's
+      # worst case for its painted stack.
+      - name: The firmware's smoke test
+        if: always()
+        run: |
+          set -o pipefail
+          timeout 120 qemu-system-arm -machine mps2-an386 -cpu cortex-m4 -nographic -monitor none \
+            -serial none -semihosting-config enable=on,target=native \
+            -kernel build/mps2_an386_firmware.elf | tee smoke.txt
+          grep -q '^SMOKE: PASSED' smoke.txt
+      - name: Report the smoke test
+        if: always()
+        run: |
+          echo "### The firmware's smoke test on mps2-an386" >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/    /' smoke.txt >> "$GITHUB_STEP_SUMMARY"

@@ -8,6 +8,7 @@
 # use on a line marked "FUNCTION POINTER EXEMPTION:" with a reason.
 [rtos-shell]
 rtos/host/actor_host.c
+target/mps2_an386/firmware_main.c
 
 # A target's startup: the vector table the hardware reads, by address, and the loop that runs
 # the C++ tests' constructors from the linker's table of them. Each `file: declaration...`. The

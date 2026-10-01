@@ -40,3 +40,20 @@ target_link_options(core_tests PRIVATE --specs=nosys.specs -Wl,--defsym=__main_s
 
 add_test(NAME core_tests_on_qemu COMMAND ${OO_C_QEMU_COMMAND} $<TARGET_FILE:core_tests>)
 set_tests_properties(core_tests_on_qemu PROPERTIES TIMEOUT 300 LABELS qemu)
+
+# The firmware on QEMU: the XMC4500's actors (target/firmware), its pinsetters driven by the
+# CMSDK timer's interrupt, and the smoke test's league task. The interrupt's file has the
+# interrupt side's stack tripwire.
+add_executable(mps2_an386_firmware target/mps2_an386/firmware_main.c
+                                   target/mps2_an386/pinsetter_timer.c)
+oo_mps2_executable(mps2_an386_firmware)
+target_compile_options(mps2_an386_firmware PRIVATE ${OO_C_WARNINGS})
+set_source_files_properties(target/mps2_an386/pinsetter_timer.c PROPERTIES
+    COMPILE_OPTIONS -Wstack-usage=96)
+target_link_libraries(mps2_an386_firmware PRIVATE firmware)
+target_link_options(mps2_an386_firmware PRIVATE -Wl,--print-memory-usage)
+oo_firmware_checks(mps2_an386_firmware target/mps2_an386/mps2_an386.ld)
+
+add_test(NAME smoke_on_qemu COMMAND ${OO_C_QEMU_COMMAND} $<TARGET_FILE:mps2_an386_firmware>)
+set_tests_properties(smoke_on_qemu PROPERTIES TIMEOUT 120 LABELS qemu
+                     PASS_REGULAR_EXPRESSION "SMOKE: PASSED")
