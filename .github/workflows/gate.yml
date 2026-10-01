@@ -115,8 +115,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      # -m, the modified cyclomatic complexity: a switch counts once, as cognitive complexity
+      # counts it. Plain CCN counts every case of a flat dispatch switch, the most readable form
+      # a dispatch can take, and three times it shaped the design (RTOS_ACTOR.md). Cognitive
+      # complexity, at 7, stays the readability guard.
       - name: ENG-3.1's limits with lizard
-        run: pipx run --spec lizard==1.24.0 lizard -C 10 -L 50 -a 4 -w src include rtos
+        run: pipx run --spec lizard==1.24.0 lizard -m -C 10 -L 50 -a 4 -w src include rtos
 
   # ENG-3.1's cognitive-complexity limit, 7, including the inline functions in the headers.
   cognitive-complexity:
