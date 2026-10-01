@@ -2284,3 +2284,121 @@ behavior.
 - **CI:** the target stage as a gate.
 
 **Stop.** Phase 5 ends here, as the brief asks.
+
+## Before phase 6: the review's decisions
+
+Phase 5 was accepted. These came from its review, and were done before phase 6.
+
+1. **Before a game, an answer is not understood** (64cdabb). It's counted and never answered, as
+   in every other state, and the table says so: its awaiting-rules rows for replies, events,
+   NOT_UNDERSTOOD and statistics had said "no game", which the class rule silenced, uncounted.
+2. **The dead-lane rule, everywhere** (78be746). A pinsetter roll outside a game or a practice is
+   refused and counted, never held: before the first game, after a game is over and before the
+   next NEW_GAME, and so also when a NEW_GAME starts, with or without practice. Rolls held mid-game
+   that a correction leaves past the game's end are lost and counted.
+   - **It reverses c895fec and afd0e41.** They held the pinsetter's rolls before the first game and
+     after a game ended, for the next game to play in. The three tests that pinned them say the new
+     rule, under new names.
+   - **What it loses:** a real ball thrown before the console is set up, or between games, is lost,
+     counted in `rolls_refused` and reported in QUERY_STATS, and never scored.
+   - **Holding now means only a disagreement with the machine mid-game,** a roll with more pins than
+     are standing. The tests that needed holding hold mid-game: 3 standing, then the pinsetter's 10.
+   - **What that removes:**
+     - **The new game's let-through,** and practice's discard: a new game never finds rolls held.
+     - **A held roll refused for a new reason.** A roll refused as game over is lost, not held, so
+       too many pins is the only reason a roll is held. Its test went with its hazard.
+     - **Holding at the end of a game.** So "over" became a derived state (dcc6efb). Certifying is
+       its row, not a question in the move, and the in-progress check became rows (ae70385):
+       practice, in play and holding refuse a NEW_GAME, and `GameActor_IsPlayingAGame` went.
+     - **Two messages of every game's outbox** (1ea4bee). An edit that lets held rolls through is
+       mid-game, so it finds at most nine frames complete, and the worst case falls from 43 to 41.
+       The shell's static RAM fell from 56,128 bytes to 55,952.
+3. **No disputed ball** until a feature needs it.
+4. **A clang debug build and its tests are a gate job,** `build-clang-debug`, beside GCC's
+   (0aa1f3b). From f5e6f7d to 7eecfe6, "always releasable" held only for GCC: clang refused an
+   implicit narrowing that GCC's `-Wconversion` accepted, and only the mutation build, which isn't a
+   gate, used clang. `promote` needs the new job, and `tools/rtos-actor-ruleset.json` requires it.
+   **The ruleset in the repository's settings needs the same check added by hand**, as an admin
+   change.
+5. **The protocol tables are their own module** (d62ea91): `src/game_protocol.{h,c}`. Each
+   module's job, in one sentence:
+   - **`game_protocol.c`:** what each message means to a game in each of its states.
+   - **`game_actor.c`:** a game, which works out its state from what it stores, and does what a
+     message means there.
+
+   `game_actor.c` went from 546 NLOC and 41 functions to 355 and 38. No other module was taken
+   out. The candidates were the publishing, what the game tells its subscribers (about 50 NLOC),
+   and the held-roll policy (about 60). Both read the game's private state. Taking either out would
+   turn its `static` functions into linkable ones behind a private header: one actor's internals
+   spread over files, with no job made clearer.
+6. **The complexity gate counts a switch once** (1b6ed4b), below.
+
+### The complexity limit was shaping the design: the gate was wrong, not the design
+
+**What changed.** The lizard gate runs with `-m`, the modified cyclomatic complexity: a switch
+counts once, as cognitive complexity counts it.
+- **Chosen over `#lizard forgives`.** `-m` is one rule for every function. "Forgives" is a list of
+  exceptions, each needing its review recorded beside the code, and such a list only grows.
+- **What `-m` gives up:** a non-dispatch switch with many cases also counts once. Cognitive
+  complexity, which stays at 7 and counts nesting, guards that.
+- **The policy.** Resource limits stay hard: the stack, the RAM and the tripwires. Proxy limits,
+  the complexity, the lines and the parameters, give way when they disagree with readability, and
+  the disagreement is recorded. The README says so.
+
+**The dispatch, revisited by reading.** The lifecycle's moves keep a switch of their own: NEW_GAME,
+END_PRACTICE, CERTIFY and the pinsetter's down and up are everything that changes the lifecycle, a
+real line. For the rest there were two trials, both built and tested:
+- **A command/query split** read worse. The refusals landed in both families: a refused edit is a
+  query, and a refused pinsetter roll a command, for its count. And in a protocol where every request
+  is answered, most commands are queries too, so a reader has to hold the rule to find a meaning.
+- **One switch for what a request asks** read best, and is kept (60150cc). A table entry is a
+  request, a move, and a refusal's reason: "what it asks, and whether the lifecycle moves". The
+  switch is 15 cases, 50 lines and a modified complexity of 2. It's at lizard's 50-line limit, so
+  the next request it gains crosses it. By the policy above, readability wins then, and it's
+  recorded.
+
+**Every place since phase 3 where the limit decided a shape, and whether it earns its keep without
+it:**
+
+| Where | What the limit decided | Without the limit |
+|---|---|---|
+| Phase 3: NEW_GAME before the request switch | One more case would have made 11 | Already gone: the tables have a row for it in every state |
+| Phase 3: the game's protocol table | Partly a way around the count: a switch on the selector would list every selector | **Earns its keep.** It reads an unlisted selector as not understood, keeps `-Wswitch` on the request enum, and, per state, writes every pair out, which is how the echo was found |
+| Phase 4: a function at complexity 12, folded into a table before its commit | The limit, at a gate failure | Never recorded at the time, so not re-judged here |
+| Phase 5: the three-way split | One switch would have had 13 cases at step 1, and more with each state | **Two-way now.** The moves follow a real line and stay. The answers/plays line, which only the limit drew, went |
+| Phase 5: every refusal as one answer, its reason in the entry | The answers' switch would have passed 9 | **Earns its keep:** a new refusal is a row, not a case |
+| The clean-up, 3f: routing through `(id, Route)` | Five parameters, past four | **Earns its keep:** `GameShell_HostedBy` names what a hosted route is |
+
+**A proposed ENG-3.1 wording**, brought, not applied: the constitution is yours to change.
+
+> **ENG-3.1 Complexity.** A function's complexity is limited so that a reader can follow every path
+> through it. Two measures guard that. **Cognitive complexity, at most 7**, is the readability
+> guard: it counts nesting and breaks in the flow, the things that make a function hard to follow.
+> **Modified cyclomatic complexity, at most 10**, bounds the paths a test has to cover. It counts a
+> `switch` once. **Known false positive:** plain cyclomatic complexity counts every case of a flat
+> dispatch switch, the most readable form a dispatch can take. At a limit of 10, that pushes a
+> dispatch into nested switches or tables, which read worse, for no reader's benefit, so plain
+> CCN is not the gate. Lines (50) and parameters (4) are proxies too. Where any of these disagrees
+> with readability, readability wins, and the disagreement is recorded where the design is.
+> Resource limits, stack, RAM and their tripwires, are not proxies, and never give way.
+
+**Metrics**, against phase 5's report (63f15f4):
+
+| | Phase 5 | Now |
+|---|---|---|
+| Tests | 180 | 181 |
+| NLOC, `src/`, `include/`, `rtos/` | 2,146 | 2,152 |
+| Functions | 193 | 191 |
+| `game_actor.c`, NLOC / functions | 546 / 41 | 355 / 38, and `game_protocol.c` |
+| Highest modified complexity (limit 10) | – | 6, `GameActor_State` |
+| Highest cognitive complexity (limit 7) | 5 | 5 |
+| Dispatch switches in the game | 3 | 2: what a request asks, and the moves |
+| The game's outbox | 43 | 41 |
+| The shell's static RAM, two lanes | 56,128 | 55,952 |
+| Stack contract, game task, release / debug (budget 4608) | 4064 / 4352 | 4064 / 4384: the one switch's frame |
+| Gate jobs | 11 | 12, with `build-clang-debug` |
+
+This took 10 commits, this record's included: 4 `[make-change]`, 1 `[make-easy]` and 5
+`[clean-up]`.
+
+**Stop.** For your review, before phase 6.
