@@ -80,4 +80,15 @@ function(oo_firmware_checks name linker_script)
     set_tests_properties(${name}_has_no_heap ${name}_memory PROPERTIES LABELS static)
 endfunction()
 
+# The pinsetter's interrupt calls FromISR functions, so it must be within the kernel's mask: a
+# priority more urgent than configMAX_SYSCALL_INTERRUPT_PRIORITY must fail to compile.
+separate_arguments(OO_C_CPU_FLAG_LIST UNIX_COMMAND "${OO_C_CPU_FLAGS}")
+add_test(NAME pinsetter_priority_is_within_the_kernels_mask
+         COMMAND ${CMAKE_C_COMPILER} -std=c11 -fsyntax-only ${OO_C_CPU_FLAG_LIST}
+                 "-I$<JOIN:$<TARGET_PROPERTY:freertos,INCLUDE_DIRECTORIES>,;-I>"
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test/probes/pinsetter_priority_probe.c
+         COMMAND_EXPAND_LISTS)
+set_tests_properties(pinsetter_priority_is_within_the_kernels_mask PROPERTIES LABELS static
+    ENVIRONMENT "LC_ALL=C" PASS_REGULAR_EXPRESSION "the kernel must mask it")
+
 include(target/${OO_C_TARGET}/image.cmake)
