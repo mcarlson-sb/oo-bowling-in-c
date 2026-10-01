@@ -27,42 +27,7 @@ if(OO_C_TSAN)
     add_link_options(-fsanitize=thread)
 endif()
 
-# ---- Library under test ---------------------------------------------------
-# Each component's public headers are in its include/; its private ones sit beside its sources.
-set(OO_C_PUBLIC_INCLUDES
-    src/value_objects/include
-    src/scorer/include
-    src/protocol/include
-    src/actors/game/include
-    src/actors/scoreboard/include
-    src/actors/running_average/include
-    src/support/include
-)
-# The components' private headers: the scorer's arithmetic, and each actor's state and parts.
-set(OO_C_PRIVATE_INCLUDES
-    src/scorer
-    src/actors/game
-    src/actors/scoreboard
-    src/actors/running_average
-)
-add_library(bowling STATIC
-    src/support/fault.c
-    src/scorer/roll_edit.c
-    src/scorer/scorer.c
-    src/value_objects/rules.c
-    src/actors/game/game_actor.c
-    src/actors/game/game_protocol.c
-    src/protocol/outbox.c
-    src/protocol/message.c
-    src/actors/scoreboard/scoreboard.c
-    src/value_objects/frame_board.c
-    src/actors/game/held_rolls.c
-    src/actors/running_average/running_average.c
-    src/actors/game/subscribers.c
-)
-target_include_directories(bowling PUBLIC ${OO_C_PUBLIC_INCLUDES} PRIVATE ${OO_C_PRIVATE_INCLUDES})
-target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
-
+# ---- The components -------------------------------------------------------
 # Stack tripwires (ENG-1.3): -Wstack-usage warns, and -Werror fails the build, on any function
 # whose frame is over the limit. Host numbers: a tripwire for regressions, not a target budget.
 # The limits have headroom over the largest frames today, on CI's GCC 13 (the gate) and on
@@ -70,25 +35,81 @@ target_compile_options(bowling PRIVATE ${OO_C_WARNINGS})
 #   - everything but the interrupt side: 320 bytes, over the largest frame today, Scorer_Edit's.
 #   - the interrupt side's own files, rtos/pinsetter/pinsetter_isr.c and
 #     rtos/host/game_shell_isr.c: their own limit, with the RTOS shell.
+# GCC's option: clang has no -Wstack-usage. Every build that gates on it uses GCC.
 set(OO_C_STACK_LIMIT 320)
-# GCC's option: clang has no -Wstack-usage. Every build that gates on it uses GCC; clang only
-# builds the mutation-testing configuration below.
-if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(bowling PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
-endif()
 
-# Mutation testing with Mull (tools/mull.yml, tools/mutation.sh): clang compiles the library
+# Mutation testing with Mull (tools/mull.yml, tools/mutation.sh): clang compiles the pure core
 # through Mull's plugin, which builds every mutant into it; mull-runner then runs the tests once
 # per mutant. The tests themselves aren't instrumented. Needs clang and Mull of the same LLVM
 # version (Mull 0.34.1 for LLVM 18 on Ubuntu 24.04).
-option(OO_C_MUTATION "Build the library with Mull's mutants in it (clang only)" OFF)
+option(OO_C_MUTATION "Build the pure core with Mull's mutants in it (clang only)" OFF)
 set(OO_C_MULL_PLUGIN "/usr/lib/mull-ir-frontend-18" CACHE FILEPATH "Mull's clang plugin")
-if(OO_C_MUTATION)
-    if(NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
-        message(FATAL_ERROR "OO_C_MUTATION needs clang, the compiler Mull's plugin loads into")
-    endif()
-    target_compile_options(bowling PRIVATE -fpass-plugin=${OO_C_MULL_PLUGIN} -g -grecord-command-line)
+if(OO_C_MUTATION AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "OO_C_MUTATION needs clang, the compiler Mull's plugin loads into")
 endif()
+option(OO_C_COVERAGE "Instrument the components for gcov coverage" OFF)
+
+# A component: a directory with one job. Its library is its SOURCES; its include/ is public, to
+# whatever links it, and its own directory private; and it links only the components it USES.
+# CORE marks the pure core, which Mull mutates. Every component gets the same warnings, stack
+# tripwire and coverage.
+function(oo_component name dir)
+    cmake_parse_arguments(COMPONENT "CORE" "" "SOURCES;USES" ${ARGN})
+    add_library(${name} STATIC ${COMPONENT_SOURCES})
+    target_include_directories(${name} PUBLIC ${dir}/include PRIVATE ${dir})
+    target_link_libraries(${name} PUBLIC ${COMPONENT_USES})
+    target_compile_options(${name} PRIVATE ${OO_C_WARNINGS})
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(${name} PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
+    endif()
+    if(OO_C_MUTATION AND COMPONENT_CORE)
+        target_compile_options(${name} PRIVATE -fpass-plugin=${OO_C_MULL_PLUGIN} -g
+                                               -grecord-command-line)
+    endif()
+    if(OO_C_COVERAGE)
+        target_compile_options(${name} PRIVATE --coverage -O0)
+    endif()
+    set_property(GLOBAL APPEND PROPERTY OO_C_COMPONENTS ${name})
+endfunction()
+
+# An actor's state, for the host that allocates its instances and the tests that look inside:
+# its own directory, which the actor's library keeps private from everything else.
+function(oo_actor_state name dir)
+    add_library(${name}_state INTERFACE)
+    target_include_directories(${name}_state INTERFACE ${dir})
+    target_link_libraries(${name}_state INTERFACE ${name})
+endfunction()
+
+oo_component(value_objects src/value_objects CORE
+    SOURCES src/value_objects/rules.c src/value_objects/frame_board.c)
+oo_component(support src/support
+    SOURCES src/support/fault.c)
+oo_component(scorer src/scorer CORE
+    SOURCES src/scorer/scorer.c src/scorer/roll_edit.c
+    USES value_objects)
+oo_component(protocol src/protocol CORE
+    SOURCES src/protocol/message.c src/protocol/outbox.c
+    USES value_objects)
+oo_component(game_actor src/actors/game CORE
+    SOURCES src/actors/game/game_actor.c src/actors/game/game_protocol.c
+            src/actors/game/held_rolls.c src/actors/game/subscribers.c
+    USES protocol scorer value_objects)
+oo_component(scoreboard src/actors/scoreboard CORE
+    SOURCES src/actors/scoreboard/scoreboard.c
+    USES protocol value_objects)
+oo_component(running_average src/actors/running_average CORE
+    SOURCES src/actors/running_average/running_average.c
+    USES protocol value_objects)
+oo_actor_state(game_actor src/actors/game)
+oo_actor_state(scoreboard src/actors/scoreboard)
+oo_actor_state(running_average src/actors/running_average)
+
+# The components' public include paths, as compiler flags, for the probes below.
+set(OO_C_PUBLIC_INCLUDE_FLAGS "")
+foreach(dir IN ITEMS src/value_objects src/scorer src/protocol src/actors/game
+                     src/actors/scoreboard src/actors/running_average src/support)
+    list(APPEND OO_C_PUBLIC_INCLUDE_FLAGS -I ${CMAKE_CURRENT_SOURCE_DIR}/${dir}/include)
+endforeach()
 
 # ---- Host unit tests (GoogleTest) -----------------------------------------
 include(FetchContent)
@@ -111,19 +132,14 @@ add_executable(bowling_tests
     test/protocol/outbox_test.cpp
     test/protocol/protocol_test.cpp
 )
-target_link_libraries(bowling_tests PRIVATE bowling GTest::gtest_main)
 # The actors' state headers: the tests see inside, as the shell does. And the tests' fixtures.
-target_include_directories(bowling_tests PRIVATE ${OO_C_PRIVATE_INCLUDES} test/fixtures)
+target_link_libraries(bowling_tests PRIVATE game_actor_state scoreboard_state running_average_state
+                                            support GTest::gtest_main)
+target_include_directories(bowling_tests PRIVATE test/fixtures)
 target_compile_options(bowling_tests PRIVATE ${OO_TEST_WARNINGS})
 
 include(GoogleTest)
 gtest_discover_tests(bowling_tests)
-
-# The components' public include paths, as compiler flags, for the probes below.
-set(OO_C_PUBLIC_INCLUDE_FLAGS "")
-foreach(dir IN LISTS OO_C_PUBLIC_INCLUDES)
-    list(APPEND OO_C_PUBLIC_INCLUDE_FLAGS -I ${CMAKE_CURRENT_SOURCE_DIR}/${dir})
-endforeach()
 
 # Each actor's state is its own: with the public include paths alone, the compiler must refuse
 # to allocate one, for want of its definition. Fails if a state struct moves into an include/.
@@ -189,37 +205,37 @@ if(OO_C_RTOS)
         ${FREERTOS_PORT_DIR}/utils)
     target_compile_definitions(freertos PRIVATE _GNU_SOURCE)
     find_package(Threads REQUIRED)
-    target_link_libraries(freertos PUBLIC Threads::Threads bowling) # bowling: Fault_Stop
+    target_link_libraries(freertos PUBLIC Threads::Threads support) # configASSERT: Fault_Stop
 
-    # The RTOS shell: everything that touches FreeRTOS, under the library's warnings.
-    add_library(rtos_shell STATIC
-        rtos/host/game_shell.c
-        rtos/host/game_shell_isr.c
-        rtos/pinsetter/pinsetter.c
-        rtos/pinsetter/pinsetter_isr.c
-        rtos/router/router.c
-        rtos/port/posix/posix_stack.c
-    )
-    # The actors' state headers: the shell hosts the instances, so it sees inside.
-    target_include_directories(rtos_shell
-        PUBLIC rtos/host/include rtos/router/include rtos/pinsetter/include rtos/port/posix/include
-        PRIVATE ${OO_C_PRIVATE_INCLUDES})
-    target_compile_options(rtos_shell PRIVATE ${OO_C_WARNINGS})
+    # The RTOS components, each a library under the same warnings. The interrupt side's files
+    # have the interrupt's own stack tripwire.
+    oo_component(port_posix rtos/port/posix
+        SOURCES rtos/port/posix/posix_stack.c
+        USES freertos)
+    oo_component(router rtos/router
+        SOURCES rtos/router/router.c
+        USES protocol freertos)
+    oo_component(pinsetter rtos/pinsetter
+        SOURCES rtos/pinsetter/pinsetter.c rtos/pinsetter/pinsetter_isr.c
+        USES protocol freertos)
+    # The host allocates every actor's instance, so it sees their state; its users see only its
+    # public header, which names the kinds the router binds and the game it hosts.
+    oo_component(host rtos/host
+        SOURCES rtos/host/game_shell.c rtos/host/game_shell_isr.c
+        USES router game_actor freertos)
+    target_link_libraries(host PRIVATE game_actor_state scoreboard_state running_average_state
+                                       pinsetter port_posix support)
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-        target_compile_options(rtos_shell PRIVATE -Wstack-usage=${OO_C_STACK_LIMIT})
-        # The shell's interrupt side: the pinsetter's interrupt is 64 bytes in every gated build
-        # on GCC 13 (debug, release, UBSan, TSan, coverage), so one limit over it.
         set_source_files_properties(rtos/pinsetter/pinsetter_isr.c rtos/host/game_shell_isr.c
             PROPERTIES COMPILE_OPTIONS -Wstack-usage=96)
     endif()
-    target_link_libraries(rtos_shell PUBLIC freertos bowling)
 
     add_executable(rtos_tests
         test/rtos/port/posix/rtos_skeleton_test.cpp
         test/rtos/host/game_shell_test.cpp
     )
     target_include_directories(rtos_tests PRIVATE test/fixtures)
-    target_link_libraries(rtos_tests PRIVATE rtos_shell GTest::gtest_main)
+    target_link_libraries(rtos_tests PRIVATE host scoreboard running_average GTest::gtest_main)
     target_compile_options(rtos_tests PRIVATE ${OO_TEST_WARNINGS})
     if(OO_C_TSAN)
         # The POSIX port's own synchronization is invisible to ThreadSanitizer; see the file.
@@ -231,45 +247,39 @@ if(OO_C_RTOS)
 endif()
 
 # ---- Coverage (gcov) ------------------------------------------------------
-# Instruments the library only, so GoogleTest's own code stays out of the report.
-# `cmake --build <dir> --target coverage` clears old data, runs the tests and prints a
+# Instruments the components only (oo_component), so GoogleTest's own code stays out of the
+# report. `cmake --build <dir> --target coverage` clears old data, runs the tests and prints a
 # gcov summary per source file. See the README's Coverage section for which gaps to expect.
-option(OO_C_COVERAGE "Instrument the library for gcov coverage" OFF)
 if(OO_C_COVERAGE)
-    target_compile_options(bowling PRIVATE --coverage -O0)
     target_link_options(bowling_tests PRIVATE --coverage)
     # A death test's child aborts before gcov saves its data. This Fault_Stop saves it first;
     # defined in the test executable, it keeps the library's fault.c out of the link.
     target_sources(bowling_tests PRIVATE test/support/coverage_fault_stop.c)
 
     find_program(GCOV_EXECUTABLE gcov REQUIRED)
-    # gcov's data files, beside the library's object files: one for each source's path.
-    set(COVERAGE_DIR ${CMAKE_CURRENT_BINARY_DIR})
-    get_target_property(BOWLING_SOURCES bowling SOURCES)
-    list(REMOVE_ITEM BOWLING_SOURCES src/support/fault.c) # not linked: see coverage_fault_stop.c
-    set(COVERAGE_DATA "")
-    foreach(source IN LISTS BOWLING_SOURCES)
-        list(APPEND COVERAGE_DATA ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/bowling.dir/${source}.gcda)
-    endforeach()
-
     # Every test executable ctest runs must be built first, or ctest fails on the missing one.
     set(COVERAGE_TEST_TARGETS bowling_tests)
     if(TARGET rtos_tests)
         list(APPEND COVERAGE_TEST_TARGETS rtos_tests)
-        # The shell is measured too; rtos_tests links it and the instrumented library.
-        target_compile_options(rtos_shell PRIVATE --coverage -O0)
         target_link_options(rtos_tests PRIVATE --coverage)
-        get_target_property(SHELL_SOURCES rtos_shell SOURCES)
-        foreach(source IN LISTS SHELL_SOURCES)
-            list(APPEND COVERAGE_DATA
-                ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/rtos_shell.dir/${source}.gcda)
-        endforeach()
     endif()
+    # gcov's data files, beside each component's object files: one for each source's path.
+    get_property(COMPONENTS GLOBAL PROPERTY OO_C_COMPONENTS)
+    set(COVERAGE_DATA "")
+    foreach(component IN LISTS COMPONENTS)
+        get_target_property(SOURCES ${component} SOURCES)
+        foreach(source IN LISTS SOURCES)
+            if(NOT source STREQUAL "src/support/fault.c") # not linked: see coverage_fault_stop.c
+                list(APPEND COVERAGE_DATA
+                    ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${component}.dir/${source}.gcda)
+            endif()
+        endforeach()
+    endforeach()
     add_custom_target(coverage
         COMMAND ${CMAKE_COMMAND} -E rm -f ${COVERAGE_DATA}
         COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_CURRENT_BINARY_DIR}
         COMMAND ${GCOV_EXECUTABLE} -b -c ${COVERAGE_DATA}
-        WORKING_DIRECTORY ${COVERAGE_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         DEPENDS ${COVERAGE_TEST_TARGETS}
         COMMENT "Running the tests with coverage, then gcov"
         VERBATIM)

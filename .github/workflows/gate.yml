@@ -68,7 +68,13 @@ jobs:
         with:
           name: gated-release-${{ github.sha }}
           path: |
-            build/libbowling.a
+            build/libvalue_objects.a
+            build/libscorer.a
+            build/libprotocol.a
+            build/libgame_actor.a
+            build/libscoreboard.a
+            build/librunning_average.a
+            build/libsupport.a
             src/**/include/*.h
           if-no-files-found: error
           retention-days: 1
@@ -170,7 +176,7 @@ jobs:
           cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             "-DCMAKE_C_FLAGS=-fstack-usage -fcallgraph-info=su"
-          cmake --build build --target bowling rtos_shell freertos
+          cmake --build build --target host
       - name: The largest frames
         run: |
           echo "### Largest stack frames, ${{ matrix.build_type }}" >> "$GITHUB_STEP_SUMMARY"
