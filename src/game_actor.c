@@ -1,8 +1,6 @@
 #include "game_actor.h"
 #include "game_actor_state.h"
 
-#include <assert.h>
-
 #include "game_protocol.h"
 #include "outbox.h"
 
@@ -298,7 +296,6 @@ static GameState GameActor_State(const GameActor *self)
     }
     return Scorer_IsOver(&self->scorer) ? GAME_STATE_OVER : GAME_STATE_IN_PLAY;
 }
-
 
 static void GameActor_DoWhatItAsks(GameActor *self, GameMeaning meaning, const Message *message,
                                    Outbox *outbox)
