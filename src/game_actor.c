@@ -19,12 +19,6 @@ void GameActor_Init(GameActor *self, ActorId id)
     self->rolls_refused = 0U;
 }
 
-static void GameOutbox_FrameChanged(Outbox *outbox, ActorId from, ActorId to,
-                                    const FrameEvent *frame)
-{
-    Outbox_Next(outbox, Envelope_Event(MSG_FRAME_CHANGED, from, to))->payload.frame = *frame;
-}
-
 static bool GameActor_HasHadAGame(const GameActor *self)
 {
     return self->lifecycle != GAME_AWAITING_RULES;
@@ -197,8 +191,9 @@ static void GameActor_SendCompleteFrames(const GameActor *self, ActorId subscrib
 {
     FrameEvents complete;
     Scorer_ReportCompleteFrames(&self->scorer, &complete);
+    const Envelope envelope = Envelope_Event(MSG_FRAME_CHANGED, self->id, subscriber);
     for (uint8_t e = 0U; e < complete.count; e++) {
-        GameOutbox_FrameChanged(outbox, self->id, subscriber, &complete.events[e]);
+        Outbox_Next(outbox, envelope)->payload.frame = complete.events[e];
     }
 }
 
