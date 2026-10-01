@@ -249,8 +249,7 @@ static void GameActor_NewGame(GameActor *self, const Message *message, Outbox *o
     Message *reply = Outbox_BeginReply(outbox, message);
     const GameStatus status =
         GameActor_StartNextGame(self, &message->payload.new_game, outbox);
-    Outbox_FinishReply(reply, ReplyStatus_OfGame(status),
-                       (status == GAME_OK) ? Scorer_Score(&self->scorer) : 0U);
+    Outbox_FinishReply(reply, ReplyStatus_OfGame(status), 0U); /* a new game has no balls yet */
 }
 
 /* A request its state refuses, for the reason its row gives. */
