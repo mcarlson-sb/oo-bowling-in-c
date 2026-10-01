@@ -1282,3 +1282,17 @@ TEST(GameActorPinsetterTest, should_lose_the_held_rolls_a_correction_leaves_past
     EXPECT_EQ(0U, outbox.items[0].payload.stats.rolls_held);
     EXPECT_EQ(2U, outbox.items[0].payload.stats.rolls_lost);
 }
+
+TEST(GameActorLifecycleTest, should_not_understand_a_selector_past_the_protocols_end_before_a_game_either)
+{
+    /* "No game" is the answer to a request the game knows; one no kind knows isn't understood,
+     * whatever the state. */
+    GameActor actor;
+    GameActor_Init(&actor, kGame);
+    TestOutbox outbox;
+    Message nonsense = RollRequest(1U, 0U);
+    nonsense.envelope.selector = static_cast<Selector>(MSG_SELECTOR_COUNT);
+    Send(&actor, nonsense, &outbox);
+    ASSERT_EQ(1U, outbox.count);
+    EXPECT_EQ(MSG_NOT_UNDERSTOOD, outbox.items[0].envelope.selector);
+}
