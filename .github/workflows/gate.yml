@@ -79,6 +79,31 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # The target images, cross-built for the Cortex-M4F with GNU Arm Embedded: the components and
+  # the RTOS side on FreeRTOS's ARM_CM4F port, under the same warnings, for the bike's XMC4500 and
+  # for QEMU's mps2-an386. A gate because every commit must build for the target; running the
+  # QEMU image is the target workflow's (target.yml), which reports.
+  build-target:
+    name: build-target-${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [xmc4500, mps2_an386]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install GNU Arm Embedded
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc-arm-none-eabi libnewlib-arm-none-eabi
+          arm-none-eabi-gcc --version | head -1
+      - name: Configure
+        run: >-
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-cm4f.cmake
+          -DOO_C_TARGET=${{ matrix.image }} -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel
+
   tsan:
     name: tsan
     runs-on: ubuntu-24.04
@@ -146,8 +171,9 @@ jobs:
           -checks='-*,readability-function-cognitive-complexity'
           -config='{CheckOptions: {readability-function-cognitive-complexity.Threshold: 7}}'
           -header-filter='(src|rtos)/.*' -warnings-as-errors='*'
-          $(find src rtos -name '*.c' | sort)
-          -- -std=c11 $(find src rtos -name '*.h' -exec dirname {} + | sort -u | sed 's/^/-I/')
+          $(find src rtos -name '*.c' -not -path 'rtos/port/cm4f/*' | sort)
+          -- -std=c11 $(find src rtos -name '*.h' -not -path 'rtos/port/cm4f/*' -exec dirname {} +
+          | sort -u | sed 's/^/-I/')
           -Ibuild/_deps/freertos_kernel-src/include
           -Ibuild/_deps/freertos_kernel-src/portable/ThirdParty/GCC/Posix
 
@@ -241,7 +267,8 @@ jobs:
   # the summary and time to green can't fail at all.
   promote:
     name: promote
-    needs: [build, tsan, coverage, lizard, cognitive-complexity, stack-usage, function-pointers, every-commit]
+    needs: [build, build-target, tsan, coverage, lizard, cognitive-complexity, stack-usage, function-pointers,
+            every-commit]
     if: github.event_name == 'push' && github.ref == 'refs/heads/integration/rtos-actor'
     runs-on: ubuntu-24.04
     permissions:

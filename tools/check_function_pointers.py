@@ -15,9 +15,12 @@ Two ways out, both visible in review:
   - a line carrying the marker `FUNCTION POINTER EXEMPTION:` with a reason, in a file listed as
     an RTOS shell in the allowlist's [rtos-shell] section: what FreeRTOS itself requires.
 
-Usage: check_function_pointers.py [--clang CLANG] [--freertos DIR] [-- extra clang args]
+Usage: check_function_pointers.py [--clang CLANG] [--freertos DIR] [--port PORT]
+                                  [-- extra clang args]
   --freertos DIR  the FreeRTOS-Kernel source, for the RTOS shell's headers (CMake fetches it to
                   <build>/_deps/freertos_kernel-src). Required when rtos/ has sources.
+  --port PORT     the FreeRTOS port whose rtos/port/<PORT> is checked: posix (the default) or
+                  cm4f. Each port has its own FreeRTOSConfig.h, so the others' are left out.
 Exit status: 0 clean, 1 violations, 2 the check itself couldn't run.
 """
 
@@ -117,20 +120,37 @@ def walk(node, tracker, hits, parent=None, index_in_parent=0):
         walk(child, tracker, hits, node, index)
 
 
-def freertos_includes(freertos):
-    port = Path(freertos) / "portable" / "ThirdParty" / "GCC" / "Posix"
-    return ["-I", str(Path(freertos) / "include"), "-I", str(port), "-I", str(port / "utils")]
+FREERTOS_PORT_DIRS = {
+    "posix": ["portable/ThirdParty/GCC/Posix", "portable/ThirdParty/GCC/Posix/utils"],
+    "cm4f": ["portable/GCC/ARM_CM4F"],
+}
 
 
-def project_includes():
+def freertos_includes(freertos, port):
+    dirs = ["include"] + FREERTOS_PORT_DIRS[port]
+    return [flag for d in dirs for flag in ("-I", str(Path(freertos) / d))]
+
+
+def is_for_port(path, port):
+    """Everything but another port's rtos/port/<name>/."""
+    parts = path.relative_to(ROOT).parts
+    return not (len(parts) > 3 and parts[:2] == ("rtos", "port") and parts[2] != port)
+
+
+def project_files(pattern, port):
+    return sorted(f for top in ("src", "rtos") for f in (ROOT / top).rglob(pattern)
+                  if is_for_port(f, port))
+
+
+def project_includes(port):
     """Every directory of the project's own code that holds a header: each component's include/,
     and its private headers beside its sources."""
-    dirs = sorted({h.parent for top in ("src", "rtos") for h in (ROOT / top).rglob("*.h")})
+    dirs = sorted({h.parent for h in project_files("*.h", port)})
     return [flag for d in dirs for flag in ("-I", str(d))]
 
 
-def dump_ast(clang, source, extra_args, as_header):
-    command = [clang, "-fsyntax-only", "-std=c11"] + project_includes() + extra_args
+def dump_ast(clang, source, extra_args, as_header, port):
+    command = [clang, "-fsyntax-only", "-std=c11"] + project_includes(port) + extra_args
     if as_header:
         command += ["-x", "c"]
     command += ["-Xclang", "-ast-dump=json", str(source)]
@@ -172,21 +192,24 @@ def main(argv):
     if "--" in argv:
         extra = argv[argv.index("--") + 1:]
 
-    sources = sorted((ROOT / "src").rglob("*.c")) + sorted((ROOT / "rtos").rglob("*.c"))
-    headers = (sorted((ROOT / "src").rglob("*.h")) +
-               sorted(h for h in (ROOT / "rtos").rglob("*.h") if h.name != "FreeRTOSConfig.h"))
+    port = argv[argv.index("--port") + 1] if "--port" in argv else "posix"
+    if port not in FREERTOS_PORT_DIRS:
+        print("check_function_pointers: could not run: no port '%s'" % port)
+        return 2
+    sources = project_files("*.c", port)
+    headers = [h for h in project_files("*.h", port) if h.name != "FreeRTOSConfig.h"]
     if any((ROOT / "rtos").rglob("*.c")):
         if "--freertos" not in argv:
             print("check_function_pointers: could not run: rtos/ has sources; "
                   "pass --freertos <FreeRTOS-Kernel source>")
             return 2
-        extra = freertos_includes(argv[argv.index("--freertos") + 1]) + extra
+        extra = freertos_includes(argv[argv.index("--freertos") + 1], port) + extra
     hits = {}
     try:
         for source in sources:
-            walk(dump_ast(clang, source, extra, False), LocationTracker(), hits)
+            walk(dump_ast(clang, source, extra, False, port), LocationTracker(), hits)
         for header in headers:
-            walk(dump_ast(clang, header, extra, True), LocationTracker(), hits)
+            walk(dump_ast(clang, header, extra, True, port), LocationTracker(), hits)
     except (RuntimeError, OSError, json.JSONDecodeError) as error:
         print("check_function_pointers: could not run: %s" % error)
         return 2

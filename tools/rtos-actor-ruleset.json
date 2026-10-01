@@ -41,6 +41,14 @@
             "integration_id": 15368
           },
           {
+            "context": "build-target-xmc4500",
+            "integration_id": 15368
+          },
+          {
+            "context": "build-target-mps2_an386",
+            "integration_id": 15368
+          },
+          {
             "context": "tsan",
             "integration_id": 15368
           },
