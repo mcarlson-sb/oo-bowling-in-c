@@ -9,10 +9,10 @@
 /* Left unpainted just below the painter, for memset's own frame. */
 #define TASK_STACK_GUARD 512U
 
-void TaskStack_Paint(TaskStack *self)
+void TaskStack_Paint(TaskStack *self, const void *given)
 {
     volatile uint8_t here = 0U;
-    self->lowest = PortStack_Lowest();
+    self->lowest = PortStack_Lowest(given);
     self->painted_from = (uintptr_t)&here;
     memset((void *)self->lowest, TASK_STACK_PAINT,
            (self->painted_from - TASK_STACK_GUARD) - self->lowest);

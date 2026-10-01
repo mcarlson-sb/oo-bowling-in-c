@@ -108,7 +108,7 @@ static bool ActorHost_TakeMessage(ActorHostTask *host)
 static void ActorHost_Task(void *parameter)
 {
     ActorHostTask *host = (ActorHostTask *)parameter;
-    TaskStack_Paint(&host->stack_paint);
+    TaskStack_Paint(&host->stack_paint, host->stack);
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         while (ActorHost_TakeMessage(host)) {

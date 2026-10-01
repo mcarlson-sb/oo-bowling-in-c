@@ -5,8 +5,9 @@
 #include <pthread.h>
 #include <stddef.h>
 
-uintptr_t PortStack_Lowest(void)
+uintptr_t PortStack_Lowest(const void *given)
 {
+    (void)given;
     pthread_attr_t attributes;
     void *lowest = NULL;
     size_t size = 0U;
