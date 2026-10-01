@@ -7,7 +7,9 @@ the deepest of its callees. It fails, rather than guess, on what it can't bound:
   - recursion, which has no static bound;
   - a frame of dynamic size that GCC couldn't bound;
   - an indirect call: with no function pointers in project code, only FreeRTOS's own task start
-    has one, and it is the entry, never a callee.
+    has one, and it is the entry, never a callee;
+  - a call to a function defined in two places: name the one the image doesn't link with
+    --not-linked (a target's own Fault_Stop links instead of src/support/fault.c's).
 A call to a function with no call graph (the C library, pthreads: host-only code under the POSIX
 port) costs a fixed allowance per call, and each one reached is named in the report. On top of
 the deepest path, one asynchronous frame: what can land on the stack at any point, a signal
@@ -19,7 +21,7 @@ Each entry's budget is a #define in a header, in bytes, so the code that sizes t
 check read the same number.
 
 Usage: stack_depth.py <build-dir> --external-allowance BYTES --async-allowance BYTES
-                      --entry FUNCTION=HEADER:MACRO [--entry ...]
+                      --entry FUNCTION=HEADER:MACRO [--entry ...] [--not-linked SOURCE ...]
 Exit status: 0 every entry within budget, 1 one over it or unboundable, 2 nothing to read.
 """
 
@@ -59,7 +61,10 @@ class Graph:
             return target
         name = target.rsplit(":", 1)[-1]
         definitions = self.by_name.get(name, set())
-        return next(iter(definitions)) if len(definitions) == 1 else None
+        if len(definitions) > 1:
+            raise Unboundable("%s is defined in %d places: %s" % (
+                name, len(definitions), ", ".join(sorted(short(d) for d in definitions))))
+        return next(iter(definitions)) if definitions else None
 
 
 class Unboundable(Exception):
@@ -115,9 +120,11 @@ def main(argv):
     allowance = int(argv[argv.index("--external-allowance") + 1])
     asynchronous = int(argv[argv.index("--async-allowance") + 1])
     entries = [argv[i + 1] for i, arg in enumerate(argv) if arg == "--entry"]
+    not_linked = [argv[i + 1] for i, arg in enumerate(argv) if arg == "--not-linked"]
 
     graph = Graph()
-    files = [f for f in build.rglob("*.ci") if "CompilerId" not in str(f)]
+    files = [f for f in build.rglob("*.ci") if "CompilerId" not in str(f) and
+             not any(f.as_posix().endswith("/%s.ci" % source) for source in not_linked)]
     for path in files:
         graph.read(path)
     if not graph.frames:
@@ -128,7 +135,12 @@ def main(argv):
     for entry in entries:
         function, spec = entry.split("=", 1)
         budget = budget_of(spec)
-        title = graph.resolve(function)
+        try:
+            title = graph.resolve(function)
+        except Unboundable as reason:
+            print("stack_depth: %s: can't be bounded: %s" % (function, reason))
+            failed = True
+            continue
         if title is None:
             print("stack_depth: %s: not in the call graph" % function)
             failed = True

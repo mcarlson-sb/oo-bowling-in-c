@@ -125,6 +125,40 @@ jobs:
           --sysroot=/usr/lib/arm-none-eabi -ffreestanding -isystem build/_deps/cmsis
           $([ -d build/_deps/xmc4500 ] && echo -isystem build/_deps/xmc4500)
 
+  # ENG-1.3's stack contract on the target: the XMC4500 firmware's static call graph, with the
+  # target's allowances, 16 bytes a call into the C library (newlib's memset pushes 12, its memcpy
+  # none) and one 32-byte exception frame: the M4F's without floating point, which only the
+  # port's PendSV touches. Budgets: rtos/port/cm4f/include/stack_budgets.h.
+  stack-usage-target:
+    name: stack-usage-target-${{ matrix.build_type }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install GNU Arm Embedded
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc-arm-none-eabi libnewlib-arm-none-eabi \
+            libstdc++-arm-none-eabi-newlib
+      - name: Build with the call graph
+        run: |
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-cm4f.cmake \
+            -DOO_C_TARGET=xmc4500 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            "-DOO_C_EXTRA_FLAGS=-fstack-usage -fcallgraph-info=su"
+          cmake --build build --target xmc4500_firmware
+      - name: The stack contract, from the static call graph
+        run: |
+          set -o pipefail
+          python3 tools/stack_depth.py build --external-allowance 16 --async-allowance 32 \
+            --not-linked src/support/fault.c \
+            --entry ActorHost_Task=rtos/port/cm4f/include/stack_budgets.h:ACTOR_HOST_TASK_STACK_BUDGET \
+            --entry ActorHost_PinsetterCountedFromIsr=rtos/port/cm4f/include/stack_budgets.h:ACTOR_HOST_ISR_STACK_BUDGET \
+            --entry ActorHost_Send=rtos/port/cm4f/include/stack_budgets.h:ACTOR_HOST_SEND_STACK_BUDGET \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
   tsan:
     name: tsan
     runs-on: ubuntu-24.04
@@ -288,7 +322,7 @@ jobs:
   # the summary and time to green can't fail at all.
   promote:
     name: promote
-    needs: [build, build-target, tsan, coverage, lizard, cognitive-complexity, stack-usage, function-pointers,
+    needs: [build, build-target, stack-usage-target, tsan, coverage, lizard, cognitive-complexity, stack-usage, function-pointers,
             every-commit]
     if: github.event_name == 'push' && github.ref == 'refs/heads/integration/rtos-actor'
     runs-on: ubuntu-24.04

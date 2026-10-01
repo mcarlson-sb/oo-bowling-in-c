@@ -14,7 +14,9 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 set(OO_C_CPU_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard")
 # Each function and object in a section of its own, so the linker can drop what nothing uses.
-set(CMAKE_C_FLAGS_INIT "${OO_C_CPU_FLAGS} -ffunction-sections -fdata-sections")
+# Extra C flags go in OO_C_EXTRA_FLAGS (the stack contract's call graph): CMAKE_C_FLAGS on the
+# command line would replace these, the CPU's with them.
+set(CMAKE_C_FLAGS_INIT "${OO_C_CPU_FLAGS} -ffunction-sections -fdata-sections ${OO_C_EXTRA_FLAGS}")
 # The C++ is the tests', on the QEMU image: no exceptions or RTTI there.
 set(CMAKE_CXX_FLAGS_INIT "${OO_C_CPU_FLAGS} -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti")
 set(CMAKE_ASM_FLAGS_INIT "${OO_C_CPU_FLAGS}")

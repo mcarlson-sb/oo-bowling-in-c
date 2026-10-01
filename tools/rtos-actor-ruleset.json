@@ -49,6 +49,14 @@
             "integration_id": 15368
           },
           {
+            "context": "stack-usage-target-Debug",
+            "integration_id": 15368
+          },
+          {
+            "context": "stack-usage-target-Release",
+            "integration_id": 15368
+          },
+          {
             "context": "tsan",
             "integration_id": 15368
           },
