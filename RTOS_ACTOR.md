@@ -2402,3 +2402,61 @@ This took 10 commits, this record's included: 4 `[make-change]`, 1 `[make-easy]`
 `[clean-up]`.
 
 **Stop.** For your review, before phase 6.
+
+## A cleanup round, by CLAUDE.md's checklist (2026-10-01)
+
+The first round run against the standing checklist in CLAUDE.md, "Cleanup: what every round looks
+for". It found 11 things, each its own commit: 10 `[clean-up]` and one `[make-change]`.
+
+**Metrics, before and after** (lizard `-m` and clang-tidy, over `src/`, `include/` and `rtos/`):
+
+| | Before (adc0190) | After |
+|---|---|---|
+| NLOC | 2,152 | 2,161 |
+| Functions | 191 | 193 |
+| Highest modified complexity (limit 10) | 6, `GameActor_State` | 6, `GameActor_State` |
+| Largest function | `GameActor_DoWhatItAsks`, 50 lines | the same |
+| Highest cognitive complexity (limit 7) | 5 | 5 |
+| Tests | 181 | 182 |
+| Mutation score, debug and release | 96.1% (phase 5) | 96.5%, 466 of 483 |
+
+The code grew by 9 lines and 2 functions: three small functions came in, a refused roll and two
+NOT_UNDERSTOODs, and two went, a one-caller helper and a one-line wrapper.
+
+**What each check found:**
+- **Owners:** nothing new. The modules' jobs are as phase 5's review left them.
+- **Tell, don't ask:** both observers asked the frame board for its two facts, one at a time, to
+  fill their statistics. `FrameBoard_ReportTo` writes them (71b57ae).
+- **Composed method:** three dispatch switches each had one case that did more than call: the
+  game's refused pinsetter roll, and each observer's NOT_UNDERSTOOD. Each is a function now
+  (e5b2227, 413e5ce).
+- **Dead simple:**
+  - `GameOutbox_FrameChanged` was written for three callers and had one left (5788e5e);
+  - `GameShell_Route` was a one-line wrapper over `Router_Bind` (a33cb2f);
+  - the statistics were zeroed with a 0 for each of their seven fields, a list that had grown with
+    every field (06d53e7).
+- **Comments:** four were out of date after phase 5 (51f951a): `GameActor_Refuse`'s, the
+  protocol's state comment, MSG_PINSETTER_ROLL's contract, which said nothing of the dead-lane
+  rule, and ARCHITECTURE.md's game state.
+- **Dead code:** an unused include (84cb0da). Mutation testing found two more, below.
+- **Store decisions, derive facts:** nothing new. The held rolls' `first_refused_for` was
+  considered: since the dead-lane rule, too many pins is its only value, but it is the reason the
+  scorer gave, and ROLL_HELD carries it, so it stays.
+- **Proxy limits:** none disagreed with readability. `GameActor_DoWhatItAsks` sits at lizard's
+  50 lines, and gains nothing this round.
+- **Write every case out:** the awaiting-rules row refused a selector past the protocol's end with
+  "no game", as if it were a request the game knew. Every other state answers NOT_UNDERSTOOD, and
+  now so does this one (c2c2711, `[make-change]`, with its test).
+- **Mutation feedback:** 483 mutants, 466 killed, in 12 m 29 s and 12 m 53 s, so both runs built
+  this code. 15 survivors are in the classes recorded before. Two were new, and both were dead code
+  the dead-lane rule left:
+  - letting held rolls through re-recorded why the first was refused. A held roll can only be
+    refused again for too many pins, the reason it already carries (055443f);
+  - a NEW_GAME's reply gave "the score if it started, else 0", and a new game never plays held
+    rolls in, so its score is 0 either way (0734630).
+
+**Recorded, not changed:** `Outbox_BeginReply` and `Outbox_BeginStats` don't check
+`Envelope_WantsAnAnswer`, as the default answers do. A request "from no one" that reached a
+reply would be answered to id 0, and dropped and counted by the router. Only the pinsetter sends
+from no one, and neither of its selectors reaches those paths. Gating them would change the
+outbox's API, a decision for later.
