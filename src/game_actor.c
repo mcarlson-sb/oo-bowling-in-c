@@ -226,11 +226,6 @@ static void GameActor_DoesNotUnderstand(GameActor *self, const Message *message,
     Outbox_NotUnderstood(outbox, message);
 }
 
-static bool GameActor_IsPlayingAGame(const GameActor *self)
-{
-    return GameActor_HasHadAGame(self) && !Scorer_IsOver(&self->scorer);
-}
-
 static void GameActor_ReopenTheOldGamesFrames(const GameActor *self, FrameEvents *reopened)
 {
     if (!GameActor_HasHadAGame(self)) {
@@ -258,10 +253,6 @@ static GameStatus GameActor_StartNextGame(GameActor *self, const NewGamePayload 
 
 static void GameActor_NewGame(GameActor *self, const Message *message, Outbox *outbox)
 {
-    if (GameActor_IsPlayingAGame(self)) {
-        Outbox_Reply(outbox, message, GAME_ERR_GAME_IN_PROGRESS, 0U);
-        return;
-    }
     Message *reply = Outbox_BeginReply(outbox, message);
     const GameStatus status =
         GameActor_StartNextGame(self, &message->payload.new_game, outbox);
@@ -387,7 +378,7 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_SELECTOR_COUNT] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_NO_GAME },
     },
     [GAME_STATE_PRACTICE] = {
-        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME, GAME_OK },
+        [MSG_NEW_GAME] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_GAME_IN_PROGRESS },
         [MSG_ROLL] = { GAME_NO_ANSWER, GAME_COUNT_PRACTICE_BALL, GAME_NO_MOVE, GAME_OK },
         [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
@@ -410,7 +401,7 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
         [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
     },
     [GAME_STATE_IN_PLAY] = {
-        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME, GAME_OK },
+        [MSG_NEW_GAME] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_GAME_IN_PROGRESS },
         [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL, GAME_NO_MOVE, GAME_OK },
         [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
@@ -482,7 +473,7 @@ static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
     },
 
     [GAME_STATE_HOLDING] = {
-        [MSG_NEW_GAME] = { GAME_NO_ANSWER, GAME_NO_PLAY, GAME_NEW_GAME, GAME_OK },
+        [MSG_NEW_GAME] = { GAME_REFUSE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_ERR_GAME_IN_PROGRESS },
         [MSG_ROLL] = { GAME_NO_ANSWER, GAME_ROLL, GAME_NO_MOVE, GAME_OK },
         [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
         [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_PLAY, GAME_NO_MOVE, GAME_OK },
