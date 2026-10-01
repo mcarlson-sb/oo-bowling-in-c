@@ -57,3 +57,15 @@ oo_firmware_checks(mps2_an386_firmware target/mps2_an386/mps2_an386.ld)
 add_test(NAME smoke_on_qemu COMMAND ${OO_C_QEMU_COMMAND} $<TARGET_FILE:mps2_an386_firmware>)
 set_tests_properties(smoke_on_qemu PROPERTIES TIMEOUT 120 LABELS qemu
                      PASS_REGULAR_EXPRESSION "SMOKE: PASSED")
+
+# The early timing estimate: the worst-case message and a QUERY_FIGURE, counted in instructions
+# under -icount shift=0, where QEMU's virtual clock advances one nanosecond an instruction.
+add_executable(timing target/mps2_an386/timing_main.c)
+oo_mps2_executable(timing)
+target_compile_options(timing PRIVATE ${OO_C_WARNINGS})
+target_link_libraries(timing PRIVATE game_actor_state scoreboard_state)
+add_test(NAME timing_on_qemu
+         COMMAND qemu-system-arm -machine mps2-an386 -cpu cortex-m4 -nographic -monitor none
+                 -serial none -semihosting-config enable=on,target=native
+                 -icount shift=0,align=off,sleep=off -kernel $<TARGET_FILE:timing>)
+set_tests_properties(timing_on_qemu PROPERTIES TIMEOUT 120 LABELS qemu)

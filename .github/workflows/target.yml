@@ -57,3 +57,15 @@ jobs:
         run: |
           echo "### The firmware's smoke test on mps2-an386" >> "$GITHUB_STEP_SUMMARY"
           sed 's/^/    /' smoke.txt >> "$GITHUB_STEP_SUMMARY"
+      # An estimate, in instructions: one a nanosecond of QEMU's virtual clock under icount.
+      - name: The early timing estimate
+        if: always()
+        run: |
+          set -o pipefail
+          timeout 120 qemu-system-arm -machine mps2-an386 -cpu cortex-m4 -nographic -monitor none \
+            -serial none -semihosting-config enable=on,target=native \
+            -icount shift=0,align=off,sleep=off -kernel build/timing.elf | tee timing.txt
+          {
+            echo "### The early timing estimate, release, at 120 MHz: an estimate"
+            sed 's/^/    /' timing.txt
+          } >> "$GITHUB_STEP_SUMMARY"
