@@ -4,7 +4,7 @@ static const Route s_no_route = { ACTOR_KIND_NONE, 0U, NULL, NULL };
 
 void Router_Reset(Router *self)
 {
-    for (uint8_t id = 0U; id < GAME_SHELL_ACTORS; id++) {
+    for (uint8_t id = 0U; id < ROUTER_IDS; id++) {
         self->routes[id] = s_no_route;
     }
     atomic_init(&self->dropped, 0U);
@@ -17,7 +17,7 @@ void Router_Bind(Router *self, ActorId id, Route route)
 
 const Route *Router_RouteTo(const Router *self, ActorId id)
 {
-    return (id < GAME_SHELL_ACTORS) ? &self->routes[id] : &s_no_route;
+    return (id < ROUTER_IDS) ? &self->routes[id] : &s_no_route;
 }
 
 bool Router_Post(const Router *self, const Message *message, TickType_t wait)

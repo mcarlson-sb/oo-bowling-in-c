@@ -12,6 +12,7 @@
 #include "FreeRTOS.h"
 #include "queue.h"
 
+#include "actor_kind.h"
 #include "game_actor.h"
 
 #ifdef __cplusplus
@@ -26,20 +27,8 @@ extern "C" {
 #define GAME_SHELL_ISR_STACK_BUDGET 3584U
 #define GAME_SHELL_SEND_STACK_BUDGET 3584U
 
-/* The ids the routing table can bind: 1 to GAME_SHELL_ACTORS - 1. The game is at
- * GAME_SHELL_GAME_ID. A route is 24 bytes on this host, bound or not. */
-#define GAME_SHELL_ACTORS 16U
+/* The game is at GAME_SHELL_GAME_ID; the ids the routing table can bind are 1 to ROUTER_IDS - 1. */
 #define GAME_SHELL_GAME_ID 1U
-
-/* What sits at an id, which decides what a message sent there means. An external actor reads
- * its own queue, outside the shell; the kinds the shell hosts are dispatched by their tasks. */
-typedef enum {
-    ACTOR_KIND_NONE,
-    ACTOR_KIND_EXTERNAL,
-    ACTOR_KIND_GAME,
-    ACTOR_KIND_SCOREBOARD,
-    ACTOR_KIND_RUNNING_AVERAGE
-} ActorKind;
 
 /* The game at GAME_SHELL_GAME_ID, in a task of its own at `game_priority`, with no game yet: the
  * first NEW_GAME sent there starts one. And the task every observer will share, at

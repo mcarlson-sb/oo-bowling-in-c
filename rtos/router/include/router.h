@@ -3,7 +3,7 @@
 
 /* The routing table: which kind and instance sits at each id, and the mailbox and task of the
  * task that hosts it, or the queue of an external actor. It posts a message to whoever is bound
- * at its "to", and counts what it couldn't. Private to the shell. Written before the scheduler
+ * at its "to", and counts what it couldn't. The host wires it. Written before the scheduler
  * starts, and only read after, so it needs no lock. */
 
 #include <stdatomic.h>
@@ -14,7 +14,8 @@
 #include "queue.h"
 #include "task.h"
 
-#include "game_shell.h"
+#include "actor_id.h"
+#include "actor_kind.h"
 #include "outbox.h"
 
 /* A row of the table. For an external actor, only the queue it reads: no task to wake. */
@@ -26,7 +27,7 @@ typedef struct {
 } Route;
 
 typedef struct {
-    Route routes[GAME_SHELL_ACTORS];
+    Route routes[ROUTER_IDS];
     atomic_uint_least16_t dropped; /* written by the hosting tasks, read by any */
 } Router;
 

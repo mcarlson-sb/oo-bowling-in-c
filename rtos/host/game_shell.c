@@ -137,7 +137,7 @@ static void GameShellTask_Start(GameShellTask *host, Message *outbox_storage, ui
 
 static void GameShell_RequireBindableId(ActorId id)
 {
-    configASSERT((id != ACTOR_ID_NONE) && (id < GAME_SHELL_ACTORS));
+    configASSERT((id != ACTOR_ID_NONE) && (id < ROUTER_IDS));
 }
 
 /* An actor of `kind`, its instance already started, hosted by `host`. */
