@@ -283,7 +283,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-      actions: read # earlier runs, for the time to green
+      actions: write # earlier runs, for the time to green; and starting the target stage
     concurrency:
       group: promote-rtos-actor
       cancel-in-progress: false
@@ -340,9 +340,9 @@ jobs:
           name: bowling-${{ github.sha }}
           path: release
           if-no-files-found: error
-      # The last step. No --force: GitHub itself rejects anything that isn't a fast-forward of
-      # rtos-actor, and the ruleset requires every gate job. Made with GITHUB_TOKEN, so it starts
-      # no run of its own: the SHA is already tested.
+      # The last gating step. No --force: GitHub itself rejects anything that isn't a
+      # fast-forward of rtos-actor, and the ruleset requires every gate job. Made with
+      # GITHUB_TOKEN, so it starts no run of its own: the SHA is already tested.
       - name: Fast-forward rtos-actor to this commit
         if: steps.already.outputs.done == 'false'
         run: |
@@ -351,3 +351,12 @@ jobs:
             exit 1
           fi
           echo "Promoted \`${GITHUB_SHA}\` to rtos-actor." >> "$GITHUB_STEP_SUMMARY" || true
+      # The target stage, target.yml, on the commit just promoted: it reports, so it can't fail
+      # this. A dispatch is the one event GITHUB_TOKEN's can start a run with.
+      - name: Start the target stage
+        if: steps.already.outputs.done == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run target.yml --ref rtos-actor -f sha="$GITHUB_SHA" \
+            || echo "::warning title=Target stage::not started; run target.yml by hand"
