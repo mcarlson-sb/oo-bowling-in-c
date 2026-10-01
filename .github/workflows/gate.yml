@@ -95,7 +95,8 @@ jobs:
       - name: Install GNU Arm Embedded
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q gcc-arm-none-eabi libnewlib-arm-none-eabi
+          sudo apt-get install -y -q gcc-arm-none-eabi libnewlib-arm-none-eabi \
+            libstdc++-arm-none-eabi-newlib
           arm-none-eabi-gcc --version | head -1
       - name: Configure
         run: >-
@@ -103,6 +104,15 @@ jobs:
           -DOO_C_TARGET=${{ matrix.image }} -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build --parallel
+      # The image's own code too, startup and all, against newlib's headers and the device's:
+      # the vector table is the exemption the allowlist names.
+      - name: Check the image for function pointers
+        run: >-
+          python3 tools/check_function_pointers.py --clang clang-18
+          --freertos build/_deps/freertos_kernel-src --port cm4f --image ${{ matrix.image }}
+          -- --target=arm-none-eabi -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16
+          --sysroot=/usr/lib/arm-none-eabi -ffreestanding -isystem build/_deps/cmsis
+          $([ -d build/_deps/xmc4500 ] && echo -isystem build/_deps/xmc4500)
 
   tsan:
     name: tsan
@@ -151,7 +161,7 @@ jobs:
       # a dispatch can take, and three times it shaped the design (RTOS_ACTOR.md). Cognitive
       # complexity, at 7, stays the readability guard.
       - name: ENG-3.1's limits with lizard
-        run: pipx run --spec lizard==1.24.0 lizard -m -C 10 -L 50 -a 4 -w src rtos
+        run: pipx run --spec lizard==1.24.0 lizard -m -C 10 -L 50 -a 4 -w src rtos target
 
   # ENG-3.1's cognitive-complexity limit, 7, including the inline functions in the headers.
   cognitive-complexity:

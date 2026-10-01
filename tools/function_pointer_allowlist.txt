@@ -8,3 +8,10 @@
 # use on a line marked "FUNCTION POINTER EXEMPTION:" with a reason.
 [rtos-shell]
 rtos/host/actor_host.c
+
+# A target's startup: the vector table the hardware reads, by address, and the loop that runs
+# the C++ tests' constructors from the linker's table of them. Each `file: declaration...`. The
+# XMC4500's vector table, __Vectors, is in Infineon's startup_XMC4500.S, assembly, which the check
+# can't see: target/xmc4500/image.cmake links it.
+[vector-table]
+target/mps2_an386/startup.c: VectorTable g_vector_table __init_array_start __init_array_end Startup_RunConstructors

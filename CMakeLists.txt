@@ -1,11 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(oo_in_c LANGUAGES C)
-# The host builds the tests, in C++; a target build (cmake/arm-none-eabi-cm4f.cmake) builds the
-# images, whose startup code may be assembly.
+# The tests are C++, on the host and on the QEMU image; a target build
+# (cmake/arm-none-eabi-cm4f.cmake) builds the images too, whose startup code may be assembly.
+enable_language(CXX)
 if(CMAKE_CROSSCOMPILING)
     enable_language(ASM)
-else()
-    enable_language(CXX)
 endif()
 include(FetchContent)
 
@@ -119,6 +118,16 @@ foreach(dir IN ITEMS src/value_objects src/scorer src/protocol src/actors/game
     list(APPEND OO_C_PUBLIC_INCLUDE_FLAGS -I ${CMAKE_CURRENT_SOURCE_DIR}/${dir}/include)
 endforeach()
 
+# The pure core's tests: GoogleTest's on the host, and the same sources on the QEMU image through
+# a shim of it (test/target/gtest).
+set(OO_C_CORE_TEST_SOURCES
+    test/scorer/scorer_test.cpp
+    test/actors/game/game_actor_test.cpp
+    test/actors/scoreboard/scoreboard_actor_test.cpp
+    test/actors/running_average/running_average_test.cpp
+    test/protocol/outbox_test.cpp
+    test/protocol/protocol_test.cpp)
+
 # ---- The target images ----------------------------------------------------
 # A cross build is the components, the RTOS side on the Cortex-M4F port and an image; everything
 # after this is the host's.
@@ -138,15 +147,8 @@ set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 enable_testing()
-add_executable(bowling_tests
-    test/scorer/scorer_test.cpp
-    test/support/fault_test.cpp
-    test/actors/game/game_actor_test.cpp
-    test/actors/scoreboard/scoreboard_actor_test.cpp
-    test/actors/running_average/running_average_test.cpp
-    test/protocol/outbox_test.cpp
-    test/protocol/protocol_test.cpp
-)
+# The fail-stop's own tests are death tests, which need a process to fork: the host's alone.
+add_executable(bowling_tests ${OO_C_CORE_TEST_SOURCES} test/support/fault_test.cpp)
 # The actors' state headers: the tests see inside, as the shell does. And the tests' fixtures.
 target_link_libraries(bowling_tests PRIVATE game_actor_state scoreboard_state running_average_state
                                             support GTest::gtest_main)

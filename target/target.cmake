@@ -58,3 +58,5 @@ endif()
 
 set(OO_C_PORT cm4f)
 include(rtos/rtos.cmake)
+
+include(target/${OO_C_TARGET}/image.cmake)
