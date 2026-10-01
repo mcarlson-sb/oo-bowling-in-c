@@ -38,6 +38,5 @@ target_link_libraries(core_tests PRIVATE game_actor_state scoreboard_state runni
 target_compile_options(core_tests PRIVATE ${OO_TEST_WARNINGS})
 target_link_options(core_tests PRIVATE --specs=nosys.specs -Wl,--defsym=__main_stack_size=0x8000)
 
-enable_testing()
 add_test(NAME core_tests_on_qemu COMMAND ${OO_C_QEMU_COMMAND} $<TARGET_FILE:core_tests>)
-set_tests_properties(core_tests_on_qemu PROPERTIES TIMEOUT 300)
+set_tests_properties(core_tests_on_qemu PROPERTIES TIMEOUT 300 LABELS qemu)

@@ -23,8 +23,9 @@ Usage: check_function_pointers.py [--clang CLANG] [--freertos DIR] [--port PORT]
                   <build>/_deps/freertos_kernel-src). Required when rtos/ has sources.
   --port PORT     the FreeRTOS port whose rtos/port/<PORT> is checked: posix (the default) or
                   cm4f. Each port has its own FreeRTOSConfig.h, so the others' are left out.
-  --image IMAGE   a target image, with --port cm4f: target/<IMAGE> and target/newlib are
-                  checked too. Pass its device headers and the compiler's target after --.
+  --image IMAGE   a target image, with --port cm4f: target/<IMAGE>, and target/firmware and
+                  target/newlib, which every image shares, are checked too. Pass its device
+                  headers and the compiler's target after --.
 Exit status: 0 clean, 1 violations, 2 the check itself couldn't run.
 """
 
@@ -143,7 +144,7 @@ def is_in_scope(path, port, image):
     directory, and what every image shares."""
     parts = path.relative_to(ROOT).parts
     if parts[0] == "target":
-        return image is not None and parts[1] in (image, "newlib")
+        return image is not None and parts[1] in (image, "firmware", "newlib")
     return not (len(parts) > 3 and parts[:2] == ("rtos", "port") and parts[2] != port)
 
 

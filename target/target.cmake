@@ -59,4 +59,25 @@ endif()
 set(OO_C_PORT cm4f)
 include(rtos/rtos.cmake)
 
+# The firmware's actors, the same in every image: the host, both lanes and their scoreboards.
+oo_component(firmware target/firmware
+    SOURCES target/firmware/firmware.c
+    USES host)
+
+# A firmware image's checks, as tests of the cross build: no heap in its link map, and its memory
+# region by region, which fails if an object spans two. Labelled static: they read the build's
+# output, and need no target to run on.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+enable_testing()
+function(oo_firmware_checks name linker_script)
+    add_test(NAME ${name}_has_no_heap
+             COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_no_heap.py
+                     $<TARGET_FILE_DIR:${name}>/${name}.map)
+    add_test(NAME ${name}_memory
+             COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tools/memory_report.py
+                     $<TARGET_FILE:${name}> ${CMAKE_CURRENT_SOURCE_DIR}/${linker_script}
+                     --symbol k_game_protocols)
+    set_tests_properties(${name}_has_no_heap ${name}_memory PROPERTIES LABELS static)
+endfunction()
+
 include(target/${OO_C_TARGET}/image.cmake)

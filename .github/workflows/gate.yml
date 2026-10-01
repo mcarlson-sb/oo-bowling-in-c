@@ -104,6 +104,17 @@ jobs:
           -DOO_C_TARGET=${{ matrix.image }} -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build --parallel
+      # The firmware's link: no heap, and no object across two RAM regions; with its memory, region
+      # by region, in the summary.
+      - name: The firmware's memory
+        run: |
+          set -o pipefail
+          ctest --test-dir build -L static --output-on-failure
+          if [ -f build/xmc4500_firmware.elf ]; then
+            echo "### The XMC4500 firmware's memory, release" >> "$GITHUB_STEP_SUMMARY"
+            python3 tools/memory_report.py build/xmc4500_firmware.elf target/xmc4500/xmc4500.ld \
+              --symbol k_game_protocols >> "$GITHUB_STEP_SUMMARY"
+          fi
       # The image's own code too, startup and all, against newlib's headers and the device's:
       # the vector table is the exemption the allowlist names.
       - name: Check the image for function pointers
