@@ -3,6 +3,7 @@
 
 #include <assert.h>
 
+#include "game_protocol.h"
 #include "outbox.h"
 
 void GameActor_Init(GameActor *self, ActorId id)
@@ -279,17 +280,6 @@ static void GameActor_HoldTheRoll(GameActor *self, const Message *message, Outbo
     GameActor_HoldOrLose(self, message->payload.roll.pins, outbox);
 }
 
-/* The state a message is read in: the lifecycle's decision, and what the held list says. */
-typedef enum {
-    GAME_STATE_AWAITING_RULES,
-    GAME_STATE_PRACTICE,
-    GAME_STATE_IN_PLAY,
-    GAME_STATE_HOLDING, /* in play, with rolls held */
-    GAME_STATE_OVER,    /* in play, nothing held, and the scorer says it's over */
-    GAME_STATE_CERTIFIED,
-    GAME_STATES
-} GameState;
-
 static GameState GameActor_State(const GameActor *self)
 {
     if (self->lifecycle == GAME_AWAITING_RULES) {
@@ -307,203 +297,6 @@ static GameState GameActor_State(const GameActor *self)
     return Scorer_IsOver(&self->scorer) ? GAME_STATE_OVER : GAME_STATE_IN_PLAY;
 }
 
-/* What a message means to the game in each state: what it asks the game to do, and whether it
- * moves the game's lifecycle. Every entry names both, one of them nothing. */
-typedef enum {
-    GAME_DOES_NOT_UNDERSTAND = 0, /* what a missing entry reads as */
-    GAME_NOTHING_ASKED,           /* a move, which the lifecycle's own switch makes */
-    GAME_REFUSE,                  /* with the entry's reason */
-    GAME_ANSWER_FIGURE,
-    GAME_ANSWER_STATS,
-    GAME_SUBSCRIBE,
-    GAME_UNSUBSCRIBE,
-    GAME_ROLL,
-    GAME_PLAY_OR_HOLD,
-    GAME_HOLD_THE_ROLL,
-    GAME_EDIT,
-    GAME_DISCARD_HELD,
-    GAME_HEAR_LOST_REPORT,
-    GAME_COUNT_PRACTICE_BALL,
-    GAME_REFUSE_THE_PINSETTERS_ROLL
-} GameRequest;
-
-typedef enum {
-    GAME_NO_MOVE = 0,
-    GAME_NEW_GAME,
-    GAME_END_PRACTICE,
-    GAME_PINSETTER_DOWN,
-    GAME_PINSETTER_UP,
-    GAME_CERTIFY
-} GameMove;
-
-typedef struct {
-    GameRequest request;
-    GameMove move;
-    GameStatus refused_for; /* GAME_REFUSE's reason; GAME_OK otherwise */
-} GameMeaning;
-
-/* One row per selector, and one, at MSG_SELECTOR_COUNT, for a selector outside the protocol. */
-#define GAME_PROTOCOL_ROWS (MSG_SELECTOR_COUNT + 1U)
-
-static const GameMeaning k_game_protocols[GAME_STATES][GAME_PROTOCOL_ROWS] = {
-    [GAME_STATE_AWAITING_RULES] = {
-        [MSG_NEW_GAME] = { GAME_NOTHING_ASKED, GAME_NEW_GAME, GAME_OK },
-        [MSG_ROLL] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_GAME },
-        [MSG_SUBSCRIBE] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_GAME },
-        [MSG_UNSUBSCRIBE] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_GAME },
-        [MSG_EDIT] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_GAME },
-        [MSG_PINSETTER_ROLL] = { GAME_REFUSE_THE_PINSETTERS_ROLL, GAME_NO_MOVE,
-                                 GAME_OK },
-        [MSG_QUERY_FIGURE] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_GAME },
-        [MSG_DISCARD_HELD] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_GAME },
-        [MSG_ROLLS_LOST] = { GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
-        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_MOVE, GAME_OK },
-        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_GAME },
-        [MSG_PINSETTER_DOWN] = { GAME_NOTHING_ASKED, GAME_PINSETTER_DOWN, GAME_OK },
-        [MSG_PINSETTER_UP] = { GAME_NOTHING_ASKED, GAME_PINSETTER_UP, GAME_OK },
-        [MSG_CERTIFY] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_GAME },
-        [MSG_CERTIFIED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_SELECTOR_COUNT] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_GAME },
-    },
-    [GAME_STATE_PRACTICE] = {
-        [MSG_NEW_GAME] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_GAME_IN_PROGRESS },
-        [MSG_ROLL] = { GAME_COUNT_PRACTICE_BALL, GAME_NO_MOVE, GAME_OK },
-        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_MOVE, GAME_OK },
-        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_MOVE, GAME_OK },
-        [MSG_EDIT] = { GAME_EDIT, GAME_NO_MOVE, GAME_OK },
-        [MSG_PINSETTER_ROLL] = { GAME_COUNT_PRACTICE_BALL, GAME_NO_MOVE, GAME_OK },
-        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_MOVE, GAME_OK },
-        [MSG_DISCARD_HELD] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_SUCH_ROLL },
-        [MSG_ROLLS_LOST] = { GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
-        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_MOVE, GAME_OK },
-        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_END_PRACTICE] = { GAME_NOTHING_ASKED, GAME_END_PRACTICE, GAME_OK },
-        [MSG_PINSETTER_DOWN] = { GAME_NOTHING_ASKED, GAME_PINSETTER_DOWN, GAME_OK },
-        [MSG_PINSETTER_UP] = { GAME_NOTHING_ASKED, GAME_PINSETTER_UP, GAME_OK },
-        [MSG_CERTIFY] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NOT_OVER },
-        [MSG_CERTIFIED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-    },
-    [GAME_STATE_IN_PLAY] = {
-        [MSG_NEW_GAME] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_GAME_IN_PROGRESS },
-        [MSG_ROLL] = { GAME_ROLL, GAME_NO_MOVE, GAME_OK },
-        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_MOVE, GAME_OK },
-        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_MOVE, GAME_OK },
-        [MSG_EDIT] = { GAME_EDIT, GAME_NO_MOVE, GAME_OK },
-        [MSG_PINSETTER_ROLL] = { GAME_PLAY_OR_HOLD, GAME_NO_MOVE, GAME_OK },
-        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_MOVE, GAME_OK },
-        [MSG_DISCARD_HELD] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_SUCH_ROLL },
-        [MSG_ROLLS_LOST] = { GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
-        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_MOVE, GAME_OK },
-        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NOT_IN_PRACTICE },
-        [MSG_PINSETTER_DOWN] = { GAME_NOTHING_ASKED, GAME_PINSETTER_DOWN, GAME_OK },
-        [MSG_PINSETTER_UP] = { GAME_NOTHING_ASKED, GAME_PINSETTER_UP, GAME_OK },
-        [MSG_CERTIFY] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NOT_OVER },
-        [MSG_CERTIFIED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-    },
-    [GAME_STATE_OVER] = {
-        [MSG_NEW_GAME] = { GAME_NOTHING_ASKED, GAME_NEW_GAME, GAME_OK },
-        [MSG_ROLL] = { GAME_ROLL, GAME_NO_MOVE, GAME_OK },
-        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_MOVE, GAME_OK },
-        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_MOVE, GAME_OK },
-        [MSG_EDIT] = { GAME_EDIT, GAME_NO_MOVE, GAME_OK },
-        [MSG_PINSETTER_ROLL] = { GAME_REFUSE_THE_PINSETTERS_ROLL, GAME_NO_MOVE,
-                                 GAME_OK },
-        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_MOVE, GAME_OK },
-        [MSG_DISCARD_HELD] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NO_SUCH_ROLL },
-        [MSG_ROLLS_LOST] = { GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
-        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_MOVE, GAME_OK },
-        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NOT_IN_PRACTICE },
-        [MSG_PINSETTER_DOWN] = { GAME_NOTHING_ASKED, GAME_PINSETTER_DOWN, GAME_OK },
-        [MSG_PINSETTER_UP] = { GAME_NOTHING_ASKED, GAME_PINSETTER_UP, GAME_OK },
-        [MSG_CERTIFY] = { GAME_NOTHING_ASKED, GAME_CERTIFY, GAME_OK },
-        [MSG_CERTIFIED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-    },
-    [GAME_STATE_CERTIFIED] = {
-        [MSG_NEW_GAME] = { GAME_NOTHING_ASKED, GAME_NEW_GAME, GAME_OK },
-        [MSG_ROLL] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_CERTIFIED },
-        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_MOVE, GAME_OK },
-        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_MOVE, GAME_OK },
-        [MSG_EDIT] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_CERTIFIED },
-        [MSG_PINSETTER_ROLL] = { GAME_REFUSE_THE_PINSETTERS_ROLL, GAME_NO_MOVE,
-                                 GAME_OK },
-        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_MOVE, GAME_OK },
-        [MSG_DISCARD_HELD] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_CERTIFIED },
-        [MSG_ROLLS_LOST] = { GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
-        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_MOVE, GAME_OK },
-        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NOT_IN_PRACTICE },
-        [MSG_PINSETTER_DOWN] = { GAME_NOTHING_ASKED, GAME_PINSETTER_DOWN, GAME_OK },
-        [MSG_PINSETTER_UP] = { GAME_NOTHING_ASKED, GAME_PINSETTER_UP, GAME_OK },
-        [MSG_CERTIFY] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_CERTIFIED },
-        [MSG_CERTIFIED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-    },
-
-    [GAME_STATE_HOLDING] = {
-        [MSG_NEW_GAME] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_GAME_IN_PROGRESS },
-        [MSG_ROLL] = { GAME_ROLL, GAME_NO_MOVE, GAME_OK },
-        [MSG_SUBSCRIBE] = { GAME_SUBSCRIBE, GAME_NO_MOVE, GAME_OK },
-        [MSG_UNSUBSCRIBE] = { GAME_UNSUBSCRIBE, GAME_NO_MOVE, GAME_OK },
-        [MSG_EDIT] = { GAME_EDIT, GAME_NO_MOVE, GAME_OK },
-        [MSG_PINSETTER_ROLL] = { GAME_HOLD_THE_ROLL, GAME_NO_MOVE, GAME_OK },
-        [MSG_QUERY_FIGURE] = { GAME_ANSWER_FIGURE, GAME_NO_MOVE, GAME_OK },
-        [MSG_DISCARD_HELD] = { GAME_DISCARD_HELD, GAME_NO_MOVE, GAME_OK },
-        [MSG_ROLLS_LOST] = { GAME_HEAR_LOST_REPORT, GAME_NO_MOVE, GAME_OK },
-        [MSG_REPLY] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_FRAME_CHANGED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_ROLL_HELD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_NOT_UNDERSTOOD] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_QUERY_STATS] = { GAME_ANSWER_STATS, GAME_NO_MOVE, GAME_OK },
-        [MSG_STATS] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_END_PRACTICE] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_NOT_IN_PRACTICE },
-        [MSG_PINSETTER_DOWN] = { GAME_NOTHING_ASKED, GAME_PINSETTER_DOWN, GAME_OK },
-        [MSG_PINSETTER_UP] = { GAME_NOTHING_ASKED, GAME_PINSETTER_UP, GAME_OK },
-        [MSG_CERTIFY] = { GAME_REFUSE, GAME_NO_MOVE, GAME_ERR_ROLLS_HELD },
-        [MSG_CERTIFIED] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-        [MSG_SELECTOR_COUNT] = { GAME_DOES_NOT_UNDERSTAND, GAME_NO_MOVE, GAME_OK },
-    },
-};
-
-/* The pinsetter's roll while it is down, in every state: the one meaning the flag changes. */
-static const GameMeaning k_a_pinsetter_roll_while_it_is_down = {
-    GAME_REFUSE_THE_PINSETTERS_ROLL, GAME_NO_MOVE, GAME_OK
-};
-
-static GameMeaning GameActor_MeaningOf(const GameActor *self, const Message *message)
-{
-    const Selector selector = message->envelope.selector;
-    if (self->pinsetter_down && (selector == MSG_PINSETTER_ROLL)) {
-        return k_a_pinsetter_roll_while_it_is_down;
-    }
-    const unsigned row = Selector_IsInProtocol(selector) ? (unsigned)selector : MSG_SELECTOR_COUNT;
-    return k_game_protocols[GameActor_State(self)][row];
-}
 
 static void GameActor_DoWhatItAsks(GameActor *self, GameMeaning meaning, const Message *message,
                                    Outbox *outbox)
@@ -605,7 +398,8 @@ static void GameActor_MakeTheMove(GameActor *self, GameMove move, const Message 
 
 void GameActor_Handle(GameActor *self, const Message *message, Outbox *outbox)
 {
-    const GameMeaning meaning = GameActor_MeaningOf(self, message);
+    const GameMeaning meaning = GameProtocol_MeaningOf(GameActor_State(self), self->pinsetter_down,
+                                                       message->envelope.selector);
     GameActor_DoWhatItAsks(self, meaning, message, outbox);
     GameActor_MakeTheMove(self, meaning.move, message, outbox);
 }

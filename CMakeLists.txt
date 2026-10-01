@@ -34,6 +34,7 @@ add_library(bowling STATIC
     src/scorer.c
     src/rules.c
     src/game_actor.c
+    src/game_protocol.c
     src/outbox.c
     src/message.c
     src/scoreboard.c
